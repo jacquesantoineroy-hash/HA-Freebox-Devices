@@ -1,10 +1,10 @@
 {
   "domain": "freebox_devices",
   "name": "Freebox Devices",
-  "codeowners": ["@jaroy"],
+  "codeowners": ["@jacquesantoineroy-hash"],
   "config_flow": true,
-  "documentation": "https://github.com/jaroy/freebox-devices",
-  "issue_tracker": "https://github.com/jaroy/freebox-devices/issues",
+  "documentation": "https://github.com/jacquesantoineroy-hash/HA-Freebox-Devices",
+  "issue_tracker": "https://github.com/jacquesantoineroy-hash/HA-Freebox-Devices/issues",
   "integration_type": "hub",
   "iot_class": "local_polling",
   "requirements": [],

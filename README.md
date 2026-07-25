@@ -81,8 +81,8 @@ trou de service.
       environnement. À confirmer/ajuster après le premier test réel (voir
       logs si `sensor.*_signal_wifi` reste toujours `None` pour un appareil
       Wifi actif).
-- [ ] Corriger le placeholder `@jaroy` / URL GitHub dans `manifest.json`
-      avec le vrai compte avant publication.
+- [x] Placeholder `@jaroy` / URL GitHub dans `manifest.json` corrigé
+      (`@jacquesantoineroy-hash`, dépôt `HA-Freebox-Devices`).
 
 ## Roadmap
 
