@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion à la Freebox",
+        "description": "Entrez l'adresse locale de la Freebox. Laissez les valeurs par défaut si Home Assistant tourne sur le même réseau.",
+        "data": {
+          "host": "Hôte / adresse IP",
+          "port": "Port"
+        }
+      },
+      "pair": {
+        "title": "Appairage"
+      }
+    },
+    "progress": {
+      "wait_for_button": "Appuyez sur la flèche droite en façade de la Freebox pour autoriser Home Assistant. Cette étape expire après environ 2 minutes."
+    },
+    "abort": {
+      "already_configured": "Cette Freebox est déjà configurée.",
+      "pairing_denied": "L'appairage a été refusé ou a expiré sur la Freebox. Réessayez et appuyez sur la flèche à temps.",
+      "cannot_connect": "Impossible de joindre la Freebox. Vérifiez l'hôte, le port et la connectivité réseau."
+    }
+  },
+  "entity": {
+    "switch": {
+      "wifi_autorise": {
+        "name": "Wifi autorisé"
+      }
+    },
+    "sensor": {
+      "signal_wifi": {
+        "name": "Signal Wifi"
+      }
+    }
+  }
+}

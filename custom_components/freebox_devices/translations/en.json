@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to your Freebox",
+        "description": "Enter your Freebox's local address. Leave the defaults if Home Assistant runs on the same network.",
+        "data": {
+          "host": "Host / IP address",
+          "port": "Port"
+        }
+      },
+      "pair": {
+        "title": "Pairing"
+      }
+    },
+    "progress": {
+      "wait_for_button": "Press the right arrow button on the front of your Freebox to authorize Home Assistant. This step expires after about 2 minutes."
+    },
+    "abort": {
+      "already_configured": "This Freebox is already configured.",
+      "pairing_denied": "Pairing was denied or expired on the Freebox. Please try again and press the arrow button in time.",
+      "cannot_connect": "Could not reach the Freebox. Check the host, port and network connectivity."
+    }
+  },
+  "entity": {
+    "switch": {
+      "wifi_autorise": {
+        "name": "Wifi allowed"
+      }
+    },
+    "sensor": {
+      "signal_wifi": {
+        "name": "Wifi signal"
+      }
+    }
+  }
+}
