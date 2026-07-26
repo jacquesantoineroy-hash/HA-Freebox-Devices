@@ -14,7 +14,12 @@ from .const import CONF_APP_TOKEN, CONF_HOST, CONF_PORT, DOMAIN
 from .coordinator import FreeboxDevicesCoordinator
 from .freebox_client import FreeboxApiError, FreeboxLocalClient, FreeboxPermissionError
 
-PLATFORMS: list[Platform] = [Platform.DEVICE_TRACKER, Platform.LOCK, Platform.SENSOR]
+PLATFORMS: list[Platform] = [
+    Platform.DEVICE_TRACKER,
+    Platform.LOCK,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

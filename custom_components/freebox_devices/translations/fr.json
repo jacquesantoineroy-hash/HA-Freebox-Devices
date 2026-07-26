@@ -36,6 +36,11 @@
       "signal_wifi": {
         "name": "Signal Wifi"
       }
+    },
+    "switch": {
+      "masque": {
+        "name": "Masqué du dashboard"
+      }
     }
   }
 }

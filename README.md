@@ -11,7 +11,14 @@ HTTP). Elle expose, pour chaque appareil connu du réseau local :
   Wifi), déverrouillé = autorisé. Rendu natif en cadenas dans les cartes HA
   (entities, plus d'infos), pas de template nécessaire côté dashboard ;
 - un **sensor "Wifi signal"** (dBm), `None` si l'appareil est filaire — icône
-  à barres (`mdi:wifi-strength-1` à `4`) selon la force du signal.
+  à barres (`mdi:wifi-strength-1` à `4`) selon la force du signal ;
+- un **switch "Masqué du dashboard"** par appareil (catégorie config, masqué
+  par défaut dans l'UI standard des entités) — ON = retiré des cartes du
+  dashboard (Connectés/Déconnectés), OFF = visible (défaut). Purement un
+  filtre d'affichage : l'appareil continue d'être suivi normalement en
+  arrière-plan (présence, signal, verrou Wifi) même masqué, et redevient
+  visible instantanément si on repasse le switch sur OFF — rien n'est jamais
+  perdu ni supprimé. Persistant entre redémarrages HA.
 
 Un événement `freebox_devices_new_device` est émis dès qu'une MAC jamais vue
 auparavant apparaît (voir [Alertes](#alertes--notifications) plus bas).
@@ -142,6 +149,23 @@ actions:
 
 Pour ne suivre que les déconnexions (ou que les connexions), retirer la
 valeur non voulue de la liste `to:`.
+
+## Gérer un vieil appareil (ex-invité, matériel revendu...)
+
+La Freebox garde en mémoire tout appareil qu'elle a déjà vu, donc
+l'intégration fait pareil — un appareil ne disparaît jamais tout seul,
+même après des mois d'absence. Pour un appareil dont vous ne voulez plus
+qu'il pollue le dashboard :
+
+- **Le masquer** : basculez son switch "Masqué du dashboard" sur ON (via
+  Paramètres → Appareils et services → l'appareil → l'entité switch, ou
+  directement depuis une carte "Masqués" du dashboard si configurée). Il
+  disparaît des listes Connectés/Déconnectés mais continue d'être suivi.
+- **Le remettre** : rebasculez le même switch sur OFF, il réapparaît
+  immédiatement avec son historique intact (rien n'a été supprimé).
+- **S'il se reconnecte** : aucune action nécessaire — masquer n'arrête pas
+  le suivi, l'état présence/signal/verrou reste à jour même masqué ; seul
+  l'affichage dans les listes du dashboard est filtré.
 
 ## Roadmap
 
