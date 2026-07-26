@@ -7,13 +7,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import CONF_APP_TOKEN, CONF_HOST, CONF_PORT, DOMAIN
 from .coordinator import FreeboxDevicesCoordinator
 from .freebox_client import FreeboxApiError, FreeboxLocalClient, FreeboxPermissionError
 
-PLATFORMS: list[Platform] = [Platform.DEVICE_TRACKER, Platform.SWITCH, Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.DEVICE_TRACKER, Platform.LOCK, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -26,6 +27,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryAuthFailed(str(err)) from err
     except FreeboxApiError as err:
         raise ConfigEntryNotReady(str(err)) from err
+
+    # Device "hub" représentant la Freebox elle-même : chaque appareil LAN
+    # (créé dans entity.py via via_device=(DOMAIN, entry.entry_id)) s'y
+    # rattache, ce qui évite l'avertissement HA "via_device inexistant" et
+    # regroupe proprement tous les appareils sous la Freebox dans la page
+    # Appareils.
+    device_registry = dr.async_get(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=f"Freebox ({entry.data[CONF_HOST]})",
+        manufacturer="Freebox SAS",
+        model="Freebox Server",
+    )
 
     coordinator = FreeboxDevicesCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()

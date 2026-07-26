@@ -4,8 +4,7 @@ côté Freebox, connexion signalée quasi immédiatement (cf. doc officielle
 core `freebox`)."""
 from __future__ import annotations
 
-from homeassistant.components.device_tracker import SourceType
-from homeassistant.components.device_tracker.config_entry import ScannerEntity
+from homeassistant.components.device_tracker import ScannerEntity, SourceType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -80,3 +79,16 @@ class FreeboxDeviceTracker(FreeboxDeviceEntity, ScannerEntity):
             "host_type": device.get(ATTR_HOST_TYPE),
             "connectivity_type": device.get(ATTR_CONNECTIVITY_TYPE),
         }
+
+    @property
+    def icon(self) -> str:
+        """Icône reflétant le mode de connexion (wifi/ethernet), grisée si
+        l'appareil est absent."""
+        if not self.is_connected:
+            return "mdi:lan-disconnect"
+        connectivity = self._device.get(ATTR_CONNECTIVITY_TYPE)
+        if connectivity == "wifi":
+            return "mdi:wifi"
+        if connectivity == "ethernet":
+            return "mdi:ethernet"
+        return "mdi:help-network"

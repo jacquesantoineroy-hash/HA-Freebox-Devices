@@ -28,6 +28,13 @@ DEFAULT_CONSIDER_HOME = 90  # secondes, cf. doc officielle freebox (délai de d�
 
 STORAGE_VERSION = 1
 STORAGE_KEY_TEMPLATE = "freebox_devices_conn_cache_{entry_id}"
+STORAGE_KEY_KNOWN_MACS_TEMPLATE = "freebox_devices_known_macs_{entry_id}"
+
+# Événement HA émis la toute première fois qu'une MAC est vue (jamais vue
+# depuis l'installation de l'intégration, persistant entre redémarrages) —
+# à utiliser comme trigger "Événement" dans une automatisation pour être
+# notifié des nouveaux appareils. data: mac, hostname, ip, vendor.
+EVENT_NEW_DEVICE = f"{DOMAIN}_new_device"
 
 # Statuts possibles de GET /login/authorize/{track_id}/
 AUTHORIZE_STATUS_PENDING = "pending"

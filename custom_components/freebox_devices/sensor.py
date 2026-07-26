@@ -53,3 +53,19 @@ class FreeboxSignalSensor(FreeboxDeviceEntity, SensorEntity):
         if not device.get(ATTR_WIFI):
             return None
         return device.get(ATTR_SIGNAL)
+
+    @property
+    def icon(self) -> str:
+        """Icône à barres selon la force du signal (HA n'affiche pas
+        automatiquement une icône graduée pour device_class signal_strength,
+        cf. recherche : seul le composant mobile_app le fait nativement)."""
+        signal = self.native_value
+        if signal is None:
+            return "mdi:wifi-strength-off-outline"
+        if signal >= -60:
+            return "mdi:wifi-strength-4"
+        if signal >= -70:
+            return "mdi:wifi-strength-3"
+        if signal >= -75:
+            return "mdi:wifi-strength-2"
+        return "mdi:wifi-strength-1"

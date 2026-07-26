@@ -23,9 +23,13 @@
     }
   },
   "entity": {
-    "switch": {
-      "wifi_autorise": {
-        "name": "Wifi autorisé"
+    "lock": {
+      "wifi_verrou": {
+        "name": "Verrou Wifi",
+        "state": {
+          "locked": "Coupé",
+          "unlocked": "Autorisé"
+        }
       }
     },
     "sensor": {

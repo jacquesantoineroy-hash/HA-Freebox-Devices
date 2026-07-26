@@ -4,10 +4,17 @@ Intégration Home Assistant (HACS) qui parle **directement** à l'API locale de
 la Freebox — aucun service intermédiaire (pas de Raspberry Pi, pas de relais
 HTTP). Elle expose, pour chaque appareil connu du réseau local :
 
-- un **device_tracker** (présence, IP, fabricant, type d'appareil) ;
-- un **switch "Wifi allowed"** par appareil (coupe/rétablit via la blacklist
-  Wifi de la Freebox) ;
-- un **sensor "Wifi signal"** (dBm), `None` si l'appareil est filaire.
+- un **device_tracker** (présence, IP, fabricant, type d'appareil) — icône
+  dynamique selon le mode de connexion (`mdi:wifi` / `mdi:ethernet` /
+  `mdi:lan-disconnect` si absent) ;
+- un **lock "Wifi lock"** par appareil — verrouillé = coupé (blacklisté sur le
+  Wifi), déverrouillé = autorisé. Rendu natif en cadenas dans les cartes HA
+  (entities, plus d'infos), pas de template nécessaire côté dashboard ;
+- un **sensor "Wifi signal"** (dBm), `None` si l'appareil est filaire — icône
+  à barres (`mdi:wifi-strength-1` à `4`) selon la force du signal.
+
+Un événement `freebox_devices_new_device` est émis dès qu'une MAC jamais vue
+auparavant apparaît (voir [Alertes](#alertes--notifications) plus bas).
 
 ## Pourquoi une intégration à part de la core `freebox` ?
 
@@ -28,8 +35,8 @@ application dédiée (`fr.familleroy.freebox_devices`) auprès de la Freebox :
 3. Une fois appairée, **allez dans Freebox OS → Paramètres → Gestion des
    accès → Applications**, et accordez à "Freebox Devices (Home Assistant)"
    la permission **"Modification des réglages de la Freebox"** — sans elle,
-   la lecture des appareils fonctionne mais le switch blacklist échouera
-   avec une erreur de droits explicite dans les logs HA.
+   la lecture des appareils fonctionne mais le lock Wifi échouera avec une
+   erreur de droits explicite dans les logs HA.
 
 Le `app_token` obtenu est stocké dans l'entrée de configuration HA (comme le
 fait l'intégration core `freebox`), pas de secret à gérer manuellement.
@@ -84,7 +91,59 @@ trou de service.
 - [x] Placeholder `@jaroy` / URL GitHub dans `manifest.json` corrigé
       (`@jacquesantoineroy-hash`, dépôt `HA-Freebox-Devices`).
 
+## Alertes / notifications
+
+### Nouvel appareil jamais vu
+
+L'intégration mémorise (persistant, survit aux redémarrages HA) toutes les
+MAC déjà vues depuis son installation. Dès qu'une MAC totalement inconnue
+apparaît, elle émet l'événement `freebox_devices_new_device` avec les
+données `mac`, `hostname`, `ip`, `vendor`. **Au tout premier démarrage de
+l'intégration, tous les appareils déjà connus de la Freebox déclenchent
+l'événement d'un coup** (rien n'était encore mémorisé) — normal, pas un bug.
+
+Automatisation exemple :
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: freebox_devices_new_device
+actions:
+  - action: notify.mobile_app_pixel_ja
+    data:
+      title: "Nouvel appareil : {{ trigger.event.data.hostname }}"
+      message: >-
+        {{ trigger.event.data.mac }} ({{ trigger.event.data.vendor or 'fabricant inconnu' }})
+        vient de se connecter, IP {{ trigger.event.data.ip }}.
+```
+
+### Connexion/déconnexion récurrente d'un appareil précis
+
+Pas besoin de fonctionnalité dédiée : chaque appareil a déjà son propre
+`device_tracker`, qui déclenche normalement sur un changement d'état HA.
+Automatisation exemple (alerte à chaque connexion ET déconnexion d'un
+appareil choisi) :
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: device_tracker.telephone_arthur
+    to:
+      - "home"
+      - "not_home"
+actions:
+  - action: notify.mobile_app_pixel_ja
+    data:
+      title: "{{ state_attr(trigger.entity_id, 'friendly_name') }}"
+      message: >-
+        {{ 'connecté' if trigger.to_state.state == 'home' else 'déconnecté' }}
+        du réseau.
+```
+
+Pour ne suivre que les déconnexions (ou que les connexions), retirer la
+valeur non voulue de la liste `to:`.
+
 ## Roadmap
 
-- Notification "nouvel appareil détecté" (event/persistent_notification).
 - Option de configuration pour `consider_home` (délai avant "absent").
+- Icône de marque officielle (`brand/icon.png`).

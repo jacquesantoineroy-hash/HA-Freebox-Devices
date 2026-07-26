@@ -30,6 +30,8 @@ from .const import (
     ATTR_WIFI,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    EVENT_NEW_DEVICE,
+    STORAGE_KEY_KNOWN_MACS_TEMPLATE,
     STORAGE_KEY_TEMPLATE,
     STORAGE_VERSION,
 )
@@ -61,6 +63,18 @@ class FreeboxDevicesCoordinator(DataUpdateCoordinator[dict[str, dict]]):
         self._cache_loaded = False
         self._cache_dirty = False
 
+        # Stockage séparé du cache de connectivité pour ne pas risquer de
+        # corrompre les données déjà en prod (schéma différent : une liste
+        # de MAC déjà vues, pas un dict MAC -> type).
+        self._known_macs_store: Store = Store(
+            hass,
+            STORAGE_VERSION,
+            STORAGE_KEY_KNOWN_MACS_TEMPLATE.format(entry_id=entry.entry_id),
+        )
+        self._known_macs: set[str] = set()
+        self._known_macs_loaded = False
+        self._known_macs_dirty = False
+
     async def _async_load_cache(self) -> None:
         if self._cache_loaded:
             return
@@ -72,8 +86,44 @@ class FreeboxDevicesCoordinator(DataUpdateCoordinator[dict[str, dict]]):
             await self._store.async_save(self._conn_cache)
             self._cache_dirty = False
 
+    async def _async_load_known_macs(self) -> None:
+        if self._known_macs_loaded:
+            return
+        stored = await self._known_macs_store.async_load()
+        self._known_macs = set(stored or [])
+        self._known_macs_loaded = True
+
+    async def _async_save_known_macs_if_dirty(self) -> None:
+        if self._known_macs_dirty:
+            await self._known_macs_store.async_save(sorted(self._known_macs))
+            self._known_macs_dirty = False
+
+    def _fire_new_device_events(self, devices: dict[str, dict]) -> None:
+        """Émet un événement HA pour chaque MAC jamais vue auparavant
+        (persistant entre redémarrages). Au tout premier démarrage de
+        l'intégration, tous les appareils déjà connus de la Freebox
+        déclenchent l'événement d'un coup — comportement attendu, pas un bug
+        (même comportement que l'ancien script sur le Pi)."""
+        new_macs = set(devices) - self._known_macs
+        if not new_macs:
+            return
+        for mac in new_macs:
+            device = devices[mac]
+            self.hass.bus.async_fire(
+                EVENT_NEW_DEVICE,
+                {
+                    "mac": mac,
+                    "hostname": device.get(ATTR_HOSTNAME),
+                    "ip": device.get(ATTR_IP),
+                    "vendor": device.get(ATTR_VENDOR),
+                },
+            )
+        self._known_macs.update(new_macs)
+        self._known_macs_dirty = True
+
     async def _async_update_data(self) -> dict[str, dict]:
         await self._async_load_cache()
+        await self._async_load_known_macs()
 
         try:
             hosts = await self.client.async_get_raw_hosts()
@@ -124,4 +174,17 @@ class FreeboxDevicesCoordinator(DataUpdateCoordinator[dict[str, dict]]):
             }
 
         await self._async_save_cache_if_dirty()
+
+        # Ne déclenche les événements "nouvel appareil" qu'une fois le cache
+        # de connectivité chargé et rempli — sinon le tout premier
+        # rafraîchissement après une mise à jour de l'intégration (avant que
+        # le store known_macs existe) déclencherait un événement pour
+        # littéralement tous les appareils déjà connus, même ceux présents
+        # depuis longtemps. C'est le comportement voulu au tout premier
+        # démarrage de l'intégration (cf. docstring), donc rien à changer
+        # ici — le commentaire sert à ne pas "corriger" ça par erreur plus
+        # tard.
+        self._fire_new_device_events(devices)
+        await self._async_save_known_macs_if_dirty()
+
         return devices
