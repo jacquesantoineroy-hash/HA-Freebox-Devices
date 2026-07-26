@@ -28,6 +28,9 @@
 class FreeboxTableCard extends HTMLElement {
   setConfig(config) {
     this._config = config || {};
+    // "appareils" (défaut) : liste des devices connectés.
+    // "profils" : liste des profils de contrôle parental.
+    this._mode = this._config.mode === "profils" ? "profils" : "appareils";
 
     if (this.shadowRoot) return;
 
@@ -249,13 +252,15 @@ class FreeboxTableCard extends HTMLElement {
     this._dialogIcon = this.shadowRoot.querySelector(".dialog-icon");
     this._dialogTitle = this.shadowRoot.querySelector(".dialog-title");
     this._dialogBody = this.shadowRoot.querySelector(".dialog-body");
-    this.shadowRoot.querySelector(".dialog-rename").addEventListener("click", () => this._onRenameClick());
+    this._dialogRename = this.shadowRoot.querySelector(".dialog-rename");
+    this._dialogRename.addEventListener("click", () => this._onRenameClick());
     this.shadowRoot.querySelector(".dialog-close").addEventListener("click", () => this._dialog.close());
     this._dialog.addEventListener("click", (ev) => {
       if (ev.target === this._dialog) this._dialog.close();
     });
     this._dialog.addEventListener("close", () => {
       this._activeDialogTrackerId = null;
+      this._activeDialogProfileId = null;
     });
     this._dialogBody.addEventListener("click", (ev) => this._onDialogClick(ev));
 
@@ -273,6 +278,10 @@ class FreeboxTableCard extends HTMLElement {
     if (this._activeDialogTrackerId && this._rowsById) {
       const row = this._rowsById[this._activeDialogTrackerId];
       if (row) this._renderDialogBody(row);
+    }
+    if (this._activeDialogProfileId && this._rowsById) {
+      const row = this._rowsById[this._activeDialogProfileId];
+      if (row) this._renderProfileDialogBody(row);
     }
   }
 
@@ -319,12 +328,19 @@ class FreeboxTableCard extends HTMLElement {
     const rowEl = ev.target.closest(".row");
     if (rowEl && rowEl.dataset.entity && this._rowsById) {
       const row = this._rowsById[rowEl.dataset.entity];
-      if (row) this._openDialog(row);
+      if (!row) return;
+      if (this._mode === "profils") {
+        this._openProfileDialog(row);
+      } else {
+        this._openDialog(row);
+      }
     }
   }
 
   _openDialog(row) {
     this._activeDialogTrackerId = row.trackerId;
+    this._activeDialogProfileId = null;
+    this._dialogRename.style.display = "";
     this._dialogIcon.setAttribute("icon", row.icon);
     this._dialogTitle.textContent = row.name;
     this._renderDialogBody(row);
@@ -332,6 +348,18 @@ class FreeboxTableCard extends HTMLElement {
       this._dialog.showModal();
     }
     this._loadHistory(row.trackerId);
+  }
+
+  _openProfileDialog(row) {
+    this._activeDialogProfileId = row.stateEntId;
+    this._activeDialogTrackerId = null;
+    this._dialogRename.style.display = "none";
+    this._dialogIcon.setAttribute("icon", "mdi:account-child");
+    this._dialogTitle.textContent = row.name;
+    this._renderProfileDialogBody(row);
+    if (typeof this._dialog.showModal === "function") {
+      this._dialog.showModal();
+    }
   }
 
   _onDialogClick(ev) {
@@ -349,11 +377,26 @@ class FreeboxTableCard extends HTMLElement {
       this._navigate(btn.dataset.path || "/dashboard-freebox/profils");
       return;
     }
-    if (btn.dataset.role === "select-option") {
+    if (btn.dataset.role === "toggle-web") {
+      const entityId = btn.dataset.entity;
+      const bloquer = btn.dataset.bloquer === "true";
+      if (entityId) {
+        this._hass.callService("freebox_devices", "couper_acces_web", { entity_id: entityId, bloquer });
+      }
+      return;
+    }
+    if (btn.dataset.role === "set-mode") {
       const entityId = btn.dataset.entity;
       const option = btn.dataset.option;
       if (entityId && option) {
         this._hass.callService("select", "select_option", { entity_id: entityId, option });
+      }
+      return;
+    }
+    if (btn.dataset.role === "pause") {
+      const entityId = btn.dataset.entity;
+      if (entityId) {
+        this._hass.callService("button", "press", { entity_id: entityId });
       }
       return;
     }
@@ -386,6 +429,14 @@ class FreeboxTableCard extends HTMLElement {
 
   _render() {
     if (!this._list || !this._hass) return;
+    if (this._mode === "profils") {
+      this._renderProfiles();
+      return;
+    }
+    this._renderAppareils();
+  }
+
+  _renderAppareils() {
     const hass = this._hass;
     const entities = hass.entities || {};
     const states = hass.states;
@@ -441,6 +492,141 @@ class FreeboxTableCard extends HTMLElement {
     }
 
     this._list.innerHTML = rows.map((r) => this._rowHtml(r)).join("");
+  }
+
+  _renderProfiles() {
+    const hass = this._hass;
+    const entities = hass.entities || {};
+    const states = hass.states;
+
+    const profileSensors = Object.values(entities).filter(
+      (e) => e.platform === "freebox_devices" && /controle_parental_profil_\d+_etat$/.test(e.entity_id)
+    );
+
+    const rows = [];
+    for (const ps of profileSensors) {
+      const st = states[ps.entity_id];
+      if (!st) continue;
+
+      const deviceId = ps.device_id;
+      const siblings = deviceId
+        ? Object.values(entities).filter((e) => e.device_id === deviceId)
+        : [];
+      const selectEnt = siblings.find((e) => e.entity_id.startsWith("select."));
+      const buttonEnt = siblings.find((e) => e.entity_id.startsWith("button."));
+
+      const device = hass.devices && hass.devices[deviceId];
+      const rawName = (device && (device.name_by_user || device.name)) || st.attributes.friendly_name || ps.entity_id;
+      // Le nom de device HA est "Contrôle parental : X" (cf. parental_entity.py) ;
+      // on retire ce préfixe pour l'affichage en liste (déjà explicite via l'icône/contexte).
+      const name = rawName.replace(/^Contrôle parental\s*:\s*/, "");
+
+      rows.push({
+        stateEntId: ps.entity_id,
+        selectEnt,
+        buttonEnt,
+        name,
+        state: st.state,
+        hosts: st.attributes.hosts || [],
+        macsCount: (st.attributes.macs || []).length,
+        secondesAvant: st.attributes.secondes_avant_changement,
+        modeActuel: st.attributes.mode_actuel,
+      });
+    }
+
+    rows.sort((a, b) => a.name.localeCompare(b.name, "fr"));
+
+    this._rowsById = {};
+    for (const r of rows) this._rowsById[r.stateEntId] = r;
+
+    if (!rows.length) {
+      this._list.innerHTML = `<div class="empty">Aucun profil de contrôle parental</div>`;
+      return;
+    }
+
+    this._list.innerHTML = rows.map((r) => this._profileRowHtml(r)).join("");
+  }
+
+  _profileRowHtml(r) {
+    const map = {
+      allowed: ["mdi:account-check", "#43a047"],
+      denied: ["mdi:account-cancel", "#e53935"],
+      webonly: ["mdi:account-alert", "#fb8c00"],
+    };
+    const [icon, color] = map[r.state] || map.allowed;
+    const label = this._webLabel(r.state);
+    const hostsPreview = r.hosts.length ? r.hosts.join(", ") : "Aucun appareil";
+
+    return `<div class="row" data-entity="${r.stateEntId}">
+      <ha-icon class="device-icon" icon="${icon}" style="color:${color}"></ha-icon>
+      <span class="name">${this._esc(r.name)}<br><span class="dialog-hint" style="margin:0">${this._esc(hostsPreview)}</span></span>
+      <span class="rate" style="min-width:auto;color:${color}">${this._esc(label)}</span>
+    </div>`;
+  }
+
+  _renderProfileDialogBody(row) {
+    const hass = this._hass;
+    const map = {
+      allowed: "#43a047",
+      denied: "#e53935",
+      webonly: "#fb8c00",
+    };
+    const color = map[row.state] || "#43a047";
+    const label = this._webLabel(row.state);
+
+    const selectState = row.selectEnt ? hass.states[row.selectEnt.entity_id] : null;
+    const currentOption = selectState ? selectState.state : null;
+
+    const modeOptions = ["Planning (automatique)", "Toujours autorisé", "Toujours bloqué", "Web uniquement"];
+    const modeButtons = row.selectEnt
+      ? modeOptions
+          .map((opt) => {
+            const active = opt === currentOption;
+            return `<button
+              class="dialog-btn ${active ? "success" : "neutral"}"
+              data-role="set-mode"
+              data-entity="${row.selectEnt.entity_id}"
+              data-option="${this._esc(opt)}"
+              ${active ? "disabled" : ""}
+            >${this._esc(opt)}</button>`;
+          })
+          .join("")
+      : `<div class="dialog-hint">Sélecteur de mode indisponible.</div>`;
+
+    const pauseButtonHtml = row.buttonEnt
+      ? `<button class="dialog-btn neutral" data-role="pause" data-entity="${row.buttonEnt.entity_id}">Pause 1h (coupe temporairement)</button>`
+      : "";
+
+    const hostsHtml = row.hosts.length
+      ? `<div class="history-list">${row.hosts.map((h) => `<div class="history-item"><span>${this._esc(h)}</span></div>`).join("")}</div>`
+      : `<div class="dialog-hint">Aucun appareil associé à ce profil.</div>`;
+
+    const waitHint =
+      row.modeActuel === "planning" && row.secondesAvant
+        ? `<div class="dialog-hint">Prochain changement de planning dans ${Math.round(row.secondesAvant / 60)} min.</div>`
+        : "";
+
+    this._dialogBody.innerHTML = `
+      <div class="dialog-section">
+        <h4>État</h4>
+        <div class="stat-item">
+          <div class="label">Accès web du profil</div>
+          <div class="value" style="color:${color}">${this._esc(label)}</div>
+        </div>
+        ${waitHint}
+      </div>
+
+      <div class="dialog-section">
+        <h4>Mode</h4>
+        ${modeButtons}
+        ${pauseButtonHtml}
+      </div>
+
+      <div class="dialog-section">
+        <h4>Appareils couverts (${row.macsCount})</h4>
+        ${hostsHtml}
+      </div>
+    `;
   }
 
   _rateHtml(ent, direction) {
@@ -572,34 +758,29 @@ class FreeboxTableCard extends HTMLElement {
     const locked = lockState && lockState.state === "locked";
     const canBlacklist = !!(row.lockEnt && row.connType === "wifi");
 
+    // Le bouton appelle le service freebox_devices.couper_acces_web, qui
+    // gère lui-même TOUS les cas côté backend (appareil déjà dans un profil
+    // -> bascule ce profil ; aucun profil -> en crée un dédié à la volée) —
+    // le bouton est donc toujours actif, quel que soit l'état initial.
+    // On affiche juste un avertissement si un profil EXISTANT couvre
+    // plusieurs appareils (l'action les affecterait tous).
+    const isDenied = webStateVal === "denied";
     const profile = this._findProfileForMac(row.mac);
-    let webCutBtnHtml;
-    if (profile) {
-      const selectState = hass.states[profile.selectId];
-      const currentOption = selectState ? selectState.state : null;
-      const isBlocked = currentOption === "Toujours bloqué";
-      const targetOption = isBlocked ? "Planning (automatique)" : "Toujours bloqué";
-      const warning =
-        profile.macsCount > 1
-          ? `<div class="dialog-warning">⚠️ Ce profil${profile.desc ? " (" + this._esc(profile.desc) + ")" : ""} couvre ${profile.macsCount} appareils : cette action affecte aussi les autres.</div>`
-          : "";
-      webCutBtnHtml = `
-        <button
-          class="dialog-btn ${isBlocked ? "success" : "danger"}"
-          data-role="select-option"
-          data-entity="${profile.selectId}"
-          data-option="${this._esc(targetOption)}"
-        >
-          ${isBlocked ? "Rétablir l'accès web" : "Couper l'accès web"}
-        </button>
-        ${warning}
-      `;
-    } else {
-      webCutBtnHtml = `
-        <button class="dialog-btn neutral" disabled>Couper l'accès web</button>
-        <div class="dialog-hint">Aucun profil de contrôle parental ne couvre cet appareil pour l'instant — impossible de couper son accès web individuellement (créez/étendez un profil depuis la vue Profils).</div>
-      `;
-    }
+    const warningHtml =
+      profile && profile.macsCount > 1
+        ? `<div class="dialog-warning">⚠️ Le profil${profile.desc ? " « " + this._esc(profile.desc) + " »" : ""} qui couvre cet appareil concerne aussi ${profile.macsCount - 1} autre(s) appareil(s) : cette action les affecte tous.</div>`
+        : "";
+    const webCutBtnHtml = `
+      <button
+        class="dialog-btn ${isDenied ? "success" : "danger"}"
+        data-role="toggle-web"
+        data-entity="${row.trackerId}"
+        data-bloquer="${isDenied ? "false" : "true"}"
+      >
+        ${isDenied ? "Rétablir l'accès web" : "Couper l'accès web"}
+      </button>
+      ${warningHtml}
+    `;
 
     this._dialogBody.innerHTML = `
       <div class="dialog-section">
@@ -699,6 +880,6 @@ customElements.define("freebox-table-card", FreeboxTableCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "freebox-table-card",
-  name: "Freebox — Liste appareils",
-  description: "Liste des appareils connectés (débit ↓/↑, accès web, blacklist) avec écran de détail par appareil (stats, historique, actions), inclus avec l'intégration Freebox Devices.",
+  name: "Freebox — Liste appareils / profils",
+  description: "Liste des appareils connectés (débit ↓/↑, accès web, blacklist) ou des profils de contrôle parental (config: mode: profils), avec écran de détail cliquable. Inclus avec l'intégration Freebox Devices.",
 });

@@ -335,3 +335,15 @@ class FreeboxLocalClient:
             api_version=API_VERSION_PARENTAL,
             json_body=fields,
         )
+
+    async def async_create_parental_filter(self, *, desc: str, macs: list[str]) -> dict:
+        """Crée un nouveau profil de contrôle parental couvrant les MAC
+        données. Utilisé pour permettre de couper l'accès web d'un appareil
+        qui n'est encore couvert par aucun profil existant (création d'un
+        profil dédié à la volée, cf. services.py::couper_acces_web)."""
+        return await self._authenticated(
+            "POST",
+            "parental/filter/",
+            api_version=API_VERSION_PARENTAL,
+            json_body={"desc": desc, "macs": macs},
+        )

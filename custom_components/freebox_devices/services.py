@@ -19,7 +19,11 @@ import logging
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import config_validation as cv, entity_registry as er
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
 
 from .const import DOMAIN
 from .freebox_client import FreeboxLocalClient
@@ -27,6 +31,12 @@ from .freebox_client import FreeboxLocalClient
 _LOGGER = logging.getLogger(__name__)
 
 SERVICE_SET_TIME_RANGE = "definir_plage_horaire"
+SERVICE_TOGGLE_WEB_ACCESS = "couper_acces_web"
+
+# Préfixe utilisé pour marquer les profils créés à la volée par ce service
+# (pour distinguer "profil géré automatiquement pour un blocage individuel"
+# d'un vrai profil que l'utilisateur a configuré lui-même sur la Freebox).
+_PERSONAL_FILTER_PREFIX = "[HA] "
 
 _DAY_INDEX = {
     "lundi": 0,
@@ -49,6 +59,39 @@ SERVICE_SET_TIME_RANGE_SCHEMA = vol.Schema(
         vol.Required("mode"): vol.In(["allowed", "denied", "webonly"]),
     }
 )
+
+
+SERVICE_TOGGLE_WEB_ACCESS_SCHEMA = vol.Schema(
+    {
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("bloquer"): cv.boolean,
+    }
+)
+
+
+def _resolve_device_mac(hass: HomeAssistant, entity_id: str) -> tuple[str, str, str | None]:
+    """Retrouve (mac, config_entry_id, nom) de l'appareil Freebox propriétaire
+    de `entity_id` (peu importe la plateforme : device_tracker/lock/sensor
+    partagent tous le même device_info identifiers={(DOMAIN, mac)})."""
+    ent_reg = er.async_get(hass)
+    entry = ent_reg.async_get(entity_id)
+    if entry is None or entry.device_id is None:
+        raise vol.Invalid(f"{entity_id} introuvable ou sans appareil associé")
+
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get(entry.device_id)
+    if device is None:
+        raise vol.Invalid(f"Appareil introuvable pour {entity_id}")
+
+    for domain, ident in device.identifiers:
+        if domain == DOMAIN and not ident.startswith("parental_"):
+            name = device.name_by_user or device.name
+            return ident, entry.config_entry_id, name
+
+    raise vol.Invalid(
+        f"{entity_id} n'est pas une entité d'un appareil Freebox Devices "
+        "(attendu : device_tracker/lock/sensor d'un appareil LAN)"
+    )
 
 
 def _resolve_filter_id(hass: HomeAssistant, entity_id: str) -> int:
@@ -116,6 +159,65 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_SET_TIME_RANGE,
         _handle_set_time_range,
         schema=SERVICE_SET_TIME_RANGE_SCHEMA,
+    )
+
+    async def _handle_toggle_web_access(call: ServiceCall) -> None:
+        entity_id = call.data["entity_id"]
+        bloquer = call.data["bloquer"]
+        mac, entry_id, device_name = _resolve_device_mac(hass, entity_id)
+        parental_coordinator = hass.data[DOMAIN][entry_id]["parental"]
+        client: FreeboxLocalClient = parental_coordinator.client
+
+        mac_upper = mac.upper()
+        filters = await client.async_get_parental_filters()
+        covering = next(
+            (
+                f
+                for f in filters
+                if mac_upper in [(m or "").upper() for m in (f.get("macs") or [])]
+            ),
+            None,
+        )
+
+        if covering is None:
+            if not bloquer:
+                # Aucun profil ne couvre l'appareil : il est déjà "autorisé"
+                # par défaut, rien à faire pour le rétablir.
+                return
+            covering = await client.async_create_parental_filter(
+                desc=f"{_PERSONAL_FILTER_PREFIX}{device_name or mac}",
+                macs=[mac_upper],
+            )
+            _LOGGER.info(
+                "Profil de contrôle parental créé à la volée pour %s (mac %s, id %s)",
+                device_name or mac,
+                mac_upper,
+                covering["id"],
+            )
+
+        filter_id = covering["id"]
+        if bloquer:
+            await client.async_update_parental_filter(
+                filter_id, forced=True, forced_mode="denied"
+            )
+        else:
+            await client.async_update_parental_filter(
+                filter_id, forced=False, tmp_mode_expire=0
+            )
+
+        await parental_coordinator.async_request_refresh()
+        _LOGGER.info(
+            "Accès web %s pour %s (profil %s)",
+            "coupé" if bloquer else "rétabli",
+            device_name or mac,
+            filter_id,
+        )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_TOGGLE_WEB_ACCESS,
+        _handle_toggle_web_access,
+        schema=SERVICE_TOGGLE_WEB_ACCESS_SCHEMA,
     )
 
 

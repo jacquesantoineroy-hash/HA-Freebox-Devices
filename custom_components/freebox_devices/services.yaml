@@ -52,3 +52,29 @@ definir_plage_horaire:
               value: denied
             - label: Web uniquement
               value: webonly
+
+couper_acces_web:
+  name: Couper / rétablir l'accès web d'un appareil
+  description: >-
+    Coupe ou rétablit l'accès internet d'un appareil précis, quel que soit
+    son profil de contrôle parental actuel. Si l'appareil n'est couvert par
+    aucun profil, un profil dédié est créé automatiquement (préfixé "[HA] ")
+    pour le gérer. Si l'appareil appartient déjà à un profil couvrant
+    plusieurs appareils, cette action bascule tout le profil (donc aussi les
+    autres appareils qu'il couvre).
+  fields:
+    entity_id:
+      name: Appareil
+      description: >-
+        N'importe quelle entité de l'appareil visé (présence, verrou Wifi,
+        capteur...).
+      required: true
+      selector:
+        entity:
+          integration: freebox_devices
+    bloquer:
+      name: Bloquer
+      description: Coché = coupe l'accès web. Décoché = le rétablit.
+      required: true
+      selector:
+        boolean:
