@@ -81,7 +81,7 @@ API_VERSION_PARENTAL = "v4"
 # ------------------------------------------------------------------ #
 CARD_JS_FILENAME = "freebox-table-card.js"
 CARD_URL_PATH = "/freebox_devices_static"
-CARD_VERSION = "1"
+CARD_VERSION = "3"
 
 DEFAULT_PARENTAL_SCAN_INTERVAL = 30  # secondes — les profils changent rarement
 
