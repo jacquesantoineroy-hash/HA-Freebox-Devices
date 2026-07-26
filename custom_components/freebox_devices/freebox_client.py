@@ -137,7 +137,7 @@ class FreeboxLocalClient:
     async def async_get_authorization_status(self, track_id: int) -> str:
         result = await self._raw(
             "GET",
-            self._url(f"login/authorize/{track_id}/"),
+            self._url(f"login/authorize/{track_id}"),
             authenticated=False,
         )
         return result["status"]
@@ -259,7 +259,7 @@ class FreeboxLocalClient:
         for entry in entries:
             if (entry.get("mac") or "").upper() == mac:
                 await self._authenticated(
-                    "DELETE", f"wifi/mac_filter/{entry['id']}/"
+                    "DELETE", f"wifi/mac_filter/{entry['id']}"
                 )
                 return False
 
