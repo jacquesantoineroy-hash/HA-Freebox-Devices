@@ -1,4 +1,5 @@
-"""Un sensor 'Signal Wifi (dBm)' par appareil LAN (None si filaire ou éteint)."""
+"""Sensors de l'intégration : 'Signal Wifi (dBm)' par appareil LAN (None si
+filaire ou éteint), et 'État' par profil de contrôle parental."""
 from __future__ import annotations
 
 from homeassistant.components.sensor import (
@@ -11,27 +12,60 @@ from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import ATTR_SIGNAL, ATTR_WIFI, DOMAIN
+from .const import (
+    ATTR_FILTER_STATE,
+    ATTR_HOSTS,
+    ATTR_MACS,
+    ATTR_NEXT_CHANGE,
+    ATTR_SCHEDULING_MODE,
+    ATTR_SIGNAL,
+    ATTR_WIFI,
+    DOMAIN,
+    PARENTAL_STATE_ALLOWED,
+    PARENTAL_STATE_DENIED,
+)
 from .coordinator import FreeboxDevicesCoordinator
 from .entity import FreeboxDeviceEntity
+from .parental_coordinator import FreeboxParentalCoordinator
+from .parental_entity import FreeboxParentalEntity
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    coordinator: FreeboxDevicesCoordinator = hass.data[DOMAIN][entry.entry_id]
+    data = hass.data[DOMAIN][entry.entry_id]
+
+    devices_coordinator: FreeboxDevicesCoordinator = data["devices"]
     known_macs: set[str] = set()
 
     @callback
     def _add_new_devices() -> None:
-        new_macs = set(coordinator.data) - known_macs
+        new_macs = set(devices_coordinator.data) - known_macs
         if not new_macs:
             return
         known_macs.update(new_macs)
-        async_add_entities(FreeboxSignalSensor(coordinator, mac) for mac in new_macs)
+        async_add_entities(
+            FreeboxSignalSensor(devices_coordinator, mac) for mac in new_macs
+        )
 
-    entry.async_on_unload(coordinator.async_add_listener(_add_new_devices))
+    entry.async_on_unload(devices_coordinator.async_add_listener(_add_new_devices))
     _add_new_devices()
+
+    parental_coordinator: FreeboxParentalCoordinator = data["parental"]
+    known_filter_ids: set[int] = set()
+
+    @callback
+    def _add_new_profiles() -> None:
+        new_ids = set(parental_coordinator.data) - known_filter_ids
+        if not new_ids:
+            return
+        known_filter_ids.update(new_ids)
+        async_add_entities(
+            FreeboxParentalStateSensor(parental_coordinator, fid) for fid in new_ids
+        )
+
+    entry.async_on_unload(parental_coordinator.async_add_listener(_add_new_profiles))
+    _add_new_profiles()
 
 
 class FreeboxSignalSensor(FreeboxDeviceEntity, SensorEntity):
@@ -69,3 +103,40 @@ class FreeboxSignalSensor(FreeboxDeviceEntity, SensorEntity):
         if signal >= -75:
             return "mdi:wifi-strength-2"
         return "mdi:wifi-strength-1"
+
+
+class FreeboxParentalStateSensor(FreeboxParentalEntity, SensorEntity):
+    """État courant d'accès du profil (allowed/denied/webonly), avec le
+    détail des appareils couverts et le temps avant le prochain changement
+    en attributs."""
+
+    _attr_translation_key = "etat_profil"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [PARENTAL_STATE_ALLOWED, PARENTAL_STATE_DENIED, "webonly"]
+
+    def __init__(self, coordinator: FreeboxParentalCoordinator, filter_id: int) -> None:
+        super().__init__(coordinator, filter_id)
+        self._attr_unique_id = f"parental_{filter_id}_etat"
+
+    @property
+    def native_value(self) -> str | None:
+        return self._profile.get(ATTR_FILTER_STATE)
+
+    @property
+    def icon(self) -> str:
+        state = self.native_value
+        if state == PARENTAL_STATE_DENIED:
+            return "mdi:account-cancel"
+        if state == "webonly":
+            return "mdi:account-alert"
+        return "mdi:account-check"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        profile = self._profile
+        return {
+            "hosts": profile.get(ATTR_HOSTS),
+            "macs": profile.get(ATTR_MACS),
+            "mode_actuel": profile.get(ATTR_SCHEDULING_MODE),
+            "secondes_avant_changement": profile.get(ATTR_NEXT_CHANGE),
+        }

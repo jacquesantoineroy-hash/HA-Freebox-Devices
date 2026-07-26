@@ -35,11 +35,29 @@
     "sensor": {
       "signal_wifi": {
         "name": "Wifi signal"
+      },
+      "etat_profil": {
+        "name": "State"
       }
     },
     "switch": {
       "masque": {
         "name": "Hidden from dashboard"
+      }
+    },
+    "number": {
+      "dashboard_colonnes": {
+        "name": "Dashboard columns"
+      }
+    },
+    "select": {
+      "mode_profil": {
+        "name": "Mode"
+      }
+    },
+    "button": {
+      "pause_profil": {
+        "name": "Pause 1h"
       }
     }
   }

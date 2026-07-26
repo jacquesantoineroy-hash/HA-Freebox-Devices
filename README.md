@@ -19,6 +19,18 @@ HTTP). Elle expose, pour chaque appareil connu du réseau local :
   arrière-plan (présence, signal, verrou Wifi) même masqué, et redevient
   visible instantanément si on repasse le switch sur OFF — rien n'est jamais
   perdu ni supprimé. Persistant entre redémarrages HA.
+- un **number "Colonnes tableau de bord"** (une seule entité, catégorie
+  config) — curseur 2 à 8 qui ajuste en direct le nombre de colonnes des
+  listes Connectés/Déconnectés (patch directement la config du dashboard
+  stockée côté serveur, aucune dépendance externe type card-mod).
+- pour chaque **profil de contrôle parental** déjà configuré sur la Freebox
+  (`ParentalFilter`) : un **sensor "État"** (allowed/denied/webonly + liste
+  des appareils couverts en attributs), un **select "Mode"** (bascule rapide
+  planning automatique / toujours autorisé / toujours bloqué / web
+  uniquement) et un **button "Pause 1h"** (coupe l'accès temporairement,
+  reprise automatique). Pour les plages horaires détaillées (jours + heures
+  précises), voir le service `freebox_devices.definir_plage_horaire`
+  ci-dessous plutôt que ces entités.
 
 Un événement `freebox_devices_new_device` est émis dès qu'une MAC jamais vue
 auparavant apparaît (voir [Alertes](#alertes--notifications) plus bas).
@@ -41,9 +53,12 @@ application dédiée (`fr.familleroy.freebox_devices`) auprès de la Freebox :
    minutes qui suivent, pour valider l'appairage.
 3. Une fois appairée, **allez dans Freebox OS → Paramètres → Gestion des
    accès → Applications**, et accordez à "Freebox Devices (Home Assistant)"
-   la permission **"Modification des réglages de la Freebox"** — sans elle,
-   la lecture des appareils fonctionne mais le lock Wifi échouera avec une
-   erreur de droits explicite dans les logs HA.
+   les permissions **"Modification des réglages de la Freebox"** (sans
+   elle, la lecture des appareils fonctionne mais le lock Wifi échouera avec
+   une erreur de droits explicite dans les logs HA) et **"Contrôle
+   parental"** (sans elle, les profils/entités de contrôle parental restent
+   absents — l'intégration continue de fonctionner normalement pour le
+   reste, un avertissement est juste loggué).
 
 Le `app_token` obtenu est stocké dans l'entrée de configuration HA (comme le
 fait l'intégration core `freebox`), pas de secret à gérer manuellement.
@@ -167,7 +182,37 @@ qu'il pollue le dashboard :
   le suivi, l'état présence/signal/verrou reste à jour même masqué ; seul
   l'affichage dans les listes du dashboard est filtré.
 
+## Contrôle parental
+
+L'intégration récupère automatiquement tous les profils déjà configurés sur
+la Freebox (Freebox OS → Contrôle parental) — aucune recréation nécessaire.
+Chaque profil obtient son propre appareil HA avec un sensor "État", un
+select "Mode" et un bouton "Pause 1h" (voir la liste des entités plus haut).
+
+Pour bloquer/autoriser un profil sur une plage horaire précise (ex. "pas
+d'écran 17h-19h en semaine"), utilisez le service
+**`freebox_devices.definir_plage_horaire`** (Outils de développement >
+Actions, formulaire avec sélecteur de profil/jours/heures/mode) — seuls les
+créneaux concernés du planning existant sont modifiés, le reste n'est pas
+touché.
+
+⚠️ L'ordre des jours dans le planning brut de la Freebox n'est pas
+documenté officiellement ; le service part de l'hypothèse lundi=premier
+jour. À vérifier lors du premier essai réel (si les jours sont décalés
+d'un cran, voir le commentaire en tête de `services.py`).
+
+## Colonnes du dashboard
+
+L'entité `number` "Colonnes tableau de bord" (Paramètres → Appareils et
+services → Freebox Devices → entité number) ajuste en direct le nombre de
+colonnes des listes Connectés/Déconnectés, sans dépendance externe
+(pas de card-mod) — elle patche directement la config du dashboard
+"Freebox" stockée côté serveur.
+
 ## Roadmap
 
 - Option de configuration pour `consider_home` (délai avant "absent").
 - Icône de marque officielle (`brand/icon.png`).
+- Cartes Lovelace prédéfinies/réutilisables pour simplifier l'ajout dans
+  d'autres tableaux de bord (à cadrer : snippets YAML documentés vs vraie
+  carte custom).

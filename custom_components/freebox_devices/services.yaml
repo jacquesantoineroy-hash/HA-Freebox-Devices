@@ -1,0 +1,54 @@
+definir_plage_horaire:
+  name: Définir une plage horaire (contrôle parental)
+  description: >-
+    Modifie le planning d'un profil de contrôle parental Freebox sur une
+    plage horaire précise, certains jours de la semaine (les autres
+    créneaux du planning ne sont pas touchés).
+  fields:
+    entity_id:
+      name: Profil
+      description: >-
+        Entité "État" ou "Mode" du profil concerné (Paramètres > Appareils
+        et services > Freebox Devices > le profil voulu).
+      required: true
+      selector:
+        entity:
+          integration: freebox_devices
+    jours:
+      name: Jours
+      description: Jours de la semaine concernés.
+      required: true
+      selector:
+        select:
+          multiple: true
+          options:
+            - lundi
+            - mardi
+            - mercredi
+            - jeudi
+            - vendredi
+            - samedi
+            - dimanche
+    heure_debut:
+      name: Heure de début
+      required: true
+      selector:
+        time:
+    heure_fin:
+      name: Heure de fin
+      required: true
+      selector:
+        time:
+    mode:
+      name: Mode
+      description: État d'accès à appliquer sur cette plage.
+      required: true
+      selector:
+        select:
+          options:
+            - label: Autorisé
+              value: allowed
+            - label: Bloqué
+              value: denied
+            - label: Web uniquement
+              value: webonly

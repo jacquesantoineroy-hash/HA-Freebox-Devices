@@ -19,6 +19,7 @@ from .const import (
     APP_NAME,
     APP_VERSION,
     API_VERSION_MAIN,
+    API_VERSION_PARENTAL,
     API_VERSION_WIFI,
     DEVICE_NAME,
 )
@@ -92,10 +93,11 @@ class FreeboxLocalClient:
                 raise FreeboxAuthRequired(msg)
             if error_code == "insufficient_rights":
                 raise FreeboxPermissionError(
-                    "Droits insuffisants : accorde la permission "
-                    "'Modification des réglages de la Freebox' à cette "
-                    "application dans Freebox OS > Paramètres > Gestion des "
-                    f"accès > Applications ({msg})"
+                    "Droits insuffisants : vérifie que cette application a "
+                    "bien les permissions 'Modification des réglages de la "
+                    "Freebox' (pour le verrou Wifi) et 'Contrôle parental' "
+                    "(pour les profils) dans Freebox OS > Paramètres > "
+                    f"Gestion des accès > Applications ({msg})"
                 )
             raise FreeboxApiError(f"{url} -> {error_code}: {msg}")
 
@@ -270,3 +272,49 @@ class FreeboxLocalClient:
             json_body={"mac": mac, "comment": "Bascule via Home Assistant", "type": "blacklist"},
         )
         return True
+
+    # ------------------------------------------------------------------ #
+    # Contrôle parental (/api/v4/parental/) — nécessite la permission
+    # Freebox OS "Contrôle parental" en plus de "Modification des réglages".
+    # ------------------------------------------------------------------ #
+
+    async def async_get_parental_filters(self) -> list[dict]:
+        """Liste tous les profils (ParentalFilter) déjà configurés sur la Freebox."""
+        return (
+            await self._authenticated(
+                "GET", "parental/filter/", api_version=API_VERSION_PARENTAL
+            )
+            or []
+        )
+
+    async def async_get_parental_planning(self, filter_id: int) -> dict:
+        """Planning hebdomadaire (résolution 30 min) d'un profil donné."""
+        return await self._authenticated(
+            "GET",
+            f"parental/filter/{filter_id}/planning",
+            api_version=API_VERSION_PARENTAL,
+        )
+
+    async def async_set_parental_planning(
+        self, filter_id: int, *, cdayranges: list[str], resolution: int, mapping: list[str]
+    ) -> dict:
+        """Remplace entièrement le planning hebdomadaire d'un profil."""
+        return await self._authenticated(
+            "PUT",
+            f"parental/filter/{filter_id}/planning",
+            api_version=API_VERSION_PARENTAL,
+            json_body={
+                "cdayranges": cdayranges,
+                "resolution": resolution,
+                "mapping": mapping,
+            },
+        )
+
+    async def async_update_parental_filter(self, filter_id: int, **fields: Any) -> dict:
+        """Met à jour un profil (ex: forced/forced_mode, tmp_mode/tmp_mode_expire)."""
+        return await self._authenticated(
+            "PUT",
+            f"parental/filter/{filter_id}",
+            api_version=API_VERSION_PARENTAL,
+            json_body=fields,
+        )

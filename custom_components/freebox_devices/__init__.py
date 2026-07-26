@@ -3,6 +3,8 @@ appareil, en parlant directement à l'API locale de la Freebox (pas de
 service intermédiaire)."""
 from __future__ import annotations
 
+import logging
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -13,13 +15,20 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import CONF_APP_TOKEN, CONF_HOST, CONF_PORT, DOMAIN
 from .coordinator import FreeboxDevicesCoordinator
 from .freebox_client import FreeboxApiError, FreeboxLocalClient, FreeboxPermissionError
+from .parental_coordinator import FreeboxParentalCoordinator
+from .services import async_setup_services
 
 PLATFORMS: list[Platform] = [
+    Platform.BUTTON,
     Platform.DEVICE_TRACKER,
     Platform.LOCK,
+    Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -50,7 +59,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = FreeboxDevicesCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    # Coordinator contrôle parental séparé : la permission Freebox OS
+    # "Contrôle parental" est accordée indépendamment de "Modification des
+    # réglages" (déjà requise pour le verrou Wifi) — si elle n'est pas
+    # encore accordée par l'utilisateur, on ne bloque PAS tout le reste de
+    # l'intégration pour autant (présence/signal/verrou Wifi continuent de
+    # fonctionner), on se contente de logguer et de démarrer avec une liste
+    # de profils vide ; le coordinator retentera à son prochain cycle.
+    parental_coordinator = FreeboxParentalCoordinator(hass, entry, client)
+    try:
+        await parental_coordinator.async_config_entry_first_refresh()
+    except Exception:  # noqa: BLE001
+        _LOGGER.warning(
+            "Contrôle parental indisponible pour l'instant (permission "
+            "'Contrôle parental' à accorder dans Freebox OS ? cf. README) — "
+            "le reste de l'intégration fonctionne normalement."
+        )
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "devices": coordinator,
+        "parental": parental_coordinator,
+    }
+
+    await async_setup_services(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

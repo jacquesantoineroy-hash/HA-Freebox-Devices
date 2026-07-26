@@ -33,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    coordinator: FreeboxDevicesCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: FreeboxDevicesCoordinator = hass.data[DOMAIN][entry.entry_id]["devices"]
     known_macs: set[str] = set()
 
     @callback
