@@ -72,6 +72,17 @@ ATTR_WEB_ACCESS = "web_access"  # filter_state du profil parental couvrant
 # ------------------------------------------------------------------ #
 API_VERSION_PARENTAL = "v4"
 
+# ------------------------------------------------------------------ #
+# Carte Lovelace custom fournie avec l'intégration (www/) : servie en
+# statique et auto-injectée dans le frontend via add_extra_js_url, pas
+# besoin d'ajouter la ressource à la main dans Paramètres > Tableaux de
+# bord. Le numéro de version sert uniquement à casser le cache du
+# navigateur après une mise à jour (?v=...).
+# ------------------------------------------------------------------ #
+CARD_JS_FILENAME = "freebox-table-card.js"
+CARD_URL_PATH = "/freebox_devices_static"
+CARD_VERSION = "1"
+
 DEFAULT_PARENTAL_SCAN_INTERVAL = 30  # secondes — les profils changent rarement
 
 # filter_state / forced_mode / tmp_mode

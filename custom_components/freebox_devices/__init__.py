@@ -4,7 +4,10 @@ service intermédiaire)."""
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -12,7 +15,15 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_APP_TOKEN, CONF_HOST, CONF_PORT, DOMAIN
+from .const import (
+    CARD_JS_FILENAME,
+    CARD_URL_PATH,
+    CARD_VERSION,
+    CONF_APP_TOKEN,
+    CONF_HOST,
+    CONF_PORT,
+    DOMAIN,
+)
 from .coordinator import FreeboxDevicesCoordinator
 from .freebox_client import FreeboxApiError, FreeboxLocalClient, FreeboxPermissionError
 from .parental_coordinator import FreeboxParentalCoordinator
@@ -31,7 +42,28 @@ PLATFORMS: list[Platform] = [
 _LOGGER = logging.getLogger(__name__)
 
 
+async def _async_register_frontend_card(hass: HomeAssistant) -> None:
+    """Sert le fichier www/freebox-table-card.js en statique et l'injecte
+    automatiquement dans le frontend, pour éviter d'avoir à ajouter la
+    ressource à la main dans Paramètres > Tableaux de bord > Ressources.
+    Idempotent (utile en cas de reload de l'intégration ou de second
+    config entry) via un flag dans hass.data.
+    """
+    flag = f"{DOMAIN}_frontend_registered"
+    if hass.data.get(flag):
+        return
+    hass.data[flag] = True
+
+    www_path = Path(__file__).parent / "www"
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(CARD_URL_PATH, str(www_path), cache_headers=False)]
+    )
+    add_extra_js_url(hass, f"{CARD_URL_PATH}/{CARD_JS_FILENAME}?v={CARD_VERSION}")
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    await _async_register_frontend_card(hass)
+
     session = async_get_clientsession(hass, verify_ssl=False)
     client = FreeboxLocalClient(session, entry.data[CONF_HOST], entry.data[CONF_PORT])
 
