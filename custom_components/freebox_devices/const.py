@@ -59,6 +59,10 @@ ATTR_HOST_TYPE = "host_type"
 ATTR_VENDOR = "vendor"
 ATTR_BLOCKED = "blocked"
 ATTR_SIGNAL = "signal"
+ATTR_TX_RATE = "tx_rate"  # Freebox -> appareil, octets/s (Wifi uniquement)
+ATTR_RX_RATE = "rx_rate"  # appareil -> Freebox, octets/s (Wifi uniquement)
+ATTR_WEB_ACCESS = "web_access"  # filter_state du profil parental couvrant
+# cet appareil (allowed/denied/webonly), None si non couvert par un profil
 
 # ------------------------------------------------------------------ #
 # Contrôle parental (/api/v4/parental/) — nécessite la permission

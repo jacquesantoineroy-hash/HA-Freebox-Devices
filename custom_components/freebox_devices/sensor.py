@@ -8,7 +8,11 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+from homeassistant.const import (
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
+    UnitOfDataRate,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -17,12 +21,16 @@ from .const import (
     ATTR_HOSTS,
     ATTR_MACS,
     ATTR_NEXT_CHANGE,
+    ATTR_RX_RATE,
     ATTR_SCHEDULING_MODE,
     ATTR_SIGNAL,
+    ATTR_TX_RATE,
+    ATTR_WEB_ACCESS,
     ATTR_WIFI,
     DOMAIN,
     PARENTAL_STATE_ALLOWED,
     PARENTAL_STATE_DENIED,
+    PARENTAL_STATE_WEBONLY,
 )
 from .coordinator import FreeboxDevicesCoordinator
 from .entity import FreeboxDeviceEntity
@@ -45,7 +53,14 @@ async def async_setup_entry(
             return
         known_macs.update(new_macs)
         async_add_entities(
-            FreeboxSignalSensor(devices_coordinator, mac) for mac in new_macs
+            entity_cls(devices_coordinator, mac)
+            for mac in new_macs
+            for entity_cls in (
+                FreeboxSignalSensor,
+                FreeboxRxRateSensor,
+                FreeboxTxRateSensor,
+                FreeboxWebAccessSensor,
+            )
         )
 
     entry.async_on_unload(devices_coordinator.async_add_listener(_add_new_devices))
@@ -103,6 +118,84 @@ class FreeboxSignalSensor(FreeboxDeviceEntity, SensorEntity):
         if signal >= -75:
             return "mdi:wifi-strength-2"
         return "mdi:wifi-strength-1"
+
+
+class _FreeboxRateSensor(FreeboxDeviceEntity, SensorEntity):
+    """Base commune débit descendant/montant — None si filaire (même
+    limitation que le signal : l'API Freebox n'expose ces débits que pour
+    les stations Wifi, cf. `wifi/ap/{id}/stations/`)."""
+
+    _attr_device_class = SensorDeviceClass.DATA_RATE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfDataRate.BYTES_PER_SECOND
+    _attr_suggested_display_precision = 0
+    _attr_entity_category = None
+    _attr_suggested_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
+
+    _attr_key: str  # défini par les sous-classes
+
+    def __init__(self, coordinator: FreeboxDevicesCoordinator, mac: str) -> None:
+        super().__init__(coordinator, mac)
+        self._attr_unique_id = f"{mac}_{self._attr_key}"
+
+    @property
+    def native_value(self) -> int | None:
+        device = self._device
+        if not device.get(ATTR_WIFI):
+            return None
+        return device.get(self._attr_key)
+
+
+class FreeboxRxRateSensor(_FreeboxRateSensor):
+    """Débit descendant (Freebox -> appareil)."""
+
+    _attr_translation_key = "debit_descendant"
+    _attr_icon = "mdi:download-network-outline"
+    _attr_key = ATTR_TX_RATE  # cf. remarque sur les libellés dans freebox_client.py
+
+    def __init__(self, coordinator: FreeboxDevicesCoordinator, mac: str) -> None:
+        super().__init__(coordinator, mac)
+        self._attr_unique_id = f"{mac}_debit_descendant"
+
+
+class FreeboxTxRateSensor(_FreeboxRateSensor):
+    """Débit montant (appareil -> Freebox)."""
+
+    _attr_translation_key = "debit_montant"
+    _attr_icon = "mdi:upload-network-outline"
+    _attr_key = ATTR_RX_RATE  # cf. remarque sur les libellés dans freebox_client.py
+
+    def __init__(self, coordinator: FreeboxDevicesCoordinator, mac: str) -> None:
+        super().__init__(coordinator, mac)
+        self._attr_unique_id = f"{mac}_debit_montant"
+
+
+class FreeboxWebAccessSensor(FreeboxDeviceEntity, SensorEntity):
+    """Accès web de l'appareil selon le contrôle parental (allowed/denied/
+    webonly). "allowed" si l'appareil n'est couvert par aucun profil de
+    contrôle parental (= pas de restriction, comportement par défaut)."""
+
+    _attr_translation_key = "acces_web"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [PARENTAL_STATE_ALLOWED, PARENTAL_STATE_DENIED, PARENTAL_STATE_WEBONLY]
+    _attr_entity_category = None
+
+    def __init__(self, coordinator: FreeboxDevicesCoordinator, mac: str) -> None:
+        super().__init__(coordinator, mac)
+        self._attr_unique_id = f"{mac}_acces_web"
+
+    @property
+    def native_value(self) -> str:
+        return self._device.get(ATTR_WEB_ACCESS) or PARENTAL_STATE_ALLOWED
+
+    @property
+    def icon(self) -> str:
+        state = self.native_value
+        if state == PARENTAL_STATE_DENIED:
+            return "mdi:web-off"
+        if state == PARENTAL_STATE_WEBONLY:
+            return "mdi:web-check"
+        return "mdi:web"
 
 
 class FreeboxParentalStateSensor(FreeboxParentalEntity, SensorEntity):

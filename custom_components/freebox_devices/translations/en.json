@@ -38,6 +38,15 @@
       },
       "etat_profil": {
         "name": "State"
+      },
+      "debit_descendant": {
+        "name": "Download rate"
+      },
+      "debit_montant": {
+        "name": "Upload rate"
+      },
+      "acces_web": {
+        "name": "Web access"
       }
     },
     "switch": {

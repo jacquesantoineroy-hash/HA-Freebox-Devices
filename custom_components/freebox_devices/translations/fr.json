@@ -38,6 +38,15 @@
       },
       "etat_profil": {
         "name": "État"
+      },
+      "debit_descendant": {
+        "name": "Débit descendant"
+      },
+      "debit_montant": {
+        "name": "Débit montant"
+      },
+      "acces_web": {
+        "name": "Accès web"
       }
     },
     "switch": {

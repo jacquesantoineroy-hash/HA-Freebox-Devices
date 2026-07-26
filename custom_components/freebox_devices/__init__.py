@@ -76,6 +76,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "le reste de l'intégration fonctionne normalement."
         )
 
+    # Référence croisée pour que le coordinator des appareils puisse calculer
+    # l'accès web par appareil sans appel API supplémentaire (cf.
+    # coordinator.py) — posée après coup, une fois les deux coordinators
+    # construits, peu importe que le premier refresh parental ait échoué
+    # (coordinator.data reste alors simplement {}).
+    coordinator.parental_coordinator = parental_coordinator
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "devices": coordinator,
         "parental": parental_coordinator,

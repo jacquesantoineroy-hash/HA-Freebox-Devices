@@ -21,12 +21,17 @@ from .const import (
     ATTR_ACTIVE,
     ATTR_BLOCKED,
     ATTR_CONNECTIVITY_TYPE,
+    ATTR_FILTER_STATE,
     ATTR_HOST_TYPE,
     ATTR_HOSTNAME,
     ATTR_IP,
     ATTR_MAC,
+    ATTR_MACS,
+    ATTR_RX_RATE,
     ATTR_SIGNAL,
+    ATTR_TX_RATE,
     ATTR_VENDOR,
+    ATTR_WEB_ACCESS,
     ATTR_WIFI,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -56,6 +61,11 @@ class FreeboxDevicesCoordinator(DataUpdateCoordinator[dict[str, dict]]):
         )
         self.entry = entry
         self.client = client
+        # Référence optionnelle posée par __init__.py après coup (ordre de
+        # création : devices coordinator d'abord, parental ensuite) — permet
+        # de calculer l'accès web par appareil sans appel API supplémentaire
+        # (simple lecture en mémoire de coordinator.data déjà à jour).
+        self.parental_coordinator = None
         self._store: Store = Store(
             hass, STORAGE_VERSION, STORAGE_KEY_TEMPLATE.format(entry_id=entry.entry_id)
         )
@@ -127,7 +137,7 @@ class FreeboxDevicesCoordinator(DataUpdateCoordinator[dict[str, dict]]):
 
         try:
             hosts = await self.client.async_get_raw_hosts()
-            signals = await self.client.async_get_wifi_signals()
+            wifi_stats = await self.client.async_get_wifi_station_stats()
             mac_filter_entries = await self.client.async_get_mac_filter_entries()
         except Exception as err:  # noqa: BLE001 - remonté proprement à HA
             raise UpdateFailed(str(err)) from err
@@ -137,6 +147,17 @@ class FreeboxDevicesCoordinator(DataUpdateCoordinator[dict[str, dict]]):
             for entry in mac_filter_entries
             if entry.get("type") == "blacklist"
         }
+
+        # Accès web par profil de contrôle parental — simple lecture en
+        # mémoire du coordinator parental déjà à jour (pas d'appel API en
+        # plus). None si le coordinator n'est pas encore branché ou si la
+        # permission "Contrôle parental" n'est pas accordée.
+        web_access_by_mac: dict[str, str] = {}
+        if self.parental_coordinator is not None:
+            for profile in self.parental_coordinator.data.values():
+                state = profile.get(ATTR_FILTER_STATE)
+                for pmac in profile.get(ATTR_MACS, []) or []:
+                    web_access_by_mac[pmac.upper()] = state
 
         devices: dict[str, dict] = {}
         for host in hosts:
@@ -160,6 +181,7 @@ class FreeboxDevicesCoordinator(DataUpdateCoordinator[dict[str, dict]]):
                 else:
                     conn_type = None
 
+            stats = wifi_stats.get(mac, {})
             devices[mac] = {
                 ATTR_MAC: mac,
                 ATTR_HOSTNAME: host.get("primary_name") or "Inconnu",
@@ -170,7 +192,10 @@ class FreeboxDevicesCoordinator(DataUpdateCoordinator[dict[str, dict]]):
                 ATTR_HOST_TYPE: host.get("host_type"),
                 ATTR_VENDOR: host.get("vendor_name"),
                 ATTR_BLOCKED: mac in blocked_macs,
-                ATTR_SIGNAL: signals.get(mac),
+                ATTR_TX_RATE: stats.get(ATTR_TX_RATE),
+                ATTR_RX_RATE: stats.get(ATTR_RX_RATE),
+                ATTR_WEB_ACCESS: web_access_by_mac.get(mac),
+                ATTR_SIGNAL: stats.get(ATTR_SIGNAL),
             }
 
         await self._async_save_cache_if_dirty()

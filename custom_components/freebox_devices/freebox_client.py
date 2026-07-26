@@ -200,16 +200,30 @@ class FreeboxLocalClient:
                     hosts_by_mac[mac] = host
         return list(hosts_by_mac.values())
 
-    async def async_get_wifi_signals(self) -> dict[str, int]:
-        """MAC (upper) -> signal dBm, pour les stations Wifi actuellement associées."""
-        signals: dict[str, int] = {}
+    async def async_get_wifi_station_stats(self) -> dict[str, dict]:
+        """MAC (upper) -> {signal, tx_rate, rx_rate}, pour les stations Wifi
+        actuellement associées (rien pour les appareils filaires, comme le
+        signal). tx_rate/rx_rate en octets/s, tels que renvoyés bruts par
+        l'API (`wifi/ap/{id}/stations/`, cf. dev.freebox.fr/sdk/os/wifi/).
+
+        ⚠️ Les libellés de la doc officielle Freebox pour tx_rate/rx_rate
+        semblent inversés par rapport à ceux de tx_bytes/rx_bytes (qui eux
+        sont clairs : tx_bytes = Freebox -> station, rx_bytes = station ->
+        Freebox). On applique donc la même convention aux deux rates par
+        cohérence : tx_rate = débit Freebox -> appareil (descendant), rx_rate
+        = débit appareil -> Freebox (montant). Non vérifiable depuis le
+        sandbox de développement (pas d'accès réseau à la Freebox) — à
+        confirmer en conditions réelles si les valeurs semblent inversées
+        (ex. un gros téléchargement qui fait monter rx_rate au lieu de
+        tx_rate)."""
+        stats: dict[str, dict] = {}
         try:
             aps = await self._authenticated(
                 "GET", "wifi/ap/", api_version=API_VERSION_WIFI
             )
         except FreeboxApiError as err:
             _LOGGER.debug("wifi/ap/ indisponible: %s", err)
-            return signals
+            return stats
 
         for ap in aps or []:
             ap_id = ap.get("id")
@@ -236,9 +250,12 @@ class FreeboxLocalClient:
                     or station.get("rssi")
                     or (station.get("rx", {}) or {}).get("signal")
                 )
-                if signal is not None:
-                    signals[mac.upper()] = signal
-        return signals
+                stats[mac.upper()] = {
+                    "signal": signal,
+                    "tx_rate": station.get("tx_rate"),
+                    "rx_rate": station.get("rx_rate"),
+                }
+        return stats
 
     # ------------------------------------------------------------------ #
     # Blacklist Wifi (mac_filter)
