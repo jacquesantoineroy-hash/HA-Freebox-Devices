@@ -116,10 +116,28 @@ async def _meteo(hass: HomeAssistant) -> dict[str, Any]:
     return sortie
 
 
+THEMES = (
+    ("Chauffage et températures", ("temperature", "humidity"), ("climate",), ("chaudiere", "bruleur", "thermostat", "chauff", "radiateur", "temp")),
+    ("Ouvertures", OUVERTURES, (), ("portail", "portillon", "porte", "store", "volet", "fenetre", "garage")),
+    ("Énergie et eau", ("energy", "power", "gas", "water", "volume"), (), ("fioul", "electri", "linky", "conso", "eau", "ecs")),
+)
+
+
+def _theme(eid: str, classe: str, domaine: str) -> str:
+    """Le thème d'une tuile, deviné d'après sa classe ou son nom : la télé
+    fait un écran par thème plutôt qu'un fourre-tout."""
+    bas = eid.lower()
+    for nom, classes, domaines, mots in THEMES:
+        if classe in classes or domaine in domaines or any(m in bas for m in mots):
+            return nom
+    return "Chez nous"
+
+
 def _tuile(hass: HomeAssistant, entree: str) -> dict[str, Any] | None:
     morceaux = [m.strip() for m in entree.split("|")]
     eid = morceaux[0]
     titre = morceaux[1] if len(morceaux) > 1 and morceaux[1] else ""
+    theme_voulu = morceaux[2] if len(morceaux) > 2 and morceaux[2] else ""
     etat = hass.states.get(eid)
     if etat is None:
         return None
@@ -163,6 +181,7 @@ def _tuile(hass: HomeAssistant, entree: str) -> dict[str, Any] | None:
         "icone": str(a.get("icon") or ""),
         "classe": classe,
         "alerte": alerte,
+        "theme": theme_voulu or _theme(eid, classe, domaine),
     }
 
 
@@ -298,7 +317,19 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict
         "tuiles": tuiles,
         "maison": _maison(hass, coord),
         "courbe": await _courbe(hass, coord),
+        "cameras": _cameras(hass),
     }
+
+
+def _cameras(hass: HomeAssistant) -> list[dict[str, str]]:
+    """Les caméras de la maison, par ordre alphabétique : la télé en met quatre par écran."""
+    sortie = []
+    for s in hass.states.async_all("camera"):
+        if s.state in ("unavailable", "unknown"):
+            continue
+        sortie.append({"id": s.entity_id, "nom": str(s.attributes.get("friendly_name") or s.entity_id)})
+    sortie.sort(key=lambda c: c["nom"].lower())
+    return sortie[:8]
 
 
 class PcParentalVeilleView(HomeAssistantView):
@@ -321,3 +352,40 @@ class PcParentalVeilleView(HomeAssistantView):
         if moi is None:
             return self.json({"ok": False, "error": "auth"}, status_code=401)
         return self.json(await etat_veille(self.hass, coord))
+
+
+class PcParentalVeilleImageView(HomeAssistantView):
+    """Une image de caméra pour l'écran de veille, par la même porte que le reste.
+
+    La télé n'a pas de jeton Home Assistant : elle présente son identifiant et
+    son secret, et reçoit le JPEG du moment. Rien d'autre ne sort par ici.
+    """
+
+    url = URL_VEILLE + "/image"
+    name = "api:pc_parental:veille_image"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def post(self, request: web.Request) -> web.Response:
+        try:
+            corps: dict[str, Any] = await request.json()
+        except ValueError:
+            return self.json({"ok": False, "error": "json"}, status_code=400)
+        coord = _coordinateur(self.hass)
+        if coord is None:
+            return self.json({"ok": False, "error": "loading"}, status_code=503)
+        moi = coord.store.by_secret(str(corps.get("id") or ""), str(corps.get("secret") or ""))
+        if moi is None:
+            return self.json({"ok": False, "error": "auth"}, status_code=401)
+        entite = str(corps.get("entite") or "")
+        if not entite.startswith("camera.") or self.hass.states.get(entite) is None:
+            return self.json({"ok": False, "error": "camera"}, status_code=404)
+        try:
+            from homeassistant.components.camera import async_get_image
+
+            image = await async_get_image(self.hass, entite, timeout=10, width=960)
+        except Exception as err:  # noqa: BLE001 - une caméra muette ne casse pas l'écran
+            return self.json({"ok": False, "error": str(err)[:120]}, status_code=502)
+        return web.Response(body=image.content, content_type=image.content_type, headers={"Cache-Control": "no-store"})
