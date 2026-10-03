@@ -9,6 +9,7 @@ le secret de l'appareil, rien d'autre.
 """
 from __future__ import annotations
 
+import datetime
 import time
 from typing import Any
 
@@ -195,6 +196,94 @@ def _maison(hass: HomeAssistant, coord: PcParentalCoordinator) -> list[dict[str,
     return sorted(par_personne.values(), key=lambda p: p["prenom"].lower())
 
 
+_cache_courbe: dict[str, Any] = {"quand": 0.0, "cle": "", "valeur": None}
+COURBE_HEURES = 24
+COURBE_PAS_S = 15 * 60
+
+
+def _entites_courbe(hass: HomeAssistant, coord: PcParentalCoordinator) -> list[str]:
+    """Les deux températures à comparer : celles choisies, sinon les deux
+    premières tuiles de température (dehors puis dedans)."""
+    choisies = [e.split("|")[0].strip() for e in (coord.store.veille_courbe or []) if e.strip()]
+    if len(choisies) >= 2:
+        return choisies[:2]
+    temperatures = []
+    for entree in coord.store.veille_entites:
+        eid = entree.split("|")[0].strip()
+        etat = hass.states.get(eid)
+        if etat is not None and str(etat.attributes.get("device_class") or "") == "temperature":
+            temperatures.append(eid)
+    return temperatures[:2]
+
+
+def _serie(hass: HomeAssistant, eid: str, debut, fin) -> list[list[float]]:
+    """Une température toutes les quinze minutes sur la période : [horodatage, valeur]."""
+    from homeassistant.components.recorder import history
+
+    etats = history.state_changes_during_period(
+        hass, debut, fin, eid, no_attributes=True, include_start_time_state=True,
+    ).get(eid) or []
+    points: list[tuple[float, float]] = []
+    for s in etats:
+        v = _nombre(s.state)
+        if v is None:
+            continue
+        points.append((s.last_updated.timestamp(), v))
+    if not points:
+        return []
+    # Échantillonnage régulier : la dernière valeur connue à chaque pas.
+    sortie: list[list[float]] = []
+    t = debut.timestamp()
+    fin_s = fin.timestamp()
+    i = 0
+    courant = points[0][1]
+    while t <= fin_s:
+        while i < len(points) and points[i][0] <= t:
+            courant = points[i][1]
+            i += 1
+        sortie.append([round(t), round(courant, 1)])
+        t += COURBE_PAS_S
+    return sortie
+
+
+async def _courbe(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict[str, Any]:
+    entites = _entites_courbe(hass, coord)
+    if len(entites) < 2:
+        return {}
+    cle = "|".join(entites)
+    if _cache_courbe["valeur"] is not None and _cache_courbe["cle"] == cle and time.time() - _cache_courbe["quand"] < 300:
+        return _cache_courbe["valeur"]
+    fin = dt_util.utcnow()
+    debut = fin - datetime.timedelta(hours=COURBE_HEURES)
+    try:
+        from homeassistant.components.recorder import get_instance
+
+        series = [
+            await get_instance(hass).async_add_executor_job(_serie, hass, eid, debut, fin)
+            for eid in entites
+        ]
+    except Exception:  # noqa: BLE001 - sans historique, pas de courbe, rien d'autre ne casse
+        return {}
+    noms = []
+    for eid in entites:
+        titre = ""
+        for entree in coord.store.veille_entites:
+            morceaux = entree.split("|")
+            if morceaux[0].strip() == eid and len(morceaux) > 1:
+                titre = morceaux[1].strip()
+        etat = hass.states.get(eid)
+        noms.append(titre or str((etat.attributes.get("friendly_name") if etat else None) or eid))
+    valeur = {
+        "heures": COURBE_HEURES,
+        "series": [
+            {"id": eid, "nom": nom, "points": pts}
+            for eid, nom, pts in zip(entites, noms, series)
+        ],
+    }
+    _cache_courbe.update({"quand": time.time(), "cle": cle, "valeur": valeur})
+    return valeur
+
+
 async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict[str, Any]:
     tuiles = []
     for entree in coord.store.veille_entites:
@@ -208,6 +297,7 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict
         "vigilance": _vigilance(hass),
         "tuiles": tuiles,
         "maison": _maison(hass, coord),
+        "courbe": await _courbe(hass, coord),
     }
 
 
