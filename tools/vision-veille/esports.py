@@ -2,7 +2,8 @@
 
 Les sources sont publiques et sans clé : la page de résultats de vlr.gg pour
 Valorant (les logos viennent de la page de chaque match, lue une seule fois),
-l'API ouverte d'octane.gg pour Rocket League. Home Assistant rafraîchit au
+le fil des matchs de Liquipedia pour Rocket League (API MediaWiki, une
+requête toutes les dix minutes, bien en deçà de leurs conditions). Home Assistant rafraîchit au
 plus toutes les dix minutes, et seulement quand un écran de veille le demande ;
 la télé ne parle qu'à Home Assistant, qui lui relaie aussi les logos.
 """
@@ -32,10 +33,11 @@ _LOGGER = logging.getLogger(__name__)
 AGENT = "Vision-HomeAssistant/1.0 (ecran de veille familial ; https://github.com/jacquesantoineroy-hash)"
 RAFRAICHISSEMENT = 600
 PAR_JEU = 8
-LOGOS_HOTES = ("owcdn.net", "griffon.octane.gg")
+LOGOS_HOTES = ("owcdn.net", "liquipedia.net")
 VLR_RESULTATS = "https://www.vlr.gg/matches/results"
 VLR_FILTRE = ("champions tour", "valorant champions", "masters")
-OCTANE = "https://zsr.octane.gg/matches"
+LIQUIPEDIA_RL = "https://liquipedia.net/rocketleague/api.php?action=parse&page=Liquipedia:Matches&format=json&prop=text&disablelimitreport=1"
+RL_FILTRE = ("rlcs", "championship series", "esports world cup", "major", "world championship")
 
 _BLOC = re.compile(r'<a href="/(\d+)/[^"]*" class="wf-module-item match-item[^"]*">(.*?)</a>', re.S)
 _EQUIPE = re.compile(
@@ -49,6 +51,15 @@ _ETA = re.compile(r'<div class="ml-eta[^"]*">\s*(.*?)\s*</div>', re.S)
 _STATUT = re.compile(r'<div class="ml-status">\s*(.*?)\s*</div>', re.S)
 _LOGO = re.compile(r'<img src="(//owcdn\.net/img/[^"]+)" alt="([^"]*) team logo">')
 _UTC = re.compile(r'data-utc-ts="(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)"')
+_LP_TS = re.compile(r'data-timestamp="(\d+)"')
+_LP_CAMP = re.compile(r'<div class="match-info-header-opponent([^"]*)">')
+_LP_EQUIPE = re.compile(
+    r'<div class="block-team[^"]*">\s*<span class="team-template-image-icon">\s*<a href="[^"]*" title="([^"]*)">(?:<img alt="[^"]*" src="([^"]+)")?.*?'
+    r'<span class="name"[^>]*>(?:<a [^>]*>)?([^<]+)',
+    re.S,
+)
+_LP_SCORE = re.compile(r'match-info-header-scoreholder-score(?: match-info-header-winner)?">\s*(\d*)\s*<')
+_LP_TOURNOI = re.compile(r'match-info-tournament-name"><a [^>]*title="([^"]*)"><span>([^<]*)')
 
 
 def _propre(s: str) -> str:
@@ -149,7 +160,7 @@ class Esports:
             eta = _ETA.search(bloc)
             ts = int(maintenant - _eta_en_secondes(eta.group(1))) if eta else int(maintenant)
             detail = self.matchs_vlr.get(ident)
-            if detail is None and nouveaux < 4:
+            if detail is None and nouveaux < 8:
                 nouveaux += 1
                 detail = await self._detail_vlr(ident, [_propre(e[2]) for e in equipes])
                 self.matchs_vlr[ident] = detail
@@ -205,37 +216,50 @@ class Esports:
     # --- Rocket League -----------------------------------------------------------
 
     async def _rocket_league(self) -> list[dict[str, Any]]:
-        avant = dt_util.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        data = await self._json(f"{OCTANE}?tier=S&before={avant}&sort=date:desc&perPage=20")
+        data = await self._json(LIQUIPEDIA_RL)
+        page = ((data.get("parse") or {}).get("text") or {}).get("*", "")
+        debut = page.find('data-toggle-area-content="2"')
+        if debut < 0:
+            return []
         sortie: list[dict[str, Any]] = []
-        for m in data.get("matches") or []:
-            bleu = m.get("blue") or {}
-            orange = m.get("orange") or {}
-            if "score" not in bleu and "score" not in orange:
-                continue  # pas encore joué
-            eb = (bleu.get("team") or {}).get("team") or {}
-            eo = (orange.get("team") or {}).get("team") or {}
-            if not eb.get("name") or not eo.get("name"):
+        for bloc in page[debut:].split('<div class="match-info">')[1:]:
+            tournoi = _LP_TOURNOI.search(bloc)
+            nom_tournoi = _propre(tournoi.group(2)) if tournoi else ""
+            page_tournoi = _propre(tournoi.group(1)) if tournoi else ""
+            if not any(mot in (nom_tournoi + " " + page_tournoi).lower() for mot in RL_FILTRE):
                 continue
-            try:
-                ts = int(dt_util.as_timestamp(dt_util.parse_datetime(m.get("date"))))
-            except Exception:  # noqa: BLE001
-                ts = int(time.time())
+            equipes = _LP_EQUIPE.findall(bloc)
+            camps = _LP_CAMP.findall(bloc)
+            scores = _LP_SCORE.findall(bloc)
+            if len(equipes) != 2 or len(camps) < 2 or len(scores) < 2:
+                continue
+            ts = _LP_TS.search(bloc)
+
+            def logo(src: str) -> str:
+                if not src:
+                    return ""
+                src = re.sub(r"/(\d+)px-", "/120px-", src, count=1)
+                return src if src.startswith("http") else "https://liquipedia.net" + src
+
+            def score(x: str) -> int | None:
+                return int(x) if x.isdigit() else None
+
+            v = 1 if "match-info-header-winner" in camps[0] else 2 if "match-info-header-winner" in camps[1] else 0
             sortie.append(
                 {
-                    "id": f"rl{m.get('_id')}",
-                    "e1": eb.get("name"),
-                    "e2": eo.get("name"),
+                    "id": f"rl{ts.group(1) if ts else 0}-{_propre(equipes[0][0])[:12]}-{_propre(equipes[1][0])[:12]}",
+                    "e1": _propre(equipes[0][0]) or _propre(equipes[0][2]),
+                    "e2": _propre(equipes[1][0]) or _propre(equipes[1][2]),
                     "p1": "",
                     "p2": "",
-                    "s1": bleu.get("score", 0),
-                    "s2": orange.get("score", 0),
-                    "v": 1 if bleu.get("winner") else 2 if orange.get("winner") else 0,
-                    "l1": eb.get("image") or "",
-                    "l2": eo.get("image") or "",
-                    "evenement": (m.get("event") or {}).get("name", ""),
-                    "serie": (m.get("stage") or {}).get("name", ""),
-                    "ts": ts,
+                    "s1": score(scores[0]),
+                    "s2": score(scores[1]),
+                    "v": v,
+                    "l1": logo(equipes[0][1]),
+                    "l2": logo(equipes[1][1]),
+                    "evenement": nom_tournoi,
+                    "serie": "",
+                    "ts": int(ts.group(1)) if ts else int(time.time()),
                 }
             )
             if len(sortie) >= PAR_JEU:
