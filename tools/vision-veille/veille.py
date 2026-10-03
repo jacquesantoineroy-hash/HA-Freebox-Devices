@@ -389,3 +389,41 @@ class PcParentalVeilleImageView(HomeAssistantView):
         except Exception as err:  # noqa: BLE001 - une caméra muette ne casse pas l'écran
             return self.json({"ok": False, "error": str(err)[:120]}, status_code=502)
         return web.Response(body=image.content, content_type=image.content_type, headers={"Cache-Control": "no-store"})
+
+
+class PcParentalVeilleFluxView(HomeAssistantView):
+    """Le flux vidéo d'une caméra pour l'écran de veille : HLS servi par Home Assistant.
+
+    Home Assistant remuxe la caméra (sans réencoder) et donne une adresse
+    jetable `/api/hls/<jeton>/master_playlist.m3u8` : la télé la lit telle
+    quelle, sans identifiants de caméra et sans jeton Home Assistant.
+    """
+
+    url = URL_VEILLE + "/flux"
+    name = "api:pc_parental:veille_flux"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def post(self, request: web.Request) -> web.Response:
+        try:
+            corps: dict[str, Any] = await request.json()
+        except ValueError:
+            return self.json({"ok": False, "error": "json"}, status_code=400)
+        coord = _coordinateur(self.hass)
+        if coord is None:
+            return self.json({"ok": False, "error": "loading"}, status_code=503)
+        moi = coord.store.by_secret(str(corps.get("id") or ""), str(corps.get("secret") or ""))
+        if moi is None:
+            return self.json({"ok": False, "error": "auth"}, status_code=401)
+        entite = str(corps.get("entite") or "")
+        if not entite.startswith("camera.") or self.hass.states.get(entite) is None:
+            return self.json({"ok": False, "error": "camera"}, status_code=404)
+        try:
+            from homeassistant.components.camera import async_request_stream
+
+            chemin = await async_request_stream(self.hass, entite, "hls")
+        except Exception as err:  # noqa: BLE001 - pas de flux : la télé garde les images fixes
+            return self.json({"ok": False, "error": str(err)[:120]}, status_code=502)
+        return self.json({"ok": True, "url": chemin})
