@@ -421,9 +421,45 @@ class PcParentalVeilleFluxView(HomeAssistantView):
         if not entite.startswith("camera.") or self.hass.states.get(entite) is None:
             return self.json({"ok": False, "error": "camera"}, status_code=404)
         try:
-            from homeassistant.components.camera import async_request_stream
-
-            chemin = await async_request_stream(self.hass, entite, "hls")
+            chemin = await _flux_hls(self.hass, coord, entite)
         except Exception as err:  # noqa: BLE001 - pas de flux : la télé garde les images fixes
             return self.json({"ok": False, "error": str(err)[:120]}, status_code=502)
         return self.json({"ok": True, "url": chemin})
+
+
+async def _flux_hls(hass: HomeAssistant, coord: PcParentalCoordinator, entite: str) -> str:
+    """L'adresse HLS d'une caméra, de préférence son flux secondaire.
+
+    Les caméras servent souvent deux flux : le principal (4K, lourd) et un
+    secondaire léger. Une télé ne décode pas quatre flux 4K à la fois ; si un
+    suffixe de flux secondaire est réglé (« _sub » chez Frigate / go2rtc), on
+    demande à Home Assistant de remuxer cette source-là. Sans suffixe, ou si
+    la caméra n'a pas d'adresse de flux, c'est le flux normal de l'entité.
+    """
+    from homeassistant.components.camera import async_request_stream
+
+    suffixe = str(getattr(coord.store, "veille_flux_suffixe", "") or "").strip()
+    composant = hass.data.get("camera")
+    cam = composant.get_entity(entite) if composant is not None else None
+    source = await cam.stream_source() if cam is not None and suffixe else None
+    if not source or "://" not in source:
+        return await async_request_stream(hass, entite, "hls")
+    base, sep, requete = source.partition("?")
+    secondaire = base.rstrip("/") + suffixe + sep + requete
+    flux: dict[str, Any] = hass.data.setdefault(f"{DOMAIN}_veille_flux", {})
+    stream = flux.get(secondaire)
+    if stream is None or not stream.available:
+        from homeassistant.components.stream import HLS_PROVIDER, create_stream
+        from homeassistant.components.stream.core import DynamicStreamSettings
+
+        stream = create_stream(
+            hass,
+            secondaire,
+            options=dict(getattr(cam, "stream_options", {}) or {}),
+            dynamic_stream_settings=DynamicStreamSettings(),
+            stream_label=f"{entite} (veille)",
+        )
+        flux[secondaire] = stream
+    stream.add_provider(HLS_PROVIDER)
+    await stream.start()
+    return stream.endpoint_url(HLS_PROVIDER)
