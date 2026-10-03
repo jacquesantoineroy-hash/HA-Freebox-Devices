@@ -61,6 +61,11 @@ class VisionMaisonCard extends HTMLElement {
     return this._config && this._config.mode === "personne" ? 12 : 4;
   }
 
+  // Toute la largeur de la section, même quand elle enjambe deux colonnes.
+  getGridOptions() {
+    return { columns: "full" };
+  }
+
   connectedCallback() {
     if (!this._minuteur) this._minuteur = setInterval(() => this._charger(), RAFRAICHIR_MS);
   }
