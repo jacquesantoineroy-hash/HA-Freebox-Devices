@@ -449,14 +449,14 @@ async def _flux_hls(hass: HomeAssistant, coord: PcParentalCoordinator, entite: s
     flux: dict[str, Any] = hass.data.setdefault(f"{DOMAIN}_veille_flux", {})
     stream = flux.get(secondaire)
     if stream is None or not stream.available:
+        from homeassistant.components.camera import get_dynamic_camera_stream_settings
         from homeassistant.components.stream import HLS_PROVIDER, create_stream
-        from homeassistant.components.stream.core import DynamicStreamSettings
 
         stream = create_stream(
             hass,
             secondaire,
             options=dict(getattr(cam, "stream_options", {}) or {}),
-            dynamic_stream_settings=DynamicStreamSettings(),
+            dynamic_stream_settings=await get_dynamic_camera_stream_settings(hass, entite),
             stream_label=f"{entite} (veille)",
         )
         flux[secondaire] = stream
