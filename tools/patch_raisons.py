@@ -13,14 +13,14 @@ BASE = "/homeassistant/custom_components/pc_parental/"
 p = BASE + "store.py"
 t = open(p, encoding="utf-8").read()
 shutil.copy2(p, p + ".bakand12")
-assert "def raison(" not in t
+assert "def raison_enfant(" not in t
 
 old = "    def effectif(self, pc: dict[str, Any]) -> dict[str, list[str]]:"
 new = '''    # Étiquettes qui relèvent de la sécurité : la maison les coupe pour tout le monde.
     ETIQUETTES_SECURITE = ("dangereux", "contournement", "pub & traçage", "pub & tracage")
     ETIQUETTES_AGE = ("pegi 12", "pegi 16", "pegi 18", "adulte")
 
-    def raison(self, pc: dict[str, Any], genre: str, nom: str) -> dict[str, str] | None:
+    def raison_enfant(self, pc: dict[str, Any], genre: str, nom: str) -> dict[str, str] | None:
         """Pourquoi cet élément est fermé sur ce PC, dit pour l'enfant.
 
         Même ordre que `statut` : la première règle qui ferme est la raison.
@@ -115,7 +115,7 @@ new = '''        self.purger_laissez_passer(pc)
             membres = membres_app(nom) if genre == "apps" else membres_site(nom)
             idx = -1
             try:
-                r = self.raison(pc, genre, nom)
+                r = self.raison_enfant(pc, genre, nom)
             except Exception:  # noqa: BLE001
                 r = None
             if r:
@@ -156,7 +156,7 @@ if '"raison"' not in d:
         '''    qui = prenom(hass, pc)
     joli = libelle.strip() or cle
     try:
-        _r = coord.store.raison(pc, genre, cle)
+        _r = coord.store.raison_enfant(pc, genre, cle)
     except Exception:  # noqa: BLE001
         _r = None
     raison = _r["texte"] if _r else ""
