@@ -20,6 +20,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import PcParentalCoordinator
+from . import veille_plus as plus
 from .esports import esports
 
 URL_VEILLE = "/api/pc_parental/veille"
@@ -321,7 +322,15 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict
         "cameras": _cameras(hass),
         "esports": esports(hass).demander(),
         "courses": esports(hass).courses_connues(),
+        "avenir": esports(hass).avenir_connu(),
         "musique": str(getattr(coord.store, "veille_musique", "") or ""),
+        "reglages": plus.reglages(coord),
+        "ecole": plus.ecole(hass),
+        "agenda": await plus.agenda(hass),
+        "pluie": plus.pluie(hass),
+        "demandes": plus.demandes(hass, coord),
+        "chauffage": await plus.chauffage(hass, coord),
+        "photos": await plus.photos(hass),
     }
 
 

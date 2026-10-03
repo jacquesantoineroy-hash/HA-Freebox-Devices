@@ -35,6 +35,7 @@ RAFRAICHISSEMENT = 600
 PAR_JEU = 8
 LOGOS_HOTES = ("owcdn.net", "liquipedia.net", "upload.wikimedia.org")
 VLR_RESULTATS = "https://www.vlr.gg/matches/results"
+VLR_AVENIR = "https://www.vlr.gg/matches"
 VLR_FILTRE = ("champions tour", "valorant champions", "masters")
 LIQUIPEDIA_RL = "https://liquipedia.net/rocketleague/api.php?action=parse&page=Liquipedia:Matches&format=json&prop=text&disablelimitreport=1"
 RL_FILTRE = ("rlcs", "championship series", "esports world cup", "major", "world championship")
@@ -93,6 +94,8 @@ class Esports:
         self.courses: list[dict[str, Any]] = []
         self.logos_wiki: dict[str, str] = {}  # titre de page Wikipédia → image
         self.f1_manches: dict[str, dict[str, Any]] = {}  # "2026-15" → épreuve (le passé ne bouge plus)
+        self.avenir: list[dict[str, Any]] = []
+        self.prochaines: dict[str, dict[str, Any]] = {}  # wrc / fe → prochaine manche (du calendrier Wikipédia)
         self.quand = 0.0
         self.en_cours: asyncio.Task | None = None
         self.charge = False
@@ -106,6 +109,7 @@ class Esports:
         self.matchs_vlr = dict(data.get("vlr") or {})
         self.resultats = list(data.get("resultats") or [])
         self.courses = list(data.get("courses") or [])
+        self.avenir = list(data.get("avenir") or [])
         self.logos_wiki = dict(data.get("logos_wiki") or {})
         self.f1_manches = dict(data.get("f1_manches") or {})
 
@@ -118,7 +122,7 @@ class Esports:
             self.f1_manches = dict(sorted(self.f1_manches.items())[-40:])
         await self.store.async_save({
             "vlr": self.matchs_vlr, "resultats": self.resultats, "courses": self.courses,
-            "logos_wiki": self.logos_wiki, "f1_manches": self.f1_manches,
+            "logos_wiki": self.logos_wiki, "f1_manches": self.f1_manches, "avenir": self.avenir,
         })
 
     def demander(self) -> list[dict[str, Any]]:
@@ -130,6 +134,12 @@ class Esports:
     def courses_connues(self) -> list[dict[str, Any]]:
         self.demander()
         return self.courses
+
+    def avenir_connu(self) -> list[dict[str, Any]]:
+        """Ce qui vient : seulement ce qui n'est pas encore passé de plus de deux heures."""
+        self.demander()
+        limite = time.time() - 7200
+        return [a for a in self.avenir if a.get("ts", 0) > limite]
 
     async def _rafraichir(self) -> None:
         await self._charger()
@@ -154,6 +164,10 @@ class Esports:
             if epreuves:
                 courses.append({"sport": nom, "epreuves": epreuves[:4]})
         self.courses = courses
+        try:
+            self.avenir = await self._avenir()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("avenir : %s", err)
         await self._sauver()
 
     async def _texte(self, url: str, delai: int = 20) -> str:
@@ -419,6 +433,7 @@ class Esports:
         page = ((data.get("parse") or {}).get("text") or "")
         tables = self._tables(page)
         dates: dict[str, int] = {}
+        noms_calendrier: dict[str, str] = {}
         resultats: list[dict[str, Any]] = []
         for lignes in tables:
             cols = self._colonnes(lignes[0])
@@ -447,6 +462,16 @@ class Esports:
                     manche = self._texte_cellule(cellules[cols["round"]][1])[0]
                     if manche.isdigit():
                         dates[manche] = self._date_wiki(self._texte_cellule(cellules[idate][1])[0], annee, bascule)
+                        inom = next((cols[k] for k in ("rally", "event", "e-prix", "grand prix", "race", "circuit") if k in cols), None)
+                        if inom is not None and len(cellules) > inom:
+                            noms_calendrier[manche] = self._texte_cellule(cellules[inom][1])[0]
+        # La prochaine manche : la première du calendrier après la dernière gagnée, pas encore passée.
+        derniere = resultats[-1]["manche"] if resultats else 0
+        maintenant = time.time()
+        for manche_txt, ts_cal in sorted(dates.items(), key=lambda kv: int(kv[0])):
+            if int(manche_txt) > derniere and ts_cal > maintenant - 36 * 3600:
+                self.prochaines[prefixe] = {"manche": int(manche_txt), "ts": ts_cal, "nom": noms_calendrier.get(manche_txt, "")}
+                break
         sortie = []
         for r in reversed(resultats[-4:]):
             sortie.append({
@@ -475,6 +500,110 @@ class Esports:
             if epreuves:
                 return epreuves
         return []
+
+    # --- À venir ----------------------------------------------------------------------
+
+    async def _avenir(self) -> list[dict[str, Any]]:
+        """Les prochains matchs et courses, toutes disciplines confondues, dans les quinze jours."""
+        maintenant = time.time()
+        sortie: list[dict[str, Any]] = []
+        # Valorant : la page des matchs à venir, même structure que les résultats, l'ETA est le temps restant.
+        try:
+            page = await self._texte(VLR_AVENIR)
+            nouveaux = 0
+            for ident, bloc in _BLOC.findall(page):
+                statut = _STATUT.search(bloc)
+                etat = _propre(statut.group(1)).lower() if statut else ""
+                if etat not in ("upcoming", "live"):
+                    continue
+                evenement = _EVENEMENT.search(bloc)
+                nom_evenement = _propre(evenement.group(1)) if evenement else ""
+                if not any(mot in nom_evenement.lower() for mot in VLR_FILTRE):
+                    continue
+                equipes = _EQUIPE.findall(bloc)
+                if len(equipes) != 2:
+                    continue
+                noms = [_propre(e[2]) for e in equipes]
+                if any(n.upper() == "TBD" for n in noms):
+                    continue
+                eta = _ETA.search(bloc)
+                ts = int(maintenant + _eta_en_secondes(eta.group(1))) if eta and etat == "upcoming" else int(maintenant)
+                detail = self.matchs_vlr.get(ident)
+                if detail is None and nouveaux < 6:
+                    nouveaux += 1
+                    detail = await self._detail_vlr(ident, noms)
+                    self.matchs_vlr[ident] = detail
+                    await asyncio.sleep(1.5)
+                detail = detail or {}
+                serie = _SERIE.search(bloc)
+                sortie.append({
+                    "id": f"vlr{ident}", "sport": "Valorant", "titre": f"{noms[0]}  ·  {noms[1]}",
+                    "detail": " · ".join(x for x in (nom_evenement, _propre(serie.group(1)) if serie else "") if x),
+                    "ts": int(detail.get("ts") or ts), "l1": detail.get("l1", ""), "l2": detail.get("l2", ""), "direct": etat == "live",
+                })
+                if sum(1 for a in sortie if a["sport"] == "Valorant") >= 6:
+                    break
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("avenir vlr : %s", err)
+        # Rocket League : l'onglet « Upcoming » du fil Liquipedia.
+        try:
+            data = await self._json(LIQUIPEDIA_RL)
+            page = ((data.get("parse") or {}).get("text") or {}).get("*", "")
+            debut = page.find('data-toggle-area-content="1"')
+            fin = page.find('data-toggle-area-content="2"')
+            zone = page[debut:fin] if debut >= 0 else ""
+            n = 0
+            for bloc in zone.split('<div class="match-info">')[1:]:
+                tournoi = _LP_TOURNOI.search(bloc)
+                nom_tournoi = _propre(tournoi.group(2)) if tournoi else ""
+                page_tournoi = _propre(tournoi.group(1)) if tournoi else ""
+                if not any(mot in (nom_tournoi + " " + page_tournoi).lower() for mot in RL_FILTRE):
+                    continue
+                equipes = _LP_EQUIPE.findall(bloc)
+                ts = _LP_TS.search(bloc)
+                if len(equipes) != 2 or not ts:
+                    continue
+                def logo(src: str) -> str:
+                    if not src:
+                        return ""
+                    src = re.sub(r"/(\d+)px-", "/120px-", src, count=1)
+                    return src if src.startswith("http") else "https://liquipedia.net" + src
+                sortie.append({
+                    "id": f"rl-av-{ts.group(1)}-{_propre(equipes[0][0])[:12]}", "sport": "Rocket League",
+                    "titre": f"{_propre(equipes[0][0]) or _propre(equipes[0][2])}  ·  {_propre(equipes[1][0]) or _propre(equipes[1][2])}",
+                    "detail": nom_tournoi, "ts": int(ts.group(1)), "l1": logo(equipes[0][1]), "l2": logo(equipes[1][1]), "direct": False,
+                })
+                n += 1
+                if n >= 6:
+                    break
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("avenir rl : %s", err)
+        # Formule 1 : la prochaine course du calendrier.
+        try:
+            data = await self._json(f"{JOLPICA}/current/next.json")
+            courses = (((data.get("MRData") or {}).get("RaceTable") or {}).get("Races") or [])
+            if courses:
+                c = courses[0]
+                ts = int(dt_util.as_timestamp(dt_util.parse_datetime(f"{c.get('date')}T{c.get('time') or '12:00:00Z'}")))
+                sortie.append({
+                    "id": f"f1-av-{c.get('season')}-{c.get('round')}", "sport": "Formule 1",
+                    "titre": str(c.get("raceName") or "").replace("Grand Prix", "GP"),
+                    "detail": f"Manche {c.get('round')} · {((c.get('Circuit') or {}).get('Location') or {}).get('locality', '')}",
+                    "ts": ts, "l1": "", "l2": "", "direct": False,
+                })
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("avenir f1 : %s", err)
+        for prefixe, sport in (("wrc", "WRC"), ("fe", "Formule E")):
+            p = self.prochaines.get(prefixe)
+            if p and p.get("ts"):
+                sortie.append({
+                    "id": f"{prefixe}-av-{p['manche']}", "sport": sport, "titre": p.get("nom") or f"Manche {p['manche']}",
+                    "detail": f"Manche {p['manche']}", "ts": int(p["ts"]), "l1": "", "l2": "", "direct": False,
+                })
+        limite = maintenant + 15 * 86400
+        sortie = [a for a in sortie if maintenant - 7200 < a["ts"] < limite]
+        sortie.sort(key=lambda a: a["ts"])
+        return sortie[:10]
 
     # --- Logos -------------------------------------------------------------------
 
