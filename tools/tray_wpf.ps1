@@ -114,7 +114,7 @@ $script:Demandees = @{}
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ToggleButton">
-            <Border x:Name="b" Background="Transparent" CornerRadius="999" Padding="{TemplateBinding Padding}" Margin="0,0,6,0">
+            <Border x:Name="b" Background="Transparent" CornerRadius="10" Padding="{TemplateBinding Padding}" Margin="0,0,6,0">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
@@ -199,7 +199,7 @@ $script:Demandees = @{}
           </StackPanel>
         </StackPanel>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
-          <Border x:Name="ChipEtat" CornerRadius="999" Background="{StaticResource Haute}" Padding="12,5" Margin="0,4,10,0">
+          <Border x:Name="ChipEtat" CornerRadius="10" Background="{StaticResource Haute}" Padding="12,5" Margin="0,4,10,0">
             <TextBlock x:Name="ChipEtatTexte" Text="OUVERT" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Vert}"/>
           </Border>
           <Button x:Name="Fermer" Style="{StaticResource Secondaire}" Padding="10,4" Content="✕" FontSize="12"/>
@@ -261,7 +261,7 @@ function Bouton([string]$t, [string]$style = 'Secondaire', $action = $null, $tag
 }
 function Chip([string]$t, [string]$couleur) {
     $b = New-Object System.Windows.Controls.Border
-    $b.Background = (Pinceau 'Haute'); $b.CornerRadius = [System.Windows.CornerRadius]::new(999); $b.Padding = [System.Windows.Thickness]::new(10, 4, 10, 4)
+    $b.Background = (Pinceau 'Haute'); $b.CornerRadius = [System.Windows.CornerRadius]::new(10); $b.Padding = [System.Windows.Thickness]::new(10, 4, 10, 4)
     $b.VerticalAlignment = 'Top'
     $tb = Txt $t 11 $couleur $true; $tb.FontWeight = 'Bold'; $b.Child = $tb
     return $b

@@ -50,6 +50,7 @@ class VisionMaisonCard extends HTMLElement {
     this._occupe = false;
     this._ouverts = new Set();
     this._details = new Set();
+    this._mots = new Map();
     this._minuteur = null;
   }
 
@@ -261,6 +262,13 @@ class VisionMaisonCard extends HTMLElement {
       boutons.push(b("ouvrir", "+30 min", 30), b("ouvrir", "+1 h", 60), b("fermer", "Fermer", 0, "ferme"));
     }
     if (a.derogation && a.derogation.mode) boutons.push(b("annuler", "Revenir au planning"));
+    boutons.push(`<button data-mot="${esc(a.id)}" ${this._occupe ? "disabled" : ""}><ha-icon icon="mdi:message-text-outline"></ha-icon> Un mot</button>`);
+    const mot = this._mots.has(a.id)
+      ? `<form class="mot" data-envoi="${esc(a.id)}">
+          <input type="text" maxlength="200" placeholder="Un mot sur son écran…" value="${esc(this._mots.get(a.id) || "")}">
+          <button type="submit" class="principal" ${this._occupe ? "disabled" : ""}>Envoyer</button>
+        </form>`
+      : "";
     const ouvert = this._details.has(a.id);
     const ferme = [...a.apps.map((x) => ({ ...x, genre: "apps" })), ...a.sites.map((x) => ({ ...x, genre: "sites" }))];
     const motif = (x) => {
@@ -282,6 +290,7 @@ class VisionMaisonCard extends HTMLElement {
         </div>
         <div class="acces">${esc(this._acces(a))}</div>
         <div class="boutons">${boutons.join("")}</div>
+        ${mot}
         <button class="lien" data-detail="${esc(a.id)}">
           <ha-icon icon="${ouvert ? "mdi:chevron-down" : "mdi:chevron-right"}"></ha-icon>
           Ce qui est fermé sur cet appareil (${ferme.length})
@@ -410,6 +419,9 @@ class VisionMaisonCard extends HTMLElement {
         .temps { display:inline-flex; align-items:center; gap:3px; font-size:.86em; color: var(--secondary-text-color); }
         .temps ha-icon { --mdc-icon-size: 16px; }
         .acces { font-size:.9em; margin:6px 0 8px; }
+        .mot { display:flex; gap:6px; margin-top:8px; }
+        .mot input { flex:1; padding:6px 10px; border:1px solid var(--divider-color); border-radius:8px; background: var(--card-background-color); color: var(--primary-text-color); font: inherit; }
+        .boutons button ha-icon { --mdc-icon-size: 16px; vertical-align: -3px; }
         .lien { border:none; background:none; padding:6px 0 0; color: var(--secondary-text-color); display:flex; align-items:center; gap:2px; font-size:.86em; }
         .liste { padding:4px 0 0 4px; }
         .item { display:flex; gap:8px; align-items:center; padding:3px 0; font-size:.9em; }
@@ -462,6 +474,25 @@ class VisionMaisonCard extends HTMLElement {
     r.querySelectorAll("[data-action]").forEach((b) =>
       b.addEventListener("click", () =>
         this._agir({ action: b.dataset.action, pc: b.dataset.pc, minutes: Number(b.dataset.min || 0) })));
+    r.querySelectorAll("[data-mot]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const id = b.dataset.mot;
+        this._mots.has(id) ? this._mots.delete(id) : this._mots.set(id, "");
+        this._rendre();
+        const champ = this.shadowRoot.querySelector(`[data-envoi="${id}"] input`);
+        if (champ) champ.focus();
+      }));
+    r.querySelectorAll("[data-envoi]").forEach((f) => {
+      const champ = f.querySelector("input");
+      champ.addEventListener("input", () => this._mots.set(f.dataset.envoi, champ.value));
+      f.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const texte = champ.value.trim();
+        if (!texte) return;
+        this._mots.delete(f.dataset.envoi);
+        await this._agir({ action: "message", pc: f.dataset.envoi, texte });
+      });
+    });
     r.querySelectorAll("[data-detail]").forEach((b) =>
       b.addEventListener("click", () => {
         const id = b.dataset.detail;
