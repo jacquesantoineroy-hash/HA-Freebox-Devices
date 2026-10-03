@@ -134,7 +134,8 @@ class VisionMaisonCard extends HTMLElement {
     if (!a.en_ligne) return { texte: "hors ligne", classe: "off" };
     if (a.verrouille) return { texte: "verrouillé", classe: "lock" };
     if (a.inactif_s > 300) return { texte: `inactif depuis ${duree(a.inactif_s / 60)}`, classe: "idle" };
-    const quoi = a.focus_libelle || a.focus;
+    const brut = String(a.focus || "").replace(/\.exe$/i, "");
+    const quoi = a.focus_libelle || (brut ? brut.charAt(0).toUpperCase() + brut.slice(1) : "");
     return { texte: quoi ? `sur ${quoi}` : "en ligne", classe: "on" };
   }
 

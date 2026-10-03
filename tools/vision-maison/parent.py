@@ -188,7 +188,12 @@ def _fiche(hass: HomeAssistant, coord: PcParentalCoordinator, pc: dict[str, Any]
     override = etat.get("override") or None
     usage = coord.store.usage_du_jour(pc)
     focus = str(agent.get("focus") or "")
-    fiche_focus = (pc.get("apps_vues") or {}).get(focus) if focus else None
+    vues = pc.get("apps_vues") or {}
+    fiche_focus = vues.get(focus) if focus else None
+    if focus and fiche_focus is None:
+        # L'agent dit « robloxplayerbeta », le catalogue connaît « RobloxPlayerBeta ».
+        bas = focus.lower().removesuffix(".exe")
+        fiche_focus = next((f for n, f in vues.items() if str(n).lower().removesuffix(".exe") == bas), None)
     etiquettes = [e for e in labels.noms_du_pc(hass, pc["id"]) if e.lower() != "parents"]
     return {
         "id": pc["id"],
