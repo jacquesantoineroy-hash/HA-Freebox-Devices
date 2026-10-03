@@ -20,8 +20,8 @@ open(AGENT, "w", encoding="utf-8").write(t)
 
 p = BASE + "const.py"
 c = open(p, encoding="utf-8").read()
-assert 'CLIENT_VERSION = "1.51.0"' in c
-open(p, "w", encoding="utf-8").write(c.replace('CLIENT_VERSION = "1.51.0"', 'CLIENT_VERSION = "1.52.1"', 1))
+assert 'CLIENT_VERSION = "1.52.0"' in c
+open(p, "w", encoding="utf-8").write(c.replace('CLIENT_VERSION = "1.52.0"', 'CLIENT_VERSION = "1.52.1"', 1))
 import py_compile
 py_compile.compile(p, doraise=True)
 print("ok", len(tray))
