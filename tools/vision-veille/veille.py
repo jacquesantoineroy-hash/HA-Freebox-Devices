@@ -20,6 +20,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import PcParentalCoordinator
+from .esports import esports
 
 URL_VEILLE = "/api/pc_parental/veille"
 EN_LIGNE_S = 120
@@ -318,6 +319,7 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict
         "maison": _maison(hass, coord),
         "courbe": await _courbe(hass, coord),
         "cameras": _cameras(hass),
+        "esports": esports(hass).demander(),
     }
 
 
