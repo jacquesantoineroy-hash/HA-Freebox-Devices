@@ -16,4 +16,8 @@ for jeu in r.get('esports', []):
         if url:
             rep = post('/api/pc_parental/veille/logo', {'url': url})
             print('   logo', rep.headers.get('Content-Type'), len(rep.read()), 'octets')
-print('esports:', len(r.get('esports', [])), 'jeux')
+for sp in r.get('courses', []):
+    print(sp['sport'])
+    for e in sp['epreuves']:
+        print('  ', e['manche'], e['nom'], time.strftime('%d/%m', time.localtime(e['ts'])) if e['ts'] else '?', [(p['pos'], p['pilote'], p['equipe'], bool(p['logo'])) for p in e['podium']])
+print('esports:', len(r.get('esports', [])), 'jeux ; courses:', len(r.get('courses', [])), 'sports')
