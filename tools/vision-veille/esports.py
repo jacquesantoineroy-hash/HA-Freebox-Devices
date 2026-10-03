@@ -33,11 +33,14 @@ _LOGGER = logging.getLogger(__name__)
 AGENT = "Vision-HomeAssistant/1.0 (ecran de veille familial ; https://github.com/jacquesantoineroy-hash)"
 RAFRAICHISSEMENT = 600
 PAR_JEU = 8
-LOGOS_HOTES = ("owcdn.net", "liquipedia.net")
+LOGOS_HOTES = ("owcdn.net", "liquipedia.net", "upload.wikimedia.org")
 VLR_RESULTATS = "https://www.vlr.gg/matches/results"
 VLR_FILTRE = ("champions tour", "valorant champions", "masters")
 LIQUIPEDIA_RL = "https://liquipedia.net/rocketleague/api.php?action=parse&page=Liquipedia:Matches&format=json&prop=text&disablelimitreport=1"
 RL_FILTRE = ("rlcs", "championship series", "esports world cup", "major", "world championship")
+JOLPICA = "https://api.jolpi.ca/ergast/f1"
+WIKI_API = "https://en.wikipedia.org/w/api.php"
+MOIS_EN = {m: i + 1 for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"])}
 
 _BLOC = re.compile(r'<a href="/(\d+)/[^"]*" class="wf-module-item match-item[^"]*">(.*?)</a>', re.S)
 _EQUIPE = re.compile(
@@ -60,6 +63,10 @@ _LP_EQUIPE = re.compile(
 )
 _LP_SCORE = re.compile(r'match-info-header-scoreholder-score(?: match-info-header-winner)?">\s*(\d*)\s*<')
 _LP_TOURNOI = re.compile(r'match-info-tournament-name"><a [^>]*title="([^"]*)"><span>([^<]*)')
+_W_LIGNE = re.compile(r"<tr[^>]*>(.*?)</tr>", re.S)
+_W_CELLULE = re.compile(r"<t([hd])[^>]*>(.*?)</t[hd]>", re.S)
+_W_LIEN = re.compile(r'<a href="/wiki/([^"#]+)"[^>]*title="([^"]*)"[^>]*>([^<]+)</a>')
+_W_BALISE = re.compile(r"<[^>]+>")
 
 
 def _propre(s: str) -> str:
@@ -83,6 +90,9 @@ class Esports:
         self.store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}_esports")
         self.matchs_vlr: dict[str, dict[str, Any]] = {}  # id → {l1, l2, ts}
         self.resultats: list[dict[str, Any]] = []
+        self.courses: list[dict[str, Any]] = []
+        self.logos_wiki: dict[str, str] = {}  # titre de page Wikipédia → image
+        self.f1_manches: dict[str, dict[str, Any]] = {}  # "2026-15" → épreuve (le passé ne bouge plus)
         self.quand = 0.0
         self.en_cours: asyncio.Task | None = None
         self.charge = False
@@ -95,19 +105,31 @@ class Esports:
         data = await self.store.async_load() or {}
         self.matchs_vlr = dict(data.get("vlr") or {})
         self.resultats = list(data.get("resultats") or [])
+        self.courses = list(data.get("courses") or [])
+        self.logos_wiki = dict(data.get("logos_wiki") or {})
+        self.f1_manches = dict(data.get("f1_manches") or {})
 
     async def _sauver(self) -> None:
         # On ne garde que les matchs récents : la page de résultats ne remonte pas loin.
         if len(self.matchs_vlr) > 400:
             garde = sorted(self.matchs_vlr.items(), key=lambda kv: kv[1].get("ts", 0), reverse=True)[:300]
             self.matchs_vlr = dict(garde)
-        await self.store.async_save({"vlr": self.matchs_vlr, "resultats": self.resultats})
+        if len(self.f1_manches) > 60:
+            self.f1_manches = dict(sorted(self.f1_manches.items())[-40:])
+        await self.store.async_save({
+            "vlr": self.matchs_vlr, "resultats": self.resultats, "courses": self.courses,
+            "logos_wiki": self.logos_wiki, "f1_manches": self.f1_manches,
+        })
 
     def demander(self) -> list[dict[str, Any]]:
         """Les résultats connus, tout de suite ; un rafraîchissement part en fond s'il est temps."""
         if time.time() - self.quand > RAFRAICHISSEMENT and (self.en_cours is None or self.en_cours.done()):
             self.en_cours = self.hass.async_create_background_task(self._rafraichir(), f"{DOMAIN}_esports")
         return self.resultats
+
+    def courses_connues(self) -> list[dict[str, Any]]:
+        self.demander()
+        return self.courses
 
     async def _rafraichir(self) -> None:
         await self._charger()
@@ -122,6 +144,16 @@ class Esports:
             if resultats:
                 sorties.append({"jeu": nom, "resultats": resultats[:PAR_JEU]})
         self.resultats = sorties
+        courses: list[dict[str, Any]] = []
+        for nom, fonction in (("Formule 1", self._f1), ("WRC", self._wrc), ("Formule E", self._formule_e)):
+            try:
+                epreuves = await fonction()
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("courses %s : %s", nom, err)
+                epreuves = next((c["epreuves"] for c in self.courses if c["sport"] == nom), [])
+            if epreuves:
+                courses.append({"sport": nom, "epreuves": epreuves[:4]})
+        self.courses = courses
         await self._sauver()
 
     async def _texte(self, url: str, delai: int = 20) -> str:
@@ -265,6 +297,184 @@ class Esports:
             if len(sortie) >= PAR_JEU:
                 break
         return sortie
+
+    # --- Sport auto ----------------------------------------------------------
+
+    async def _logo_wiki(self, titre: str) -> str:
+        """L'image de la page Wikipédia d'une écurie (son logo, le plus souvent), gardée pour de bon."""
+        titre = titre.replace("_", " ").strip()
+        if not titre:
+            return ""
+        if titre in self.logos_wiki:
+            return self.logos_wiki[titre]
+        url = ""
+        try:
+            data = await self._json(
+                f"{WIKI_API}?action=query&prop=pageimages&titles={titre.replace(' ', '_')}&pithumbsize=240&redirects=1&format=json&formatversion=2"
+            )
+            pages = (data.get("query") or {}).get("pages") or []
+            url = ((pages[0].get("thumbnail") or {}).get("source") or "") if pages else ""
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("wiki %s : %s", titre, err)
+        self.logos_wiki[titre] = url
+        return url
+
+    async def _f1(self) -> list[dict[str, Any]]:
+        """Les trois derniers Grands Prix, podium complet (Jolpica, l'héritier d'Ergast)."""
+        dernier = await self._json(f"{JOLPICA}/current/last/results.json")
+        courses = (((dernier.get("MRData") or {}).get("RaceTable") or {}).get("Races") or [])
+        if not courses:
+            return []
+        saison = courses[0].get("season")
+        manche = int(courses[0].get("round") or 0)
+        sortie: list[dict[str, Any]] = []
+        for r in range(manche, max(0, manche - 3), -1):
+            cle = f"{saison}-{r}"
+            epreuve = self.f1_manches.get(cle)
+            if epreuve is None:
+                if r != manche:
+                    await asyncio.sleep(0.4)
+                    data = await self._json(f"{JOLPICA}/{saison}/{r}/results.json")
+                    liste = (((data.get("MRData") or {}).get("RaceTable") or {}).get("Races") or [])
+                    if not liste:
+                        continue
+                    course = liste[0]
+                else:
+                    course = courses[0]
+                podium = []
+                for res in (course.get("Results") or [])[:3]:
+                    pilote = res.get("Driver") or {}
+                    ecurie = res.get("Constructor") or {}
+                    titre = (ecurie.get("url") or "").rsplit("/", 1)[-1]
+                    podium.append({
+                        "pos": int(res.get("position") or len(podium) + 1),
+                        "pilote": f"{(pilote.get('givenName') or '')[:1]}. {pilote.get('familyName') or ''}".strip(". "),
+                        "equipe": ecurie.get("name") or "",
+                        "logo": await self._logo_wiki(titre),
+                    })
+                try:
+                    ts = int(dt_util.as_timestamp(dt_util.parse_datetime(f"{course.get('date')}T{course.get('time') or '12:00:00Z'}")))
+                except Exception:  # noqa: BLE001
+                    ts = 0
+                epreuve = {
+                    "id": f"f1-{cle}",
+                    "nom": str(course.get("raceName") or "").replace("Grand Prix", "GP"),
+                    "lieu": ((course.get("Circuit") or {}).get("Location") or {}).get("country", ""),
+                    "manche": r,
+                    "ts": ts,
+                    "podium": podium,
+                }
+                if podium:
+                    self.f1_manches[cle] = epreuve
+            if epreuve and epreuve.get("podium"):
+                sortie.append(epreuve)
+        return sortie
+
+    def _texte_cellule(self, cellule: str) -> tuple[str, str]:
+        """(texte, titre de page) d'une cellule : le dernier lien avec du texte, sinon le texte nu."""
+        liens = [(t, html.unescape(titre)) for _, titre, t in _W_LIEN.findall(cellule) if _propre(t)]
+        propre = _propre(_W_BALISE.sub(" ", re.sub(r"<sup.*?</sup>", "", cellule, flags=re.S)))
+        if liens:
+            return _propre(liens[-1][0]), liens[-1][1]
+        return propre, ""
+
+    def _tables(self, page: str) -> list[list[list[tuple[str, str]]]]:
+        """Toutes les tables de la page, en lignes de cellules (type, html)."""
+        page = re.sub(r"<(style|script)[^>]*>.*?</\1>", "", page, flags=re.S)
+        tables = []
+        for table in re.findall(r"<table[^>]*>(.*?)</table>", page, flags=re.S):
+            lignes = []
+            for ligne in _W_LIGNE.findall(table):
+                cellules = _W_CELLULE.findall(ligne)
+                if cellules:
+                    lignes.append(cellules)
+            if lignes:
+                tables.append(lignes)
+        return tables
+
+    def _colonnes(self, entete: list[tuple[str, str]]) -> dict[str, int]:
+        noms = {}
+        for i, (_, c) in enumerate(entete):
+            noms[self._texte_cellule(c)[0].lower()] = i
+        return noms
+
+    def _date_wiki(self, texte: str, annee: int, bascule: bool) -> int:
+        """« 25 January » (ou « 22–25 January ») → horodatage, l'année donnée ; saison à cheval : nov–déc l'année d'avant."""
+        m = re.search(r"(\d{1,2})\s*(?:[–-]\s*\d{1,2}\s*)?([A-Za-z]+)", texte)
+        if not m:
+            return 0
+        mois = MOIS_EN.get(m.group(2).lower())
+        if not mois:
+            return 0
+        explicite = re.search(r"\b(20\d\d)\b", texte)
+        an = int(explicite.group(1)) if explicite else (annee - 1 if bascule and mois >= 10 else annee)
+        try:
+            return int(dt_util.as_timestamp(dt_util.parse_datetime(f"{an}-{mois:02d}-{int(m.group(1)):02d}T14:00:00+00:00")))
+        except Exception:  # noqa: BLE001
+            return 0
+
+    async def _saison_wiki(self, page_titre: str, prefixe: str, annee: int, bascule: bool) -> list[dict[str, Any]]:
+        """Les épreuves gagnées d'une saison Wikipédia : vainqueur, écurie, date (table des résultats + calendrier)."""
+        data = await self._json(f"{WIKI_API}?action=parse&page={page_titre}&prop=text&format=json&formatversion=2&disabletoc=1")
+        page = ((data.get("parse") or {}).get("text") or "")
+        tables = self._tables(page)
+        dates: dict[str, int] = {}
+        resultats: list[dict[str, Any]] = []
+        for lignes in tables:
+            cols = self._colonnes(lignes[0])
+            if "round" not in cols:
+                continue
+            if "winning driver" in cols and not resultats:
+                for cellules in lignes[1:]:
+                    if len(cellules) <= max(cols.values()):
+                        continue
+                    manche = self._texte_cellule(cellules[cols["round"]][1])[0]
+                    ic = next((cols[k] for k in ("event", "rally", "e-prix", "grand prix", "race") if k in cols), None)
+                    ie = next((cols[k] for k in ("winning entrant", "winning team", "winning constructor") if k in cols), None)
+                    if ic is None:
+                        continue
+                    pilote, _ = self._texte_cellule(cellules[cols["winning driver"]][1])
+                    if not pilote or not manche.isdigit():
+                        continue
+                    nom, _ = self._texte_cellule(cellules[ic][1])
+                    equipe, titre_equipe = self._texte_cellule(cellules[ie][1]) if ie is not None else ("", "")
+                    resultats.append({"manche": int(manche), "nom": nom, "pilote": pilote, "equipe": equipe, "titre_equipe": titre_equipe})
+            elif any(k in cols for k in ("finish date", "date", "start date")):
+                idate = next(cols[k] for k in ("finish date", "date", "start date") if k in cols)
+                for cellules in lignes[1:]:
+                    if len(cellules) <= max(cols["round"], idate):
+                        continue
+                    manche = self._texte_cellule(cellules[cols["round"]][1])[0]
+                    if manche.isdigit():
+                        dates[manche] = self._date_wiki(self._texte_cellule(cellules[idate][1])[0], annee, bascule)
+        sortie = []
+        for r in reversed(resultats[-4:]):
+            sortie.append({
+                "id": f"{prefixe}-{annee}-{r['manche']}",
+                "nom": r["nom"],
+                "lieu": "",
+                "manche": r["manche"],
+                "ts": dates.get(str(r["manche"]), 0),
+                "podium": [{"pos": 1, "pilote": r["pilote"], "equipe": r["equipe"], "logo": await self._logo_wiki(r["titre_equipe"] or r["equipe"])}],
+            })
+        return sortie
+
+    async def _wrc(self) -> list[dict[str, Any]]:
+        annee = dt_util.now().year
+        for an in (annee, annee - 1):
+            epreuves = await self._saison_wiki(f"{an}_World_Rally_Championship", "wrc", an, False)
+            if epreuves:
+                return epreuves
+        return []
+
+    async def _formule_e(self) -> list[dict[str, Any]]:
+        annee = dt_util.now().year
+        for an in (annee + 1, annee):
+            # Saison à cheval : « 2026–27 » se termine en 2027 ; les manches de fin d'année sont de l'année d'avant.
+            epreuves = await self._saison_wiki(f"{an - 1}%E2%80%93{str(an)[2:]}_Formula_E_World_Championship", "fe", an, True)
+            if epreuves:
+                return epreuves
+        return []
 
     # --- Logos -------------------------------------------------------------------
 
