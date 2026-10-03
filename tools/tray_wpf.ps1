@@ -535,14 +535,21 @@ function VueCategories($a) {
             if ($k++ -gt 0) { $sp.Children.Add((Separateur)) | Out-Null }
             $nom = [string](Prop $c 'nom')
             $nA = @(Prop $c 'apps' @()).Count; $nS = @(Prop $c 'sites' @()).Count
-            $etat = [string](Prop $etats $nom 'neutre')
+            $e = Prop $etats $nom
+            $choix = 'neutre'; $coupe = $false; $parRegle = $false; $raison = ''
+            if ($e -is [string]) { $choix = $e; $coupe = ($e -eq 'bloquer') }
+            elseif ($null -ne $e) {
+                $choix = [string](Prop $e 'choix' 'neutre'); $coupe = [bool](Prop $e 'coupe' $false)
+                $parRegle = ([bool](Prop $e 'verrou' $false)) -and -not $verrou
+                $raison = [string](Prop $e 'raison' '')
+            }
             $g = New-Object System.Windows.Controls.StackPanel; $g.Cursor = 'Hand'; $g.Tag = $c; $g.Background = [System.Windows.Media.Brushes]::Transparent
             $g.Children.Add((Txt $nom 14 $(if ($verrou) { 'Texte2' } else { 'Texte' }) $true)) | Out-Null
             $det = @(); if ($nA) { $det += "$nA applis" }; if ($nS) { $det += "$nS sites" }
             $d = if ($det.Count) { $det -join ', ' } else { 'vide' }
-            if ([bool](Prop $c 'divertissement' $false)) { $d += ' · règle de moyenne' }
-            if ($etat -eq 'autoriser') { $d += ' · autorisé explicitement' }
+            if ($choix -eq 'autoriser') { $d += ' · autorisé explicitement' }
             $g.Children.Add((Txt $d 11 'Texte2')) | Out-Null
+            if ($raison -and ($parRegle -or $verrou)) { $g.Children.Add((Txt $raison 11 $(if ($parRegle) { 'Or' } else { 'Texte3' }))) | Out-Null }
             $contenu = New-Object System.Windows.Controls.StackPanel; $contenu.Visibility = 'Collapsed'; $contenu.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
             foreach ($x in @(Prop $c 'apps' @())) { $contenu.Children.Add((Txt ('•  ' + [string](Prop $x 'libelle')) 12 'Texte')) | Out-Null }
             foreach ($x in @(Prop $c 'sites' @())) { $contenu.Children.Add((Txt ('◦  ' + [string]$x) 12 'Texte2')) | Out-Null }
@@ -552,7 +559,8 @@ function VueCategories($a) {
             if ($verrou) { $droite = Chip 'MAISON' 'Texte3' }
             else {
                 $droite = New-Object System.Windows.Controls.Primitives.ToggleButton
-                $droite.Style = $W.Resources['Interrupteur']; $droite.IsChecked = ($etat -eq 'bloquer')
+                $droite.Style = $W.Resources['Interrupteur']; $droite.IsChecked = $coupe
+                if ($parRegle) { $droite.IsEnabled = $false; $droite.ToolTip = $raison }
                 $droite.Tag = @{ pc = (Prop $a 'id'); etiquette = $nom }
                 $droite.Add_Click({ param($s, $e); $t = $s.Tag
                     Agir @{ action = 'etiquette'; pc = [string]$t.pc; etiquette = [string]$t.etiquette; etat = $(if ($s.IsChecked) { 'bloquer' } else { 'neutre' }) }
