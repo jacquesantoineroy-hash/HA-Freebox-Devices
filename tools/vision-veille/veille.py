@@ -436,7 +436,8 @@ async def _flux_hls(hass: HomeAssistant, coord: PcParentalCoordinator, entite: s
     demande à Home Assistant de remuxer cette source-là. Sans suffixe, ou si
     la caméra n'a pas d'adresse de flux, c'est le flux normal de l'entité.
     """
-    from homeassistant.components.camera import async_request_stream
+    from homeassistant.components.camera import async_request_stream, get_dynamic_camera_stream_settings
+    from homeassistant.components.stream import HLS_PROVIDER, create_stream
 
     suffixe = str(getattr(coord.store, "veille_flux_suffixe", "") or "").strip()
     composant = hass.data.get("camera")
@@ -449,9 +450,6 @@ async def _flux_hls(hass: HomeAssistant, coord: PcParentalCoordinator, entite: s
     flux: dict[str, Any] = hass.data.setdefault(f"{DOMAIN}_veille_flux", {})
     stream = flux.get(secondaire)
     if stream is None or not stream.available:
-        from homeassistant.components.camera import get_dynamic_camera_stream_settings
-        from homeassistant.components.stream import HLS_PROVIDER, create_stream
-
         stream = create_stream(
             hass,
             secondaire,
