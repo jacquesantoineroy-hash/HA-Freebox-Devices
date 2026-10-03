@@ -321,6 +321,7 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict
         "cameras": _cameras(hass),
         "esports": esports(hass).demander(),
         "courses": esports(hass).courses_connues(),
+        "musique": str(getattr(coord.store, "veille_musique", "") or ""),
     }
 
 
