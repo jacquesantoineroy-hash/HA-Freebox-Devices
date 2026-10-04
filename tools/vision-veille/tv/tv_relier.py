@@ -1,5 +1,8 @@
 """Relie un appareil Android TV à Vision sans clavier : python3 tv_relier.py 192.168.1.5:35659 [Affichage]
 
+L'adresse publique de Home Assistant se lit dans la variable d'environnement
+VISION_ADRESSE, ou dans le fichier /homeassistant/vision_adb/adresse.txt.
+
 Envoie le bloc adresse / clé à l'écran d'inscription par un intent (l'appareil
 ne doit pas être déjà inscrit).
 """
@@ -8,7 +11,8 @@ import subprocess
 import sys
 
 ADB = "/homeassistant/vision_adb/platform-tools/adb"
-ADRESSE = "https://familleroy.duckdns.org:44380"
+import os
+ADRESSE = os.environ.get("VISION_ADRESSE") or open("/homeassistant/vision_adb/adresse.txt").read().strip()
 serie = sys.argv[1]
 d = json.load(open("/homeassistant/.storage/pc_parental"))["data"]
 cle = d.get("enroll_key") or ""
