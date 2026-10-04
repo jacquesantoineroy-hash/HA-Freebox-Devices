@@ -331,8 +331,18 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict
         "demandes": plus.demandes(hass, coord),
         "chauffage": await plus.chauffage(hass, coord),
         "photos": await plus.photos(hass),
-        "batteries": await plus.batteries(hass),
+        "batteries": await _sans_erreur(plus.batteries(hass), []),
     }
+
+
+async def _sans_erreur(coro, defaut):
+    """Un morceau facultatif de l'écran ne doit jamais faire tomber tout l'écran."""
+    try:
+        return await coro
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning("Écran de veille : %s", e, exc_info=True)
+        return defaut
 
 
 def _cameras(hass: HomeAssistant) -> list[dict[str, str]]:
