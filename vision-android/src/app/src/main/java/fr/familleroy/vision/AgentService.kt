@@ -36,8 +36,26 @@ class AgentService : Service() {
         }
     }
 
+    /** Télé : une appli autorisée (YouTube…) joue au premier plan et personne ne touche la télécommande
+     *  depuis le délai choisi : la veille vient en couche, sans l'interrompre (le rêve du système l'aurait mise en pause). */
+    private val veilleSurAppli = object : Runnable {
+        override fun run() {
+            try {
+                val ctx = this@AgentService
+                val min = Local.delaiVeille(ctx)
+                if (min > 0 && ReglagesTvActivity.estTele(ctx) && !Veille.ouverte && Usage.ecranAllume(ctx) && Veille.permise(ctx)) {
+                    val pk = Local.appEnFond(ctx)
+                    val repos = System.currentTimeMillis() - maxOf(Usage.derniereInteraction, Veille.fermeeA)
+                    if (pk != null && repos >= min * 60_000L) Veille.ouvrir(ctx)
+                }
+            } catch (_: Exception) {}
+            principal.postDelayed(this, 20_000)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        principal.postDelayed(veilleSurAppli, 20_000)
         fil = HandlerThread("vision-agent").apply { start() }
         h = Handler(fil.looper)
         demarrerPremierPlan()
@@ -53,6 +71,7 @@ class AgentService : Service() {
 
     override fun onDestroy() {
         h.removeCallbacks(battement)
+        principal.removeCallbacks(veilleSurAppli)
         fil.quitSafely()
         // Android a tué le service : on demande à être relancé.
         if (Config(this).inscrit) demarrer(this)

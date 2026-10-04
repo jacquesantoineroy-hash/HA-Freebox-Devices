@@ -83,6 +83,9 @@ class VisionAccessibility : AccessibilityService() {
             AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED,
             AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
             AccessibilityEvent.TYPE_GESTURE_DETECTION_START,
+            // Télécommande : passer d'une case à l'autre, c'est quelqu'un devant l'écran.
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
+            AccessibilityEvent.TYPE_VIEW_SELECTED,
         )
         @Volatile var actif = false
 

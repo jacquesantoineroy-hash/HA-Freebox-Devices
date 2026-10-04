@@ -248,6 +248,9 @@ class VeilleView(ctx: Context) : View(ctx) {
     private val dureeEsportMs = 22_000L
     private val dureePhotosMs = 30_000L
     private var tourPhotos = 0
+    // Interaction : tableau figé par l'utilisateur, et instant du dernier geste (pour l'indicateur).
+    private var pause = false
+    private var interactionA = 0L
     private val traceMs = 12_000L
     private val fonduMs = 900L
     private val depart = SystemClock.uptimeMillis()
@@ -344,6 +347,28 @@ class VeilleView(ctx: Context) : View(ctx) {
         main.removeCallbacks(tic)
         main.post(tic)
     }
+
+    /** Tableau précédent (-1) ou suivant (+1), à la demande de l'utilisateur. */
+    fun naviguer(delta: Int) {
+        val now = SystemClock.uptimeMillis()
+        interactionA = now
+        if (tableaux.size <= 1) return
+        val n = tableaux.size
+        indice = ((indice + delta) % n + n) % n
+        changeA = now
+        invalidate()
+    }
+
+    /** Figer le tableau en cours, ou reprendre le défilement. */
+    fun basculerPause() {
+        pause = !pause
+        interactionA = SystemClock.uptimeMillis()
+        if (!pause) changeA = interactionA
+        invalidate()
+    }
+
+    /** Montre l'indicateur sans rien changer (touche sans effet). */
+    fun signaler() { interactionA = SystemClock.uptimeMillis(); invalidate() }
 
     fun arreter() {
         musique.arreter()
@@ -536,7 +561,7 @@ class VeilleView(ctx: Context) : View(ctx) {
         var ecoule = maintenant - changeA
         val courant = tableaux.getOrNull(indice)
         val dureeActuelle = if (courant != null && courant.dureeMs > 0) courant.dureeMs else when (courant?.genre) { Genre.COURBE -> dureeCourbeMs; Genre.CAMERAS -> dureeCamerasMs; Genre.ESPORTS, Genre.COURSES, Genre.ECOLE, Genre.AVENIR, Genre.CHAUFFAGE, Genre.BATTERIES -> dureeEsportMs; Genre.PHOTOS -> dureePhotosMs; else -> dureeMs }
-        if (ecoule >= dureeActuelle && tableaux.size > 1) {
+        if (!pause && ecoule >= dureeActuelle && tableaux.size > 1) {
             if (tableaux.getOrNull(indice)?.genre == Genre.PHOTOS) tourPhotos++
             indice = (indice + 1) % tableaux.size
             changeA = maintenant; ecoule = 0
@@ -545,7 +570,7 @@ class VeilleView(ctx: Context) : View(ctx) {
 
         val entree = min(1f, ecoule / fonduMs.toFloat())
         val reste = dureeActuelle - ecoule
-        val sortie = if (reste < fonduMs) reste / fonduMs.toFloat() else 1f
+        val sortie = if (!pause && reste < fonduMs) reste / fonduMs.toFloat() else 1f
         // Les caméras se rafraîchissent pendant leur tableau, et juste avant qu'il n'arrive.
         val suivant = tableaux.getOrNull((indice + 1) % tableaux.size)
         val actuel = tableaux.getOrNull(indice)
@@ -600,7 +625,43 @@ class VeilleView(ctx: Context) : View(ctx) {
         c.translate(dx, dy)
         if (tableau.genre != Genre.HORLOGE) dessinerPetiteHorloge(c, w, h)
         dessinerPied(c, w, h, t)
+        dessinerIndicateur(c, w, h, maintenant)
         c.restore()
+    }
+
+    /** Les points des tableaux et l'état figé, quelques secondes après un geste (en permanence quand c'est figé). */
+    private fun dessinerIndicateur(c: Canvas, w: Float, h: Float, maintenant: Long) {
+        val depuis = maintenant - interactionA
+        val alpha = when {
+            pause -> 1f
+            interactionA == 0L || depuis > 3200 -> return
+            depuis > 2400 -> 1f - (depuis - 2400) / 800f
+            else -> min(1f, depuis / 200f)
+        }
+        val n = min(tableaux.size, 14)
+        val r = h * 0.0055f; val pas = h * 0.022f
+        val cy = h * 0.955f
+        val largeurPoints = (n - 1) * pas
+        var x = w / 2f - largeurPoints / 2f
+        pForme.style = Paint.Style.FILL
+        for (i in 0 until n) {
+            val actuel = i == indice % n
+            pForme.color = if (actuel) pourpre else encre3
+            pForme.alpha = ((if (actuel) 0.95f else 0.45f) * alpha * 255).toInt()
+            c.drawCircle(x, cy, if (actuel) r * 1.35f else r, pForme)
+            x += pas
+        }
+        if (pause) {
+            // Deux barres : le défilement est figé.
+            val bx = w / 2f - largeurPoints / 2f - pas * 1.6f
+            pForme.color = or; pForme.alpha = (0.95f * alpha * 255).toInt()
+            val bh = h * 0.012f; val bw = h * 0.0035f
+            c.drawRoundRect(RectF(bx - bw * 2.2f, cy - bh, bx - bw * 0.2f, cy + bh), bw, bw, pForme)
+            c.drawRoundRect(RectF(bx + bw * 0.2f, cy - bh, bx + bw * 2.2f, cy + bh), bw, bw, pForme)
+        }
+        val aide = if (ReglagesTvActivity.estTele(context)) (if (pause) "OK pour reprendre le défilement" else "\u25C2 \u25B8 tableaux \u00b7 OK pour figer")
+                   else (if (pause) "Toucher pour reprendre le défilement" else "Glisser pour changer de tableau \u00b7 toucher pour figer")
+        ecrire(c, aide, w / 2f, cy - h * 0.022f, h * 0.02f, encre3, 0.85f * alpha, normal, Paint.Align.CENTER)
     }
 
     // --- Fond ------------------------------------------------------------------

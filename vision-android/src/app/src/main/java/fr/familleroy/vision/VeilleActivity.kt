@@ -10,10 +10,11 @@ import android.widget.FrameLayout
 
 /**
  * L'écran de veille à la demande, depuis le lanceur : la même vue que le
- * service de rêve, en plein écran, qui se retire à la première touche.
+ * service de rêve, en plein écran ; se feuillette et se retire sur Retour.
  */
 class VeilleActivity : Activity() {
     private var vue: VeilleView? = null
+    private val gestes by lazy { GestesVeille(this, { vue }) { finish() } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,6 +33,6 @@ class VeilleActivity : Activity() {
     override fun onResume() { super.onResume(); Veille.fermer(); vue?.demarrer() }
     override fun onPause() { vue?.arreter(); super.onPause() }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean { finish(); return true }
-    override fun onTouchEvent(event: MotionEvent?): Boolean { finish(); return true }
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean = gestes.touche(event)
+    override fun onTouchEvent(event: MotionEvent?): Boolean = event?.let { gestes.toucher(it) } ?: true
 }

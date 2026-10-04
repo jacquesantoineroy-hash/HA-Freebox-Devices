@@ -2,6 +2,8 @@ package fr.familleroy.vision
 
 import android.content.Context
 import android.media.AudioManager
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.service.dreams.DreamService
 import android.widget.FrameLayout
 
@@ -10,15 +12,18 @@ import android.widget.FrameLayout
  * la maison. Heure, météo et vigilance Météo-France, qui est devant quel
  * écran, et les chiffres que la maison a choisis dans Home Assistant.
  *
- * Rien d'interactif : la première touche de la télécommande rend la main.
+ * Gauche et droite feuillettent les tableaux, OK fige ; Retour rend la main.
+ * Si une appli autorisée joue au premier plan (YouTube…), le rêve du système
+ * l'aurait mise en pause : on lui laisse la place et la veille passe en couche.
  */
 class VeilleService : DreamService() {
     private var vue: VeilleView? = null
     private var appFond: String? = null
+    private val gestes by lazy { GestesVeille(this, { vue }) { finish() } }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        isInteractive = false
+        isInteractive = true
         isFullscreen = true
         isScreenBright = true
         val cadre = FrameLayout(this)
@@ -38,6 +43,13 @@ class VeilleService : DreamService() {
         appFond = try { Local.appEnFond(this) } catch (_: Exception) { null }
         val proteger = try { Local.appAProteger(this) } catch (_: Exception) { false }
         if (proteger) { finish(); return }
+        if (appFond != null && Veille.permise(this)) {
+            // Le rêve met l'appli en pause (YouTube s'arrête) : la couche, elle, la laisse jouer.
+            appFond = null
+            finish()
+            Veille.ouvrir(this)
+            return
+        }
         Veille.fermer()
         vue?.demarrer()
     }
@@ -50,6 +62,9 @@ class VeilleService : DreamService() {
         if (pk != null && eveille) RetourActivity.proposer(this, pk)
         super.onDreamingStopped()
     }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean = gestes.touche(event)
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean = gestes.toucher(event)
 
     override fun onDetachedFromWindow() {
         vue?.arreter()

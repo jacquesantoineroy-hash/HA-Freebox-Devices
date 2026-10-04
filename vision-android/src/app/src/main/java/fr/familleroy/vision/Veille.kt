@@ -19,8 +19,8 @@ import android.widget.FrameLayout
  * réglage « Lancer l'écran de veille »). Posé en **couche par-dessus**
  * l'appli ouverte plutôt qu'en activité : YouTube, Spotify ou un jeu restent
  * au premier plan pour Android et continuent, image et son compris. La
- * première touche ou le premier toucher retire la couche et rend la main à
- * ce qui jouait. Sans le droit d'afficher par-dessus, on retombe sur
+ * veille se feuillette (gauche, droite, OK) et se retire sur Retour ou un
+ * glissement vers le haut, rendant la main à ce qui jouait. Sans le droit d'afficher par-dessus, on retombe sur
  * l'activité classique (qui, elle, met l'appli du dessous en pause). Seule
  * l'inactivité (le rêve du système, ou la minuterie de l'accueil) coupe ce
  * qui est en cours.
@@ -33,6 +33,8 @@ object Veille {
     private var ouvertA = 0L
     private var appFond: String? = null
     private var recepteur: android.content.BroadcastReceiver? = null
+    /** Instant (horloge murale) de la dernière fermeture : l'inactivité repart de là. */
+    @Volatile var fermeeA = 0L
 
     fun permise(ctx: Context): Boolean = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(ctx)
 
@@ -43,9 +45,10 @@ object Veille {
         val app = ctx.applicationContext
         appCtx = app
         val wm = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val gestes = GestesVeille(app, { vue }) { fermer(parUtilisateur = true) }
         val cadre = object : FrameLayout(app) {
-            override fun dispatchKeyEvent(e: KeyEvent): Boolean { if (e.action == KeyEvent.ACTION_DOWN) fermer(parUtilisateur = true); return true }
-            override fun dispatchTouchEvent(e: MotionEvent): Boolean { if (e.action == MotionEvent.ACTION_DOWN) fermer(parUtilisateur = true); return true }
+            override fun dispatchKeyEvent(e: KeyEvent): Boolean = gestes.touche(e)
+            override fun dispatchTouchEvent(e: MotionEvent): Boolean = gestes.toucher(e)
             // Quelque chose est passé devant (le rêve du système, une autre appli) : la couche n'a plus lieu d'être.
             // Sinon elle resterait dessous, musique et caméras comprises, sans que personne puisse l'arrêter.
             override fun onWindowFocusChanged(a: Boolean) { super.onWindowFocusChanged(a); if (!a && SystemClock.uptimeMillis() - ouvertA > 1500) fermer() }
@@ -84,6 +87,7 @@ object Veille {
     fun fermer(parUtilisateur: Boolean = false) {
         val c = couche ?: return
         couche = null
+        fermeeA = System.currentTimeMillis()
         val pk = appFond; appFond = null
         if (parUtilisateur && pk != null) main.postDelayed({ appCtx?.let { RetourActivity.proposer(it, pk) } }, 150)
         main.removeCallbacks(gardien)
