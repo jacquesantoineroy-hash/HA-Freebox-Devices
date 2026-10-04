@@ -1,11 +1,17 @@
-"""Pages de l'écran de veille composées avec des cartes Home Assistant.
+"""Tableaux de l'écran de veille composés avec des cartes Home Assistant.
 
 Un tableau de bord ordinaire, « Écran de veille » (adresse `vision-veille`),
 s'édite avec l'éditeur de Home Assistant : on y glisse des cartes, on les
-déplace, on ajoute des vues. Chaque **vue** devient une page de l'écran de
+déplace, on ajoute des vues. Chaque **vue** devient un tableau de l'écran de
 veille ; chaque **carte** devient une case (valeur, jauge, courbe, état ou
-texte), dans l'ordre de la vue. Huit cases par page : au-delà, la vue se
-poursuit sur une page suivante.
+texte), dans l'ordre de la vue. Huit cases par tableau : au-delà, la vue se
+poursuit sur un tableau suivant.
+
+Pour qui et combien de temps : l'adresse de la vue (champ « URL » de la vue)
+peut porter des mots séparés par des tirets : `tele`, `telephone` (écrans) ;
+`parents`, `enfants`, `affichage` (publics) ; `30s` (durée, 5 à 120 s).
+Exemple : `chauffage-tele-parents-30s`. Sans ces mots : tous les écrans, tout
+le monde, 22 secondes.
 
 Cartes comprises : tuile, entité, capteur (avec ou sans courbe), jauge,
 entités, aperçu (glance), graphique d'historique ou de statistiques,
@@ -46,6 +52,30 @@ async def _config(hass: HomeAssistant) -> dict[str, Any] | None:
         return await tableau.async_load(False)
     except Exception:  # noqa: BLE001  (tableau encore vide, ou illisible)
         return None
+
+
+ECRANS = {"tele": "tele", "telephone": "telephone", "mobile": "telephone"}
+PUBLICS = {"parents": "parent", "parent": "parent", "enfants": "enfant", "enfant": "enfant", "affichage": "affichage"}
+
+
+def _cible(vue: dict[str, Any]) -> dict[str, Any]:
+    """Écrans, publics et durée lus dans l'adresse de la vue."""
+    ecrans: list[str] = []
+    publics: list[str] = []
+    duree = DUREE
+    for mot in str(vue.get("path") or "").lower().split("-"):
+        if mot in ECRANS and ECRANS[mot] not in ecrans:
+            ecrans.append(ECRANS[mot])
+        elif mot in PUBLICS and PUBLICS[mot] not in publics:
+            publics.append(PUBLICS[mot])
+        elif mot.endswith("s") and mot[:-1].isdigit():
+            duree = max(5, min(120, int(mot[:-1])))
+    return {
+        "ecrans": ecrans or ["tele", "telephone"],
+        "publics": publics or ["affichage", "parent", "enfant"],
+        "personnes": [],
+        "duree": duree,
+    }
 
 
 def _entites_de(liste: Any) -> list[dict[str, Any]]:
@@ -107,15 +137,16 @@ async def pages(hass: HomeAssistant) -> list[dict[str, Any]]:
                 if isinstance(section, dict):
                     cartes.extend(section.get("cards") or [])
             cases = [c for carte in cartes for c in _cases_de(carte)]
-            titre = str(vue.get("title") or "Page {}".format(n + 1))
+            titre = str(vue.get("title") or "Tableau {}".format(n + 1))
+            cible = _cible(vue)
             for k in range(0, len(cases), CASES_PAR_PAGE):
                 if len(sortie) >= MAX_PAGES:
                     break
                 sortie.append({
                     "id": "page{}_{}".format(n, k // CASES_PAR_PAGE),
                     "titre": titre,
-                    "duree": DUREE,
                     "cases": cases[k:k + CASES_PAR_PAGE],
+                    **cible,
                 })
     except Exception:  # noqa: BLE001
         _LOGGER.exception("Lecture des pages de l'écran de veille")

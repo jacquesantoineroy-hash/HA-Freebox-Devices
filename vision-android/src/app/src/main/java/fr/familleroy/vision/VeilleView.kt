@@ -1364,13 +1364,23 @@ class VeilleView(ctx: Context) : View(ctx) {
         titre(c, def.titre, w, h, alpha, ecoule)
         val gauche = w * 0.08f; val droite = w * 0.92f
         val haut = h * 0.24f; val bas = h * 0.89f
-        val colonnes = when (cases.size) { 1 -> 1; 2 -> 2; 3, 4 -> 2; 5, 6 -> 3; else -> 4 }
-        val rangees = if (cases.size <= 2) 1 else 2
-        val ecart = h * 0.025f
-        val lc = (droite - gauche - ecart * (colonnes - 1)) / colonnes
+        // La grille s'adapte à l'écran : on retient le nombre de colonnes qui donne les cases les mieux
+        // proportionnées (télé couchée : 4 x 2 ; téléphone debout : 2 x 4 ou une seule colonne).
+        val ecart = min(h, w) * 0.025f
+        var colonnes = 1; var meilleur = Float.MAX_VALUE
+        for (essai in 1..min(4, cases.size)) {
+            val rg = (cases.size + essai - 1) / essai
+            val forme = ((droite - gauche - ecart * (essai - 1)) / essai) / ((bas - haut - ecart * (rg - 1)) / rg)
+            val ecartForme = kotlin.math.abs(kotlin.math.ln(forme / 1.45f))
+            if (ecartForme < meilleur) { meilleur = ecartForme; colonnes = essai }
+        }
+        val rangees = (cases.size + colonnes - 1) / colonnes
         val hc = (bas - haut - ecart * (rangees - 1)) / rangees
         cases.forEachIndexed { i, k ->
             val col = i % colonnes; val rang = i / colonnes
+            // Une dernière rangée incomplète s'étire sur toute la largeur.
+            val dansRangee = if (rang == rangees - 1) cases.size - rang * colonnes else colonnes
+            val lc = (droite - gauche - ecart * (dansRangee - 1)) / dansRangee
             val pi = etape(ecoule, 100 + 110L * i, 700)
             val x = gauche + col * (lc + ecart); val y = haut + rang * (hc + ecart) + (1f - pi) * h * 0.03f
             val r = RectF(x, y, x + lc, y + hc)
@@ -1387,7 +1397,11 @@ class VeilleView(ctx: Context) : View(ctx) {
                 else -> {
                     // Du texte : l'état tel quel, en grand s'il est court.
                     val taille = if (k.texte.length <= 12) min(hc * 0.28f, lc * 0.14f) else min(hc * 0.16f, lc * 0.08f)
-                    ecrire(c, k.texte, r.left + pad, r.top + pad + petit + h * 0.02f + taille, taille, encre, alpha * pi, fin)
+                    // Jamais de débordement : le texte passe à la ligne dans la case, et se coupe s'il reste trop long.
+                    val interligne = taille * 1.25f
+                    val place = ((r.bottom - pad) - (r.top + pad + petit + h * 0.02f)) / interligne
+                    val lignes = decouper(k.texte, taille, fin, lc - pad * 2, max(1, place.toInt()))
+                    lignes.forEachIndexed { n, ligne -> ecrire(c, ligne, r.left + pad, r.top + pad + petit + h * 0.02f + taille + n * interligne, taille, encre, alpha * pi, fin) }
                 }
             }
         }

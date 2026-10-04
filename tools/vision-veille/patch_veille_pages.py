@@ -10,8 +10,13 @@ shutil.copy2("veille_pages.py", BASE + "veille_pages.py")
 py_compile.compile(BASE + "veille_pages.py", doraise=True)
 
 p = BASE + "veille_tableaux.py"
-t = open(p, encoding="utf-8").read()
-shutil.copy2(p, p + ".bakpages")
+# Rejouable : on repart toujours du fichier d'avant le premier passage.
+import os
+if os.path.exists(p + ".bakpages"):
+    t = open(p + ".bakpages", encoding="utf-8").read()
+else:
+    t = open(p, encoding="utf-8").read()
+    shutil.copy2(p, p + ".bakpages")
 
 
 def remplacer(a, b):
@@ -44,6 +49,8 @@ remplacer(
     "    try:\n"
     "        from . import veille_pages\n"
     "        for page in await veille_pages.pages(hass):\n"
+    "            if not _vise(page, ecran, qui):\n"
+    "                continue\n"
     "            cases = [await _case_page(hass, c) for c in page[\"cases\"]]\n"
     "            cases = [c for c in cases if not c.get(\"absent\")]\n"
     "            if cases:\n"
