@@ -29,7 +29,7 @@ class VeilleActivity : Activity() {
         setContentView(cadre)
     }
 
-    override fun onResume() { super.onResume(); vue?.demarrer() }
+    override fun onResume() { super.onResume(); Veille.fermer(); vue?.demarrer() }
     override fun onPause() { vue?.arreter(); super.onPause() }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean { finish(); return true }

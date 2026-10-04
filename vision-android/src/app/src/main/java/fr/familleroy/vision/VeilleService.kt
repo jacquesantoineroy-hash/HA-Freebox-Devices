@@ -1,5 +1,7 @@
 package fr.familleroy.vision
 
+import android.content.Context
+import android.media.AudioManager
 import android.service.dreams.DreamService
 import android.widget.FrameLayout
 
@@ -30,6 +32,10 @@ class VeilleService : DreamService() {
 
     override fun onDreamingStarted() {
         super.onDreamingStarted()
+        // Une appli joue (Netflix, YouTube, Spotify…) : ce n'est pas le moment, on rend la main tout de suite.
+        val autre = try { (getSystemService(Context.AUDIO_SERVICE) as AudioManager).isMusicActive && !Musique.enCours } catch (_: Exception) { false }
+        if (autre) { finish(); return }
+        Veille.fermer()
         vue?.demarrer()
     }
 

@@ -51,12 +51,8 @@ class DnsVpnService : VpnService() {
         // Les applis de télé qui refusent tout réseau « VPN » (OQEE / Free TV sur Android 9 ne voit plus le Wi-Fi) :
         // elles passent à côté du tunnel. Leur blocage reste celui des applis, pas du DNS.
         for (pkg in HORS_TUNNEL) try { b.addDisallowedApplication(pkg) } catch (_: Exception) {}
-        // Le réseau réel (Wi-Fi, Ethernet) reste déclaré sous le tunnel, pour les applis qui regardent le transport.
-        if (Build.VERSION.SDK_INT >= 22) try {
-            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val reseau = if (Build.VERSION.SDK_INT >= 23) cm.activeNetwork else null
-            if (reseau != null) b.setUnderlyingNetworks(arrayOf(reseau)) else b.setUnderlyingNetworks(null)
-        } catch (_: Exception) {}
+        // Les réseaux sous le tunnel restent ceux du système (par défaut) : déclarer le réseau actif à la main
+        // pouvait désigner l'ancien tunnel au redémarrage du VPN et casser la résolution sur Android 9.
         val t = try { b.establish() } catch (_: Exception) { null } ?: run {
             actif = false; stopSelf(); return
         }

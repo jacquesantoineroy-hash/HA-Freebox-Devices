@@ -141,7 +141,10 @@ class LanceurActivity : Activity() {
     }
 
     /** Sur télé : sans touche pendant le délai choisi, l'écran de veille vient (en plus du réglage système, quand il a pu être écrit). */
-    private val veilleAuto = Runnable { if (tele && !isFinishing && Local.delaiVeille(this) > 0) startActivity(Intent(this, VeilleActivity::class.java)) }
+    private val veilleAuto = Runnable {
+        val autre = try { (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).isMusicActive } catch (_: Exception) { false }
+        if (tele && !isFinishing && Local.delaiVeille(this) > 0 && !Veille.ouverte && !autre) startActivity(Intent(this, VeilleActivity::class.java))
+    }
     private fun armerVeille() {
         main.removeCallbacks(veilleAuto)
         val min = Local.delaiVeille(this)

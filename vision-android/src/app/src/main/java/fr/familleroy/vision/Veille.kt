@@ -6,6 +6,7 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -29,6 +30,8 @@ object Veille {
     private var couche: View? = null
     private var vue: VeilleView? = null
     private var appCtx: Context? = null
+    private var ouvertA = 0L
+    private var recepteur: android.content.BroadcastReceiver? = null
 
     fun permise(ctx: Context): Boolean = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(ctx)
 
@@ -42,6 +45,9 @@ object Veille {
         val cadre = object : FrameLayout(app) {
             override fun dispatchKeyEvent(e: KeyEvent): Boolean { if (e.action == KeyEvent.ACTION_DOWN) fermer(); return true }
             override fun dispatchTouchEvent(e: MotionEvent): Boolean { if (e.action == MotionEvent.ACTION_DOWN) fermer(); return true }
+            // Quelque chose est passé devant (le rêve du système, une autre appli) : la couche n'a plus lieu d'être.
+            // Sinon elle resterait dessous, musique et caméras comprises, sans que personne puisse l'arrêter.
+            override fun onWindowFocusChanged(a: Boolean) { super.onWindowFocusChanged(a); if (!a && SystemClock.uptimeMillis() - ouvertA > 1500) fermer() }
         }
         cadre.isFocusable = true; cadre.isFocusableInTouchMode = true
         val v = VeilleView(app)
@@ -56,18 +62,29 @@ object Veille {
         lp.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         try {
             wm.addView(cadre, lp)
-            couche = cadre; vue = v
+            couche = cadre; vue = v; ouvertA = SystemClock.uptimeMillis()
             Bulle.retirer()
+            // L'écran de veille du système ou l'extinction de l'écran ferment la couche.
+            val r = object : android.content.BroadcastReceiver() { override fun onReceive(c: Context, i: Intent) { fermer() } }
+            recepteur = r
+            try { app.registerReceiver(r, android.content.IntentFilter().apply { addAction(Intent.ACTION_DREAMING_STARTED); addAction(Intent.ACTION_SCREEN_OFF) }) } catch (_: Exception) { recepteur = null }
             main.post { cadre.requestFocus(); v.demarrer() }
+            // Filet de sécurité : une couche ne vit jamais plus de deux heures.
+            main.postDelayed(gardien, 2 * 3600_000L)
         } catch (_: Exception) {
             couche = null; vue = null
             ctx.startActivity(Intent(ctx, VeilleActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
 
+    private val gardien = Runnable { fermer() }
+
     fun fermer() {
         val c = couche ?: return
         couche = null
+        main.removeCallbacks(gardien)
+        recepteur?.let { r -> try { appCtx?.unregisterReceiver(r) } catch (_: Exception) {} }
+        recepteur = null
         try { vue?.arreter() } catch (_: Exception) {}
         vue = null
         try { (appCtx?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.removeView(c) } catch (_: Exception) {}

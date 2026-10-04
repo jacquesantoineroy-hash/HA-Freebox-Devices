@@ -44,7 +44,7 @@ cp src/app/build/outputs/apk/release/app-release.apk vision.apk
 python3 - <<'EOF'
 import hashlib, json
 sha = hashlib.sha256(open("vision.apk", "rb").read()).hexdigest()
-json.dump({"version": "1.28.3", "sha256": sha, "path": "/api/pc_parental/android/vision.apk?v=1.5.0"}, open("vision.json", "w"), indent=2)
+json.dump({"version": "1.28.5", "sha256": sha, "path": "/api/pc_parental/android/vision.apk?v=1.5.0"}, open("vision.json", "w"), indent=2)
 EOF
 ```
 
