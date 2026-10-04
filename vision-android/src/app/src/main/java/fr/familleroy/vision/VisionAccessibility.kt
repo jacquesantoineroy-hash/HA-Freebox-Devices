@@ -4,6 +4,9 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
 import android.provider.Settings
+import android.content.Intent
+import android.os.SystemClock
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.Locale
@@ -26,6 +29,44 @@ class VisionAccessibility : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    // ---- Vision à la place de l'accueil du système (Google TV impose le sien : on ne peut que passer devant) ----
+
+    private var accueilVerifieA = 0L
+    private var accueilAutre = false
+    private val redirections = ArrayDeque<Long>()
+
+    /** Vrai sur une télé inscrite dont l'accueil système n'est pas Vision, option active. */
+    private fun prendAccueil(): Boolean {
+        val now = SystemClock.uptimeMillis()
+        if (accueilVerifieA == 0L || now - accueilVerifieA > 60_000) {
+            accueilVerifieA = now
+            accueilAutre = try {
+                val r = packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+                ReglagesTvActivity.estTele(this) && r?.activityInfo?.packageName != packageName
+            } catch (_: Exception) { false }
+        }
+        return accueilAutre && Local.accueilForce(this) && Config(this).inscrit
+    }
+
+    private fun ouvrirVision(): Boolean {
+        // Garde-fou : si Vision ne tient pas devant (plantage), on rend l'accueil du système plutôt que de boucler.
+        val now = SystemClock.uptimeMillis()
+        while (redirections.isNotEmpty() && now - redirections.first() > 30_000) redirections.removeFirst()
+        if (redirections.size >= 5) return false
+        redirections.addLast(now)
+        return try {
+            startActivity(Intent(this, LanceurActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_ANIMATION)); true
+        } catch (_: Exception) { false }
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode != KeyEvent.KEYCODE_HOME || !prendAccueil()) return false
+        // Appui long laissé au système (tableau de bord Google TV).
+        if (event.action == KeyEvent.ACTION_DOWN) return event.repeatCount == 0
+        if (event.action == KeyEvent.ACTION_UP) { Usage.derniereInteraction = System.currentTimeMillis(); return ouvrirVision() }
+        return false
+    }
+
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         e ?: return
         val pkg = e.packageName?.toString() ?: return
@@ -42,6 +83,9 @@ class VisionAccessibility : AccessibilityService() {
         if (pkg != "com.android.systemui" && !pkg.contains("inputmethod") && !pkg.contains("keyboard")) {
             Usage.dernierPaquet = pkg
         }
+        // L'accueil du système vient de passer devant (démarrage, sortie d'une appli) : Vision prend sa place.
+        if (pkg != packageName && pkg.contains("launcher") && (e.className?.toString() ?: "").contains("home", ignoreCase = true)
+            && pkg in Usage.lanceurs(this) && prendAccueil()) { ouvrirVision(); return }
         if (pkg in reglages && proteger(pkg)) return
         Etat.doitBloquer(this, pkg)?.let { raison ->
             BlockActivity.afficher(this, raison, pkg)

@@ -98,6 +98,10 @@ object Local {
         return am.isMusicActive && !Musique.enCours && appEnFond(ctx) == null
     }
 
+    /** Télé où le système impose son propre accueil (Google TV) : Vision prend la touche Accueil à sa place. */
+    fun accueilForce(ctx: Context): Boolean = p(ctx).getBoolean("accueil_force", true)
+    fun poserAccueilForce(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("accueil_force", on).apply(); toucher() }
+
     /** Téléphone : l'écran de verrouillage Vision, montré au réveil de l'écran. */
     fun verrou(ctx: Context): Boolean = p(ctx).getBoolean("verrou", false)
     fun poserVerrou(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("verrou", on).apply(); toucher() }

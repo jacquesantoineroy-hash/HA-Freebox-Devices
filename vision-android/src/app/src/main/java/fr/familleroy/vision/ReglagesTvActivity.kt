@@ -205,6 +205,9 @@ class ReglagesTvActivity : Activity() {
                 val l = Local.DELAIS_VEILLE
                 Local.poserDelaiVeille(this, l[(l.indexOf(delai) + 1) % l.size]); repeindre()
             })
+            droite.addView(ligne("Vision à la place de l'accueil", if (Local.accueilForce(this)) "Oui (touche Accueil)" else "Non, accueil de la télé", "accueil_force") {
+                Local.poserAccueilForce(this, !Local.accueilForce(this)); repeindre()
+            })
         } else {
             val pages = Accueil.mode(this) == Accueil.MODE_PAGES
             droite.addView(ligne("Accueil", if (pages) "Des pages à feuilleter" else "Une grille qui défile", "mode") { Accueil.poserMode(this, if (pages) Accueil.MODE_DEFILEMENT else Accueil.MODE_PAGES); repeindre() })
