@@ -260,11 +260,13 @@ def _premier(hass: HomeAssistant, domaine: str, *motifs: str) -> Any:
 
 
 def _nombre(etat: Any) -> float | None:
+    """Un nombre à partir d'un état Home Assistant, ou d'une valeur brute."""
     if etat is None:
         return None
+    brut = getattr(etat, "state", etat)
     try:
-        return float(str(etat.state).replace(",", "."))
-    except ValueError:
+        return float(str(brut).replace(",", "."))
+    except (ValueError, TypeError):
         return None
 
 
