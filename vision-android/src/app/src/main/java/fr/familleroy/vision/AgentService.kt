@@ -100,6 +100,14 @@ class AgentService : Service() {
             return 30
         }
 
+        // Home Assistant nous donne une fiche à nous (un autre appareil du même modèle tenait celle-ci).
+        r.optJSONObject("reinscription")?.let { n ->
+            if (n.optString("id").isNotEmpty() && n.optString("secret").isNotEmpty()) {
+                cfg.id = n.optString("id"); cfg.secret = n.optString("secret"); cfg.nom = n.optString("name")
+                cfg.personneAEnvoyer = true
+                return 5
+            }
+        }
         when (r.optString("action")) {
             "uninstall" -> { seDesinscrire(cfg); return 300 }
         }
@@ -125,12 +133,13 @@ class AgentService : Service() {
     }
 
     private fun inscrire(cfg: Config): Boolean {
-        if (cfg.cleInscription.isEmpty()) return false
+        if (cfg.cleInscription.isEmpty() && !cfg.sansCle) return false
         val corps = JSONObject().apply {
             put("key", cfg.cleInscription)
             put("host", appareil())
             put("user", cfg.utilisateur)
             put("platform", "android")
+            put("uid", uid()); nomAppareil().takeIf { it.isNotEmpty() }?.let { put("nom", it) }
         }
         return try {
             val r = Net.post(this, cfg, "/api/pc_parental/enroll", corps)
@@ -140,9 +149,17 @@ class AgentService : Service() {
                 cfg.nom = r.optString("name")
                 cfg.host = appareil()
                 r.optJSONArray("personnes")?.let { cfg.personnes = it.toString() }
+                Decouverte.etat = ""
                 true
             } else false
-        } catch (_: Exception) { false }
+        } catch (e: Net.Echec) {
+            if (cfg.sansCle) Decouverte.etat = if (e.code == 403) "Home Assistant trouvé, mais les inscriptions sont fermées : ouvre-les dans le tableau Vision (onglet Ajouter), ou colle le bloc ci-dessous."
+                else "Home Assistant trouvé, mais Vision n'y répond pas (${e.code})."
+            false
+        } catch (e: Exception) {
+            if (cfg.sansCle) Decouverte.etat = "Home Assistant trouvé, mais injoignable : ${(e.message ?: e.javaClass.simpleName).take(70)}"
+            false
+        }
     }
 
     /** Ce que l'agent remonte : qui, état, ce qu'il a vu, et l'état de ses protections. */
@@ -162,6 +179,8 @@ class AgentService : Service() {
             put("platform", "android")
             put("version", BuildConfigCompat.version(this@AgentService))
             put("host", cfg.host.ifEmpty { appareil() })
+            // Deux appareils du même modèle ne doivent pas partager une fiche : identifiant propre, et nom réel sur télé.
+            put("uid", uid()); nomAppareil().takeIf { it.isNotEmpty() }?.let { put("nom", it) }
             put("user", cfg.utilisateur)
             put("locked", Etat.verrouilleEffectif())
             put("focus", Usage.dernierPaquet)
@@ -322,6 +341,13 @@ class AgentService : Service() {
         val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         return pm.isIgnoringBatteryOptimizations(packageName)
     }
+
+    private fun uid(): String = try { android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "" } catch (_: Exception) { "" }
+
+    /** Le nom donné à la télé (« Chambre De Jules ») ; vide sur téléphone. */
+    private fun nomAppareil(): String = if (!ReglagesTvActivity.estTele(this)) "" else try {
+        (android.provider.Settings.Global.getString(contentResolver, "device_name") ?: "").trim().take(60)
+    } catch (_: Exception) { "" }
 
     private fun appareil(): String {
         val m = "${Build.MANUFACTURER} ${Build.MODEL}".trim()

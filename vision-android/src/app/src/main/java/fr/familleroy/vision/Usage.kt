@@ -11,6 +11,8 @@ import android.os.Process
 /** Ce qui est à l'écran, ce qui a servi, et depuis quand personne n'y touche. */
 object Usage {
     @Volatile var dernierPaquet: String = ""
+    /** L'appli qui était devant juste avant celle-ci (celle qu'on vient de quitter, vue de l'accueil). */
+    @Volatile var paquetQuitte: String = ""
     @Volatile var derniereInteraction: Long = System.currentTimeMillis()
     @Volatile var ecranEteintDepuis: Long = 0
 

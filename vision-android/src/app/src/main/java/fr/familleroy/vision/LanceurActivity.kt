@@ -109,6 +109,7 @@ class LanceurActivity : Activity() {
         setContentView(racine)
         construire()
         Bulle.verifier(this)
+        if (!cfg.inscrit) Decouverte.inscrireSeul(this) { }
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -131,6 +132,38 @@ class LanceurActivity : Activity() {
         demarrerDonnees()
         if (empreinteApps != empreinte()) construire()
         armerVeille()
+        retourDAppli()
+    }
+
+    /** On revient d'une appli : la sélection se remet sur elle, et si elle joue encore du son sans en avoir le droit, on l'arrête. */
+    private fun retourDAppli() {
+        val pkg = Accueil.dernierLance.ifEmpty { Usage.paquetQuitte }
+        if (pkg.isEmpty() || pkg == packageName) return
+        Accueil.dernierLance = ""; Usage.paquetQuitte = ""
+        if (tele && deplacement == null) racine.post {
+            val cle = if (trouverParTag(racine, pkg) != null) pkg
+                      else try { Accueil.cases(this).firstOrNull { it.dossier?.pkgs?.contains(pkg) == true }?.cle } catch (_: Exception) { null }
+            if (cle != null) trouverParTag(racine, cle)?.let { v -> v.requestFocus(); v.parent?.requestChildFocus(v, v) }
+        }
+        main.postDelayed({ faireTaire(pkg) }, 1200)
+    }
+
+    /** Free TV et d'autres continuent leur son une fois quittées : pause, puis arrêt de l'appli si elle insiste. */
+    private fun faireTaire(pkg: String) {
+        try {
+            if (isFinishing || !hasWindowFocus()) return
+            val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            if (!am.isMusicActive || Musique.enCours || Veille.ouverte || pkg in Local.fond(this)) return
+            for (code in intArrayOf(KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP)) {
+                am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code)); am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+            }
+            main.postDelayed({
+                try {
+                    if (!isFinishing && hasWindowFocus() && am.isMusicActive && !Musique.enCours && !Veille.ouverte)
+                        (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).killBackgroundProcesses(pkg)
+                } catch (_: Exception) {}
+            }, 1500)
+        } catch (_: Exception) {}
     }
 
     override fun onPause() {

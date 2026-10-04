@@ -167,7 +167,11 @@ object Accueil {
         ecrireOrdre(ctx, l)
     }
 
+    /** La dernière appli ouverte depuis l'accueil : au retour, la sélection se remet dessus. */
+    @Volatile var dernierLance: String = ""
+
     fun lancer(ctx: Context, pkg: String) {
+        dernierLance = pkg
         if (pkg == ctx.packageName) { try { ctx.startActivity(Intent(ctx, SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}; return }
         val pm = ctx.packageManager
         val i = pm.getLeanbackLaunchIntentForPackage(pkg) ?: pm.getLaunchIntentForPackage(pkg) ?: return

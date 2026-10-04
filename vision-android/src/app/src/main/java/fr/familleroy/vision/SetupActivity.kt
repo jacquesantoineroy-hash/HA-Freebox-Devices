@@ -29,24 +29,50 @@ class SetupActivity : Activity() {
     private val cfg by lazy { Config(this) }
 
     /** Une protection à accorder : son état et le réglage système qui l'active. */
-    private inner class Protection(val titre: String, val detail: String, val ok: () -> Boolean, val ouvrir: () -> Unit)
+    private inner class Protection(val titre: String, val detail: String, val ok: () -> Boolean,
+                                   /** Ce qu'on perd sans elle. */ val sans: String = "",
+                                   /** Faux quand cet appareil n'a pas l'écran de réglage qui l'accorde (souvent sur télé). */ val possible: () -> Boolean = { true },
+                                   val ouvrir: () -> Unit)
+
+    private fun existe(i: Intent): Boolean = try { i.resolveActivity(packageManager) != null } catch (_: Exception) { false }
+    private val pkgUri get() = Uri.parse("package:$packageName")
 
     private fun protections(): List<Protection> {
         val l = ArrayList<Protection>()
-        l.add(Protection("Données d'usage", "Temps d'écran et appli au premier plan", { Usage.accesUsage(this) }) { ouvrir(Settings.ACTION_USAGE_ACCESS_SETTINGS) })
-        l.add(Protection("Accessibilité", "Ferme les applis bloquées dès qu'elles s'ouvrent", { VisionAccessibility.estActive(this) }) { ouvrir(Settings.ACTION_ACCESSIBILITY_SETTINGS) })
-        l.add(Protection("Affichage par-dessus", "Écran de blocage et messages urgents", { peutRecouvrir() }) { demanderOverlay() })
-        l.add(Protection("Filtre des sites", "VPN local : seul le DNS passe par Vision", { DnsVpnService.actif || DnsVpnService.autorise(this) }) { demanderVpn() })
-        l.add(Protection("Désinstallation protégée", "Impossible de retirer Vision sans le code parent", { AdminReceiver.estActif(this) }) { demanderAdmin() })
+        val tele = ReglagesTvActivity.estTele(this)
+        l.add(Protection("Données d'usage", "Temps d'écran et appli au premier plan", { Usage.accesUsage(this) },
+            "Sans : pas de temps d'écran, et les applis bloquées ne sont repérées que par l'accessibilité.",
+            { existe(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }) { ouvrir(Settings.ACTION_USAGE_ACCESS_SETTINGS) })
+        l.add(Protection("Accessibilité", "Ferme les applis bloquées dès qu'elles s'ouvrent", { VisionAccessibility.estActive(this) },
+            "Sans : une appli bloquée met quelques secondes à se fermer" + (if (tele) ", la touche Accueil n'ouvre pas Vision et la veille ne sait pas si quelqu'un regarde." else "."),
+            { existe(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { ouvrir(Settings.ACTION_ACCESSIBILITY_SETTINGS) })
+        l.add(Protection("Affichage par-dessus", "Écran de blocage et messages urgents", { peutRecouvrir() },
+            "Sans : pas d'écran de blocage ni de message par-dessus" + (if (tele) ", et l'écran de veille coupe l'appli en cours au lieu de passer devant." else "."),
+            { Build.VERSION.SDK_INT < 23 || existe(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkgUri)) }) { demanderOverlay() })
+        l.add(Protection("Filtre des sites", "VPN local : seul le DNS passe par Vision", { DnsVpnService.actif || DnsVpnService.autorise(this) },
+            "Sans : aucun site n'est filtré sur cet appareil ; seules les applis le sont.",
+            { try { VpnService.prepare(this)?.let { existe(it) } ?: true } catch (_: Exception) { false } }) { demanderVpn() })
+        l.add(Protection("Désinstallation protégée", "Impossible de retirer Vision sans le code parent", { AdminReceiver.estActif(this) },
+            "Sans : Vision peut être désinstallée depuis les réglages, sans le code parent.",
+            { existe(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)) }) { demanderAdmin() })
         if (Build.VERSION.SDK_INT >= 23)
-            l.add(Protection("Batterie", "Vision reste active en arrière-plan", { batterieIgnoree() }) { demanderBatterie() })
-        l.add(Protection("Mises à jour", "Vision peut installer ses nouvelles versions", { MiseAJour.peutInstaller(this) }) { demanderInstallation() })
+            l.add(Protection("Batterie", "Vision reste active en arrière-plan", { batterieIgnoree() },
+                "Sans : Android peut endormir Vision ; les règles et les messages arrivent avec retard.",
+                { existe(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkgUri)) || existe(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }) { demanderBatterie() })
+        l.add(Protection("Mises à jour", "Vision peut installer ses nouvelles versions", { MiseAJour.peutInstaller(this) },
+            "Sans : chaque nouvelle version attend une confirmation à l'écran.",
+            { Build.VERSION.SDK_INT < 26 || existe(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, pkgUri)) }) { demanderInstallation() })
+        if (tele && Build.VERSION.SDK_INT >= 23)
+            l.add(Protection("Réglages système", "Délai avant l'écran de veille", { Local.peutEcrireSysteme(this) },
+                "Sans : le délai de veille choisi dans Vision ne vaut que sur l'accueil Vision ; ailleurs c'est celui de la télé.",
+                { existe(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, pkgUri)) }) { try { startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, pkgUri)) } catch (_: Exception) {} })
         return l
     }
 
     /** Assistant : on enchaîne les réglages manquants, un par un, au retour de chaque écran. */
     private var assistant = false
     private var assistantDerniere: String = ""
+    private var rechercheFaite = false
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -113,7 +139,7 @@ class SetupActivity : Activity() {
     }
 
     private fun avancerAssistant() {
-        val manquantes = protections().filter { !it.ok() }
+        val manquantes = protections().filter { !it.ok() && it.possible() }
         if (manquantes.isEmpty()) {
             assistant = false; assistantDerniere = ""
             toast("Tout est en place."); dessiner(); return
@@ -140,12 +166,14 @@ class SetupActivity : Activity() {
 
         if (cfg.personne.isEmpty() && cfg.personnes.isNotEmpty()) { choixPersonne(); return }
 
-        val manquantes = protections().filter { !it.ok() }
+        val toutes = protections()
+        val manquantes = toutes.filter { !it.ok() && it.possible() }
+        val impossibles = toutes.filter { !it.ok() && !it.possible() }
         if (manquantes.isNotEmpty()) {
             val c = Ui.carte(this, Ui.CARTE_HAUTE)
             val etape = manquantes.first()
             if (assistant) {
-                val total = protections().size
+                val total = toutes.size - impossibles.size
                 val faites = total - manquantes.size
                 c.addView(Ui.texte(this, "Étape ${faites.plus(1)} sur $total : ${etape.titre}", 16f, Ui.OR, gras = true))
                 c.addView(Ui.marge(this, Ui.texte(this, etape.detail, 14f, Ui.TEXTE_2), haut = 6f))
@@ -167,9 +195,15 @@ class SetupActivity : Activity() {
         val protections = Ui.carte(this)
         protections().forEachIndexed { k, pr ->
             if (k > 0) protections.addView(Ui.separateur(this))
-            protections.addView(ligneProtection(pr.titre, pr.detail, pr.ok(), pr.ouvrir))
+            protections.addView(ligneProtection(pr.titre, pr.detail, pr.ok(), pr.ouvrir, pr.sans, pr.possible()))
         }
         racine.addView(protections)
+        if (impossibles.isNotEmpty()) {
+            val c = Ui.carte(this, Ui.FOND)
+            c.addView(Ui.texte(this, "${impossibles.size} autorisation${if (impossibles.size > 1) "s" else ""} que cet appareil ne permet pas d'accorder à l'écran", 14f, Ui.TEXTE, gras = true))
+            c.addView(Ui.marge(this, Ui.texte(this, "Son système n'a pas l'écran de réglage correspondant. Home Assistant peut les accorder par le réseau (débogage ADB activé sur l'appareil) ; sinon Vision fonctionne, avec les limites indiquées ci-dessus.", 13f, Ui.TEXTE_2), haut = 4f))
+            racine.addView(c)
+        }
 
         racine.addView(Ui.section(this, "Version"))
         val version = Ui.carte(this)
@@ -274,14 +308,17 @@ class SetupActivity : Activity() {
         racine.addView(c)
     }
 
-    private fun ligneProtection(titre: String, detail: String, ok: Boolean, action: () -> Unit): View {
+    private fun ligneProtection(titre: String, detail: String, ok: Boolean, action: () -> Unit, sans: String = "", possible: Boolean = true): View {
         val r = Ui.rangee(this)
         r.addView(Ui.pastille(this, ok))
         val col = Ui.colonne(this)
         col.addView(Ui.texte(this, titre, 15f, Ui.TEXTE, gras = true))
         col.addView(Ui.texte(this, detail, 12.5f, Ui.TEXTE_2))
+        // Ce qu'on perd tant qu'elle manque, et si l'appareil sait l'accorder.
+        if (!ok && sans.isNotEmpty()) col.addView(Ui.texte(this, sans, 12.5f, Ui.OR))
+        if (!ok && !possible) col.addView(Ui.texte(this, "Cet appareil ne propose pas ce réglage.", 12.5f, Ui.TEXTE_3))
         r.addView(Ui.poids(col))
-        if (!ok) r.addView(Ui.marge(this, Ui.boutonSecondaire(this, "Activer", action), gauche = 10f))
+        if (!ok && possible) r.addView(Ui.marge(this, Ui.boutonSecondaire(this, "Activer", action), gauche = 10f))
         return r
     }
 
@@ -298,8 +335,33 @@ class SetupActivity : Activity() {
     // ------------------------------------------------- Connexion initiale
 
     private fun ecranConnexion() {
+        // D'abord tout seul : Home Assistant s'annonce sur le réseau de la maison.
+        val auto = Ui.carte(this, Ui.CARTE_HAUTE)
+        auto.addView(Ui.texte(this, "Connexion automatique", 18f, Ui.TEXTE, gras = true))
+        val suivi = Ui.texte(this, Decouverte.etat.ifEmpty { "Vision cherche Home Assistant sur le réseau de la maison." }, 14f, Ui.TEXTE_2)
+        auto.addView(Ui.marge(this, suivi, haut = 6f))
+        fun chercher() {
+            cfg.sansCle = false
+            Decouverte.inscrireSeul(this) { _ ->
+                suivi.text = Decouverte.etat
+                // L'inscription suit dans le service : on regarde quelques secondes si elle a abouti.
+                var essais = 0
+                val voir = object : Runnable { override fun run() {
+                    if (isFinishing) return
+                    if (cfg.inscrit) { dessiner(); return }
+                    suivi.text = Decouverte.etat
+                    if (++essais < 8) racine.postDelayed(this, 1500)
+                } }
+                racine.postDelayed(voir, 1500)
+            }
+            suivi.text = Decouverte.etat
+        }
+        auto.addView(Ui.marge(this, Ui.boutonSecondaire(this, "Chercher à nouveau") { chercher() }, haut = 12f))
+        racine.addView(auto)
+        if (!rechercheFaite) { rechercheFaite = true; chercher() }
+
         val c = Ui.carte(this)
-        c.addView(Ui.texte(this, "Relier cet appareil", 18f, Ui.TEXTE, gras = true))
+        c.addView(Ui.texte(this, "Ou relier à la main", 18f, Ui.TEXTE, gras = true))
         c.addView(Ui.marge(this, Ui.sousTitre(this,
             "Dans Home Assistant, tableau Vision, onglet Ajouter : copie le bloc « adresse / clé » et colle-le ici."), bas = 8f))
         val bloc = Ui.champ(this, "Colle ici le bloc copié depuis Home Assistant", "").apply {
@@ -317,6 +379,7 @@ class SetupActivity : Activity() {
             cfg.urlExterne = externe.ifEmpty { interne }
             cfg.urlInterne = interne
             cfg.cleInscription = cle
+            cfg.sansCle = false
             cfg.utilisateur = user.text.toString().trim()
             toast("Connexion…")
             AgentService.demarrer(this)

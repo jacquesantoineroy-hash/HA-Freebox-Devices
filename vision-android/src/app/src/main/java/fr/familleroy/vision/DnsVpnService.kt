@@ -344,7 +344,18 @@ class DnsVpnService : VpnService() {
         private const val STOP = "fr.familleroy.vision.STOP_VPN"
         private val REPLIS = listOf("1.1.1.3", "1.0.0.3")      // Cloudflare familial par défaut
         /** Applis laissées hors du tunnel DNS (elles refusent un réseau VPN). */
-        private val HORS_TUNNEL = listOf("net.oqee.androidtv.store", "net.oqee.androidtv", "net.oqee.android")
+        private val HORS_TUNNEL = listOf(
+            "net.oqee.androidtv.store", "net.oqee.androidtv", "net.oqee.android",
+            // Vidéo à la demande : derrière un VPN, elles affichent « problème de connexion ».
+            "com.netflix.ninja", "com.netflix.mediaclient",
+            "com.wbd.stream", "com.hbo.hbonow", "com.hbo.max.android.tv",
+            "com.disney.disneyplus", "com.amazon.amazonvideo.livingroom", "com.amazon.avod.thirdpartyclient",
+            "com.canal.android.canal", "com.apple.atve.androidtv.appletv", "com.cbs.ca", "com.paramountplus.android",
+            "tv.molotov.app", "fr.tf1.mytf1", "fr.francetv.pluzz", "fr.m6.m6replay", "com.arte.tv", "tv.arte.plus7",
+            // Musique en ligne : derrière le tunnel, seuls les titres téléchargés se lançaient.
+            "com.spotify.music", "com.spotify.tv.android", "deezer.android.app", "deezer.android.tv",
+            "com.apple.android.music", "com.amazon.mp3", "com.soundcloud.android", "com.qobuz.music", "com.aspiro.tidal",
+        )
 
         /**
          * Hôtes exacts vers leur version sûre, tels que documentés par Google

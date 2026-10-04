@@ -81,6 +81,7 @@ class VisionAccessibility : AccessibilityService() {
         Usage.derniereInteraction = System.currentTimeMillis()
         // Les claviers et la barre système ne sont pas « l'appli utilisée ».
         if (pkg != "com.android.systemui" && !pkg.contains("inputmethod") && !pkg.contains("keyboard")) {
+            if (pkg != Usage.dernierPaquet && Usage.dernierPaquet.isNotEmpty() && Usage.dernierPaquet != packageName) Usage.paquetQuitte = Usage.dernierPaquet
             Usage.dernierPaquet = pkg
         }
         // L'accueil du système vient de passer devant (démarrage, sortie d'une appli) : Vision prend sa place.

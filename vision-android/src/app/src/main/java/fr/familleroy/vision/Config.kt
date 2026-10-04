@@ -77,6 +77,11 @@ class Config(ctx: Context) {
         set(v) = p.edit().putString("maj_proposee", v).apply()
 
     val inscrit: Boolean get() = id.isNotEmpty() && secret.isNotEmpty()
+
+    /** Home Assistant trouvé sur le réseau : l'inscription se fait sans clé (acceptée seulement depuis la maison). */
+    var sansCle: Boolean
+        get() = p.getBoolean("sans_cle", false)
+        set(v) = p.edit().putBoolean("sans_cle", v).apply()
     val modeParent: Boolean get() = System.currentTimeMillis() < parentJusqua
     val aUnCode: Boolean get() = (p.getString("pin", "") ?: "").isNotEmpty()
 
