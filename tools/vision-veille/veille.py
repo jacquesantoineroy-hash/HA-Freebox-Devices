@@ -332,7 +332,11 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict
         "chauffage": await plus.chauffage(hass, coord),
         "photos": await plus.photos(hass),
         "batteries": await _sans_erreur(plus.batteries(hass), []),
+        "erreurs": list(_dernieres_erreurs),
     }
+
+
+_dernieres_erreurs: list[str] = []
 
 
 async def _sans_erreur(coro, defaut):
@@ -341,7 +345,10 @@ async def _sans_erreur(coro, defaut):
         return await coro
     except Exception as e:  # noqa: BLE001
         import logging
-        logging.getLogger(__name__).warning("Écran de veille : %s", e, exc_info=True)
+        import traceback
+        logging.getLogger(__name__).error("Écran de veille : %s", e, exc_info=True)
+        _dernieres_erreurs.append(traceback.format_exc()[-600:])
+        del _dernieres_erreurs[:-5]
         return defaut
 
 

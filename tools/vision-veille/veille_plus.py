@@ -521,16 +521,23 @@ async def batteries(hass: HomeAssistant) -> list[dict[str, Any]]:
             if b is not None:
                 charge = str(b.state) == "on"
         telephone = s.entity_id.startswith("sensor.pixel") or "_battery_level" in s.entity_id or etat_charge is not None
+        try:
+            nom = _nom_appareil(hass, s)
+        except Exception:  # noqa: BLE001
+            nom = s.entity_id
         sortie.append({
             "id": s.entity_id,
-            "nom": _nom_appareil(hass, s),
+            "nom": nom,
             "niveau": int(round(niveau)),
             "charge": charge,
             "telephone": bool(telephone),
             "pente": None,
             "vu": dt_util.as_local(s.last_updated).isoformat(timespec="minutes"),
         })
-    pentes = await _pentes_batteries(hass, entites) if entites else {}
+    try:
+        pentes = await _pentes_batteries(hass, entites) if entites else {}
+    except Exception:  # noqa: BLE001
+        pentes = {}
     for b in sortie:
         b["pente"] = pentes.get(b["id"])
     # Les plus faibles d'abord, puis les téléphones, puis le reste.
