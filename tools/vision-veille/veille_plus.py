@@ -500,7 +500,8 @@ async def _pentes_batteries(hass: HomeAssistant, entites: list[str], heures: int
 async def batteries(hass: HomeAssistant) -> list[dict[str, Any]]:
     """Les batteries de la maison : niveau, en charge ou non, et le rythme (points par heure) pour
     estimer l'autonomie. Téléphones (appli compagnon) et appareils Zigbee confondus."""
-    if time.time() - _cache_batteries["quand"] < 300:
+    # Deux minutes de cache, et jamais d'une liste vide (au démarrage, les capteurs ne sont pas tous là).
+    if _cache_batteries["valeur"] and time.time() - _cache_batteries["quand"] < 120:
         return _cache_batteries["valeur"]
     sortie = []
     entites = []
