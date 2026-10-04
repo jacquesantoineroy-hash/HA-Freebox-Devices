@@ -204,6 +204,8 @@ def _rendu_auto(etat) -> str:
     a = etat.attributes
     if domaine in ("binary_sensor", "switch", "light", "lock", "cover", "input_boolean", "fan", "person", "device_tracker", "alarm_control_panel"):
         return "etat"
+    if domaine == "climate":
+        return "valeur"
     valeur = _nombre(etat.state)
     if valeur is None:
         return "texte"
