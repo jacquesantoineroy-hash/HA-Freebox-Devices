@@ -220,10 +220,6 @@ class SetupActivity : Activity() {
             }, haut = 12f))
             version.addView(Ui.marge(this, etat, haut = 8f))
         } else if (MiseAJour.etat.isNotEmpty()) version.addView(Ui.marge(this, Ui.texte(this, MiseAJour.etat, 13f, Ui.TEXTE_2), haut = 6f))
-        val themes = Ui.rangee(this)
-        themes.addView(Ui.poids(Ui.texte(this, "Thème et couleurs", 14f, Ui.TEXTE_2)))
-        themes.addView(Ui.boutonSecondaire(this, Local.theme(this)) { startActivity(Intent(this, CouleursActivity::class.java)) })
-        version.addView(Ui.marge(this, themes, haut = 8f))
         racine.addView(version)
 
         if (Build.VERSION.SDK_INT >= 31) {

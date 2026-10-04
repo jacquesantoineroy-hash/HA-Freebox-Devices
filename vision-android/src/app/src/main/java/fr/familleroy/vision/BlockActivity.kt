@@ -68,6 +68,26 @@ class BlockActivity : Activity() {
         fond.addView(Ui.marge(this, zoneDemande, haut = 36f))
         construireDemande()
 
+        // Appareil fermé ou non, on peut toujours appeler, écrire, régler son réveil, ouvrir Pronote.
+        val permises = if (ReglagesTvActivity.estTele(this)) emptyList() else Etat.toujoursPermises(this)
+        if (permises.isNotEmpty()) {
+            fond.addView(Ui.marge(this, Ui.texte(this, "Toujours accessibles", 13f, Ui.TEXTE_3, centre = true), haut = 30f))
+            val rang = LinearLayout(this).apply { gravity = Gravity.CENTER }
+            for (a in permises.take(6)) {
+                val cell = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+                    setPadding(Ui.dp(this@BlockActivity, 10f), Ui.dp(this@BlockActivity, 8f), Ui.dp(this@BlockActivity, 10f), Ui.dp(this@BlockActivity, 4f))
+                    isClickable = true; isFocusable = true; contentDescription = a.nom
+                    setOnClickListener { try { packageManager.getLaunchIntentForPackage(a.pkg)?.let { startActivity(it) } } catch (_: Exception) {} }
+                }
+                val t = Ui.dp(this, 50f)
+                cell.addView(android.widget.ImageView(this).apply { setImageDrawable(Accueil.icone(this@BlockActivity, a.pkg)) }, LinearLayout.LayoutParams(t, t))
+                cell.addView(Ui.marge(this, Ui.texte(this, a.nom, 12f, Ui.TEXTE_2, centre = true), haut = 5f))
+                rang.addView(cell)
+            }
+            fond.addView(Ui.marge(this, rang, haut = 8f))
+        }
+
         setContentView(fond, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         peindre()

@@ -20,6 +20,8 @@ object Etat {
     @Volatile var prochainChangement: Long = 0
     @Volatile var poll = 20
     @Volatile var apps: Set<String> = emptySet()
+    /** Applis que les parents laissent ouvertes même appareil fermé (étiquette « Toujours autorisé »). */
+    @Volatile var toujours: Set<String> = emptySet()
     @Volatile var sites: Set<String> = emptySet()
     @Volatile var exceptions: Set<String> = emptySet()
     /** Pourquoi chaque nom est fermé : nom → « code|texte ». */
@@ -69,6 +71,41 @@ object Etat {
         "com.android.incallui", "com.samsung.android.incallui",
     )
 
+    /** Les applis toujours ouvertes, même appareil fermé : téléphone, messages, réveil, Pronote (et le clavier). */
+    class Permise(val pkg: String, val nom: String)
+    @Volatile private var permisesCache: List<Permise> = emptyList()
+    @Volatile private var permisesA = 0L
+    @Volatile private var permisPaquets: Set<String> = emptySet()
+
+    fun toujoursPermises(ctx: Context): List<Permise> {
+        val now = System.currentTimeMillis()
+        if (permisesA != 0L && now - permisesA < 120_000) return permisesCache
+        val pm = ctx.packageManager
+        val l = ArrayList<Permise>()
+        fun ajouter(pkg: String?, nom: String) {
+            if (pkg.isNullOrEmpty() || pkg == "android" || l.any { it.pkg == pkg }) return
+            if (pm.getLaunchIntentForPackage(pkg) != null) l.add(Permise(pkg, nom))
+        }
+        fun parIntent(i: android.content.Intent): String? = try { pm.resolveActivity(i, 0)?.activityInfo?.packageName } catch (_: Exception) { null }
+        try { ajouter((ctx.getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager)?.defaultDialerPackage, "Téléphone") } catch (_: Exception) {}
+        ajouter(parIntent(android.content.Intent(android.content.Intent.ACTION_DIAL)), "Téléphone")
+        try { ajouter(android.provider.Telephony.Sms.getDefaultSmsPackage(ctx), "Messages") } catch (_: Exception) {}
+        ajouter(parIntent(android.content.Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS)), "Réveil")
+        for (p in listOf("com.google.android.deskclock", "com.android.deskclock", "com.sec.android.app.clockpackage")) ajouter(p, "Réveil")
+        for (p in listOf("com.IndexEducation.Pronote", "com.indexeducation.pronote")) ajouter(p, "Pronote")
+        // Celles que les parents ont choisies (musique pour s'endormir…), si elles ne sont pas coupées par ailleurs.
+        try {
+            for (i in Accueil.applicationsInstallees(ctx)) { val pk = i.activityInfo.packageName
+                if (pk.lowercase(Locale.ROOT) in toujours && pk.lowercase(Locale.ROOT) !in apps) ajouter(pk, Usage.libelle(ctx, pk)) }
+        } catch (_: Exception) {}
+        val paquets = HashSet<String>(l.map { it.pkg })
+        // Les claviers : sans eux, impossible d'écrire un message.
+        try { (ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).enabledInputMethodList.forEach { paquets.add(it.packageName) } } catch (_: Exception) {}
+        paquets.addAll(listOf("com.android.contacts", "com.google.android.contacts", "com.samsung.android.app.contacts"))
+        permisPaquets = paquets; permisesCache = l; permisesA = now
+        return l
+    }
+
     fun charger(ctx: Context) {
         val cfg = Config(ctx)
         if (cfg.etat.isNotEmpty()) try { appliquer(JSONObject(cfg.etat), sauver = null) } catch (_: Exception) {}
@@ -81,6 +118,7 @@ object Etat {
         avertissement = r.optInt("warn", 0)
         poll = r.optInt("poll", 20).coerceIn(5, 300)
         apps = ensemble(r.optJSONArray("apps"))
+        ensemble(r.optJSONArray("toujours")).let { if (it != toujours) { toujours = it; permisesA = 0L } }
         sites = ensemble(r.optJSONArray("sites"))
         exceptions = ensemble(r.optJSONArray("exceptions"))
         raisons = run {
@@ -121,6 +159,8 @@ object Etat {
         if (pkg.isNullOrEmpty() || pkg == ctx.packageName) return null
         if (Config(ctx).modeParent) return null
         if (pkg in toujoursPermis) return null
+        toujoursPermises(ctx)
+        if (pkg in permisPaquets) return null
         val p = pkg.lowercase(Locale.ROOT)
         if (verrouilleEffectif()) return message.ifEmpty { "Accès fermé" }
         if (p in apps) return "Cette appli est bloquée"
