@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vision</string>
+    <string name="accessibility_desc">Vision applique les règles de la maison : applis bloquées, plages horaires et verrouillage décidés dans Home Assistant.</string>
+    <string name="admin_desc">Empêche la désinstallation de Vision sans code parent.</string>
+</resources>
