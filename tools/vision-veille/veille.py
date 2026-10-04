@@ -331,6 +331,7 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict
         "demandes": plus.demandes(hass, coord),
         "chauffage": await plus.chauffage(hass, coord),
         "photos": await plus.photos(hass),
+        "batteries": await plus.batteries(hass),
     }
 
 

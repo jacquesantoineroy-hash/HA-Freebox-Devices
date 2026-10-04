@@ -317,12 +317,19 @@ async def chauffage(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict[s
     courbe = list(getattr(coord.store, "veille_courbe", []) or [])
     dehors = hass.states.get(courbe[0].split("|")[0]) if courbe else None
     dedans = hass.states.get(courbe[1].split("|")[0]) if len(courbe) > 1 else None
+    # Sans courbe choisie, « dehors » vient de la météo.
+    dehors_val = _nombre(dehors) if dehors else None
+    if dehors_val is None:
+        for m in hass.states.async_all("weather"):
+            dehors_val = _nombre(m.attributes.get("temperature"))
+            if dehors_val is not None:
+                break
     return {
         "consigne": (clim.attributes.get("temperature") if clim else None),
         "mode": (str(clim.state) if clim else ""),
         "action": (str(clim.attributes.get("hvac_action") or "") if clim else ""),
         "dedans": _nombre(dedans) if dedans else (clim.attributes.get("current_temperature") if clim else None),
-        "dehors": _nombre(dehors),
+        "dehors": dehors_val,
         "bruleur": str(bruleur.state) if bruleur else "",
         "bruleur_on": bool(bruleur and str(bruleur.state).lower() in ("on", "allumé", "allume", "marche", "true")),
         "mois": _nombre(mensuel),
@@ -433,3 +440,98 @@ class PcParentalVeilleReglagesView(_VueVeille):
 
         await appliquer(coord, _faire)
         return self.json(dict(ok=True, **reglages(coord)))
+
+
+# --- Batteries des appareils ----------------------------------------------------------
+
+_cache_batteries: dict[str, Any] = {"quand": 0.0, "valeur": []}
+
+
+def _nom_appareil(hass: HomeAssistant, etat) -> str:
+    """Le nom de l'appareil (téléphone, vanne), sans « Battery level » ni « Batterie »."""
+    nom = str(etat.attributes.get("friendly_name") or etat.entity_id)
+    try:
+        from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+        ent = er.async_get(hass).async_get(etat.entity_id)
+        if ent and ent.device_id:
+            dev = dr.async_get(hass).async_get(ent.device_id)
+            if dev and (dev.name_by_user or dev.name) and not re.match(r"^_?TZ", dev.name or ""):
+                nom = dev.name_by_user or dev.name
+    except Exception:  # noqa: BLE001
+        pass
+    nom = re.sub(r"(?i)\b(battery level|battery|batterie|niveau de batterie)\b", "", nom).strip(" -:·")
+    return nom or etat.entity_id
+
+
+async def _pentes_batteries(hass: HomeAssistant, entites: list[str], heures: int = 3) -> dict[str, float]:
+    """Pour chaque batterie, la variation en points par heure sur les dernières heures (négatif = se vide)."""
+    from homeassistant.components.recorder import get_instance, history
+
+    fin = dt_util.now()
+    debut = fin - datetime.timedelta(hours=heures)
+
+    def _lire():
+        return {e: history.state_changes_during_period(hass, debut, fin, e, include_start_time_state=True, no_attributes=True).get(e, []) for e in entites}
+
+    try:
+        brut = await get_instance(hass).async_add_executor_job(_lire)
+    except Exception:  # noqa: BLE001
+        return {}
+    pentes: dict[str, float] = {}
+    for eid, etats in (brut or {}).items():
+        points = []
+        for e in etats:
+            try:
+                points.append((e.last_changed, float(e.state)))
+            except (ValueError, TypeError):
+                continue
+        if len(points) < 2:
+            continue
+        (t0, v0), (t1, v1) = points[0], points[-1]
+        dh = (t1 - t0).total_seconds() / 3600
+        if dh >= 0.5:
+            pentes[eid] = round((v1 - v0) / dh, 1)
+    return pentes
+
+
+async def batteries(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """Les batteries de la maison : niveau, en charge ou non, et le rythme (points par heure) pour
+    estimer l'autonomie. Téléphones (appli compagnon) et appareils Zigbee confondus."""
+    if time.time() - _cache_batteries["quand"] < 300:
+        return _cache_batteries["valeur"]
+    sortie = []
+    entites = []
+    for s in hass.states.async_all("sensor"):
+        if str(s.attributes.get("device_class") or "") != "battery":
+            continue
+        niveau = _nombre(s.state)
+        if niveau is None:
+            continue
+        entites.append(s.entity_id)
+        prefixe = re.sub(r"_(battery_level|battery|batterie|niveau_de_batterie)$", "", s.entity_id.split(".", 1)[1])
+        etat_charge = hass.states.get(f"sensor.{prefixe}_battery_state")
+        charge = None
+        if etat_charge is not None:
+            charge = str(etat_charge.state).lower() in ("charging", "full", "en charge", "pleine")
+        else:
+            b = hass.states.get(f"binary_sensor.{prefixe}_is_charging") or hass.states.get(f"binary_sensor.{prefixe}_charging")
+            if b is not None:
+                charge = str(b.state) == "on"
+        telephone = s.entity_id.startswith("sensor.pixel") or "_battery_level" in s.entity_id or etat_charge is not None
+        sortie.append({
+            "id": s.entity_id,
+            "nom": _nom_appareil(hass, s),
+            "niveau": int(round(niveau)),
+            "charge": charge,
+            "telephone": bool(telephone),
+            "pente": None,
+            "vu": dt_util.as_local(s.last_updated).isoformat(timespec="minutes"),
+        })
+    pentes = await _pentes_batteries(hass, entites) if entites else {}
+    for b in sortie:
+        b["pente"] = pentes.get(b["id"])
+    # Les plus faibles d'abord, puis les téléphones, puis le reste.
+    sortie.sort(key=lambda b: (b["niveau"] > 20, not b["telephone"], b["niveau"]))
+    _cache_batteries.update({"quand": time.time(), "valeur": sortie})
+    return sortie
