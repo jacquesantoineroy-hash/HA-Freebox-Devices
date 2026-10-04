@@ -335,6 +335,32 @@ object Accueil {
         l.add(Place(cle, c, r, w, h)); ecrireDisposition(ctx, l)
     }
 
+    /**
+     * Supprime une page entière de l'accueil (mode pages), comme Android : ses applis
+     * sont masquées (elles restent dans le tiroir), ses dossiers défaits et masqués,
+     * ses widgets retirés ; les pages suivantes remontent d'un cran.
+     */
+    fun supprimerPage(ctx: Context, page: Int, lignes: Int) {
+        if (lignes <= 0) return
+        val l = disposition(ctx)
+        val debut = page * lignes; val fin = debut + lignes
+        val dedans = l.filter { it.row in debut until fin }
+        val ds = dossiers(ctx)
+        val masquees = HashSet(masquees(ctx))
+        dedans.forEach { p ->
+            when {
+                p.estWidget -> {}
+                p.estDossier -> { ds.firstOrNull { it.cle == p.cle }?.let { d -> masquees.addAll(d.pkgs); ds.remove(d) } }
+                else -> masquees.add(p.cle)
+            }
+        }
+        ecrireDossiers(ctx, ds)
+        prefs(ctx).edit().putStringSet("masquees", masquees).apply()
+        l.removeAll { it.row in debut until fin }
+        l.forEach { if (it.row >= fin) it.row -= lignes }
+        ecrireDisposition(ctx, l)
+    }
+
     /** Pose une nouvelle case (widget ou appli) au plus près d'une cellule : utilisé quand on la glisse depuis le panneau. */
     fun poserSurGrille(ctx: Context, cle: String, col: Int, row: Int, w: Int = 1, h: Int = 1) {
         ajouterALaGrille(ctx, cle, w, h)

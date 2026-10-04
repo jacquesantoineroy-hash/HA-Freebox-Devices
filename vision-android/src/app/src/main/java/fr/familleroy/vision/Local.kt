@@ -41,7 +41,8 @@ object Local {
     // ------------------------------------------------------------ ambiance
 
     fun theme(ctx: Context): String = p(ctx).getString("theme", "Beige") ?: "Beige"
-    fun poserTheme(ctx: Context, nom: String) { p(ctx).edit().putString("theme", nom).apply(); toucher() }
+    /** Choisir un thème, c'est repartir de lui : les couleurs à la carte (y compris celles d'avant 1.27) s'effacent. */
+    fun poserTheme(ctx: Context, nom: String) { p(ctx).edit().putString("theme", nom).apply(); Palette.ecrire(ctx, Palette.APPLI, null); toucher() }
 
     fun nuit(ctx: Context): String = p(ctx).getString("nuit", "23:00-07:00") ?: "23:00-07:00"
     fun poserNuit(ctx: Context, plage: String) { p(ctx).edit().putString("nuit", plage).apply(); toucher() }

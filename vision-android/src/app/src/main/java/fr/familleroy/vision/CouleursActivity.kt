@@ -74,7 +74,7 @@ class CouleursActivity : Activity() {
     private fun focalisable(v: View, cle: String, rond: Boolean = true, peint: View = v) {
         v.isClickable = true; v.isFocusable = true; v.tag = cle
         val th = theme()
-        val anneau = GradientDrawable().apply { if (rond) shape = GradientDrawable.OVAL else cornerRadius = px(22f).toFloat(); setColor(0); setStroke(px(3f), th.or) }
+        val anneau = GradientDrawable().apply { if (rond) shape = GradientDrawable.OVAL else cornerRadius = px(22f).toFloat(); setColor(0); setStroke(px(2f), th.or) }
         v.setOnFocusChangeListener { _, a ->
             if (android.os.Build.VERSION.SDK_INT >= 23) peint.foreground = if (a) anneau else null
             peint.animate().scaleX(if (a) 1.12f else 1f).scaleY(if (a) 1.12f else 1f).setDuration(120).start()

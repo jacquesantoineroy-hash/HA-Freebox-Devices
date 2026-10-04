@@ -2,7 +2,9 @@ package fr.familleroy.vision
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -46,6 +48,15 @@ class DnsVpnService : VpnService() {
             .setMtu(1500)
         // On s'exclut nous-mêmes : l'agent parle à HA sans repasser par le tunnel.
         try { b.addDisallowedApplication(packageName) } catch (_: Exception) {}
+        // Les applis de télé qui refusent tout réseau « VPN » (OQEE / Free TV sur Android 9 ne voit plus le Wi-Fi) :
+        // elles passent à côté du tunnel. Leur blocage reste celui des applis, pas du DNS.
+        for (pkg in HORS_TUNNEL) try { b.addDisallowedApplication(pkg) } catch (_: Exception) {}
+        // Le réseau réel (Wi-Fi, Ethernet) reste déclaré sous le tunnel, pour les applis qui regardent le transport.
+        if (Build.VERSION.SDK_INT >= 22) try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val reseau = if (Build.VERSION.SDK_INT >= 23) cm.activeNetwork else null
+            if (reseau != null) b.setUnderlyingNetworks(arrayOf(reseau)) else b.setUnderlyingNetworks(null)
+        } catch (_: Exception) {}
         val t = try { b.establish() } catch (_: Exception) { null } ?: run {
             actif = false; stopSelf(); return
         }
@@ -336,6 +347,8 @@ class DnsVpnService : VpnService() {
         private const val DNS_VIRTUEL = "10.111.0.53"
         private const val STOP = "fr.familleroy.vision.STOP_VPN"
         private val REPLIS = listOf("1.1.1.3", "1.0.0.3")      // Cloudflare familial par défaut
+        /** Applis laissées hors du tunnel DNS (elles refusent un réseau VPN). */
+        private val HORS_TUNNEL = listOf("net.oqee.androidtv.store", "net.oqee.androidtv", "net.oqee.android")
 
         /**
          * Hôtes exacts vers leur version sûre, tels que documentés par Google

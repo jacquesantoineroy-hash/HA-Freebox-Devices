@@ -16,7 +16,9 @@ import android.content.pm.PackageInstaller
 class InstallReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, i: Intent) {
         if (i.action != ACTION) return
-        when (i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
+        val statut = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        MiseAJour.resultat(ctx, statut, i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))
+        when (statut) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 @Suppress("DEPRECATION")
                 val confirmation = i.getParcelableExtra<Intent>(Intent.EXTRA_INTENT) ?: return

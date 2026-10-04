@@ -1773,7 +1773,7 @@ class VeilleView(ctx: Context) : View(ctx) {
             // La vidéo, dans l'espace écran (le dessin dérive de quelques pixels, la couche suit).
             rects.add(cam.id to RectF(videoDessin.left + derive[0], videoDessin.top + derive[1], videoDessin.right + derive[0], videoDessin.bottom + derive[1]))
         }
-        couche?.montrer(rects, alpha)
+        couche?.montrer(rects, alpha, h * 0.022f)
     }
 
     // --- eSport --------------------------------------------------------------

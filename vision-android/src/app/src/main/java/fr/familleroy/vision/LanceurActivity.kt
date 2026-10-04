@@ -115,7 +115,7 @@ class LanceurActivity : Activity() {
         super.onNewIntent(intent)
         // Deux appuis rapprochés sur Accueil : l'écran de veille vient devant, la musique de l'autre appli continue.
         val now = SystemClock.uptimeMillis()
-        if (tele && now - dernierAccueilMs < 1500) { startActivity(Intent(this, VeilleActivity::class.java)); dernierAccueilMs = 0 } else dernierAccueilMs = now
+        if (tele && now - dernierAccueilMs < 1500) { Veille.ouvrir(this); dernierAccueilMs = 0 } else dernierAccueilMs = now
     }
 
     private fun barres() {
@@ -288,7 +288,7 @@ class LanceurActivity : Activity() {
     private fun roueReglages(tailleDp: Float): View {
         val b = FrameLayout(this).apply { background = fondCarte(999f); isClickable = true; isFocusable = true; contentDescription = "Réglages Vision"; tag = "roue" }
         b.addView(icone(R.drawable.ic_reglages, tailleDp * 0.5f, theme.or), FrameLayout.LayoutParams(px(tailleDp * 0.5f), px(tailleDp * 0.5f), Gravity.CENTER))
-        b.setOnFocusChangeListener { v, a -> v.background = if (a) fondCarte(999f, bord = theme.or, epaisseurDp = 3f) else fondCarte(999f); v.animate().scaleX(if (a) 1.1f else 1f).scaleY(if (a) 1.1f else 1f).setDuration(120).start() }
+        b.setOnFocusChangeListener { v, a -> v.background = if (a) fondCarte(999f, bord = theme.or, epaisseurDp = 2f) else fondCarte(999f); v.animate().scaleX(if (a) 1.1f else 1f).scaleY(if (a) 1.1f else 1f).setDuration(120).start() }
         b.setOnClickListener { startActivity(Intent(this, ReglagesTvActivity::class.java)) }
         return b
     }
@@ -739,6 +739,7 @@ class LanceurActivity : Activity() {
         raccourci(R.drawable.ic_reglages, "Réglages") { startActivity(Intent(this, ReglagesTvActivity::class.java)) }
         raccourci(R.drawable.ic_grille, if (pages) "Pages → défilement" else "Défilement → pages") { Accueil.poserMode(this, if (pages) Accueil.MODE_DEFILEMENT else Accueil.MODE_PAGES); construire() }
         raccourci(R.drawable.ic_widgets, "Applications") { tiroirApplis() }
+        if (pages && pageur != null) raccourci(R.drawable.ic_retirer, "Supprimer cette page") { supprimerPage() }
         feuille.addView(raccourcis)
         feuille.addView(View(this).apply { setBackgroundColor(theme.carteBord) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(1f)).apply { topMargin = px(12f); bottomMargin = px(10f) })
 
@@ -781,6 +782,18 @@ class LanceurActivity : Activity() {
     }
 
     private fun cacherPanneau() { panneau?.let { racine.removeView(it) }; panneau = null }
+
+    /** Comme Android : la page courante disparaît avec tout ce qu'elle porte ; les applis retournent au tiroir. */
+    private fun supprimerPage() {
+        val pg = pageur ?: return
+        val page = pg.page
+        val lignes = Accueil.lignesParPage
+        val dedans = Accueil.disposition(this).count { it.row / lignes == page }
+        val texte = if (dedans == 0) "Cette page est vide. La retirer ?" else "Retirer la page ${page + 1} et ses $dedans case${if (dedans > 1) "s" else ""} ? Les applis restent dans le tiroir ; les widgets et les dossiers sont retirés."
+        AlertDialog.Builder(this).setTitle("Supprimer la page").setMessage(texte)
+            .setPositiveButton("Supprimer") { _, _ -> Accueil.supprimerPage(this, page, lignes); pageMemo = (page - 1).coerceAtLeast(0); construire() }
+            .setNegativeButton("Annuler", null).show()
+    }
 
     /** Un widget neuf qu'on glisse depuis le panneau : le panneau s'efface, la grille montre où il tombera. */
     private fun souleverNouveau(v: View, w: Accueil.Widget): Boolean {
@@ -929,7 +942,7 @@ class LanceurActivity : Activity() {
             val taille = if (tele) tv(96f) else 56f
             val cell = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(px(4f), px(8f), px(4f), px(8f)); isClickable = true; isFocusable = true }
             val dsq = disque(Accueil.icone(this, pkg), taille)
-            val anneau = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(3f), theme.or) }; visibility = View.INVISIBLE }
+            val anneau = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(2f), theme.or) }; visibility = View.INVISIBLE }
             val cadre = FrameLayout(this)
             cadre.addView(dsq, FrameLayout.LayoutParams(px(taille), px(taille), Gravity.CENTER))
             cadre.addView(anneau, FrameLayout.LayoutParams(px(taille + 12f), px(taille + 12f), Gravity.CENTER))
@@ -1235,7 +1248,7 @@ class LanceurActivity : Activity() {
         val cam = cams.getJSONObject(0)
         c.addView(texte(cam.optString("nom"), 11.5f, theme.encre2).apply { setPadding(px(4f), px(4f), 0, 0); maxLines = 1 })
         chargerImageCamera(cam.optString("id"), img)
-        c.setOnClickListener { startActivity(Intent(this, VeilleActivity::class.java)) }
+        c.setOnClickListener { Veille.ouvrir(this) }
         return c
     }
 

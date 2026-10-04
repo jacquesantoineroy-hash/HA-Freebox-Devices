@@ -54,7 +54,7 @@ object Bulle {
                 val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 val nous = Usage.dernierPaquet == ctx.packageName || Usage.dernierPaquet.isEmpty()
                 val musique = am.isMusicActive && !Musique.enCours
-                val voulue = activee(ctx) && permise(ctx) && musique && !nous
+                val voulue = activee(ctx) && permise(ctx) && musique && !nous && !Veille.ouverte
                 if (voulue) montrer(ctx) else retirer()
             } catch (_: Exception) {}
             main.postDelayed(this, 4000)
@@ -75,7 +75,7 @@ object Bulle {
         }
         boite.addView(ImageView(ctx).apply { setImageResource(R.drawable.ic_vision) }, LinearLayout.LayoutParams(dp(if (tele) 34f else 40f), dp(if (tele) 34f else 40f)))
         if (tele) boite.addView(TextView(ctx).apply { text = "Accueil ×2 : écran de veille"; textSize = 12f; setTextColor(theme.encre2); typeface = Polices.moyen(ctx); setPadding(dp(8f), 0, 0, 0) })
-        boite.setOnClickListener { ctx.startActivity(Intent(ctx, VeilleActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        boite.setOnClickListener { Veille.ouvrir(ctx) }
         boite.setOnLongClickListener { poser(ctx, false); Toast.makeText(ctx, "Bulle rangée. Elle se réactive dans Réglages Vision.", Toast.LENGTH_LONG).show(); true }
         val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
         val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, type,

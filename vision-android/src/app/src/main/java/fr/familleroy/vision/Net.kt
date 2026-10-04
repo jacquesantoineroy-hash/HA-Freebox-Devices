@@ -85,17 +85,21 @@ object Net {
     }
 
     /** Télécharge un fichier (l'APK d'une mise à jour). Null en cas d'échec. */
+    @Volatile var derniereErreur: String = ""
+
     fun getBytes(ctx: Context, url: String, delaiMs: Int = 60000): ByteArray? {
-        val c = URL(url).openConnection() as HttpURLConnection
+        derniereErreur = ""
+        val c = try { URL(url).openConnection() as HttpURLConnection } catch (e: Exception) { derniereErreur = e.message ?: "adresse invalide"; return null }
         if (c is HttpsURLConnection) c.sslSocketFactory = fabrique(ctx)
         c.connectTimeout = 15000
         c.readTimeout = delaiMs
         c.requestMethod = "GET"
         c.setRequestProperty("User-Agent", "Vision-Android/" + BuildConfigCompat.version(ctx))
         return try {
-            if (c.responseCode !in 200..299) null
+            val code = c.responseCode
+            if (code !in 200..299) { derniereErreur = "HTTP $code"; null }
             else c.inputStream.use { it.readBytes() }
-        } catch (_: Exception) { null } finally { c.disconnect() }
+        } catch (e: Exception) { derniereErreur = e.javaClass.simpleName + (e.message?.let { " $it" } ?: ""); null } finally { c.disconnect() }
     }
 
     /** La fabrique TLS de l'application (racines du système + Let's Encrypt embarqué), pour les autres clients HTTP. */

@@ -26,6 +26,18 @@ import java.security.MessageDigest
 object MiseAJour {
     @Volatile var disponible: String = ""      // version proposée par HA, "" sinon
     @Volatile private var enCours = false
+    @Volatile private var depuis = 0L
+    /** Ce que fait la mise à jour en ce moment, ou pourquoi elle a échoué : affiché dans Réglages. */
+    @Volatile var etat: String = ""
+    @Volatile var surEtat: ((String) -> Unit)? = null
+    @Volatile private var dernierPath = ""
+    @Volatile private var dernierSha = ""
+
+    private fun dire(ctx: Context, t: String) {
+        etat = t
+        android.util.Log.i("Vision", "MiseAJour : $t")
+        surEtat?.let { cb -> android.os.Handler(ctx.mainLooper).post { cb(t) } }
+    }
 
     fun dossier(ctx: Context): File = File(ctx.cacheDir, "maj").apply { mkdirs() }
 
@@ -39,34 +51,45 @@ object MiseAJour {
         // On ne propose que ce qui est plus récent : une télé installée en avance
         // par ADB ne doit pas se voir offrir un retour en arrière.
         if (version.isEmpty() || path.isEmpty() || !plusRecente(version, actuelle)) { disponible = ""; return }
-        disponible = version
-        if (enCours) return
+        disponible = version; dernierPath = path; dernierSha = sha256
+        // Une tentative bloquée (réseau muet) ne doit pas empêcher les suivantes pour toujours.
+        if (enCours && System.currentTimeMillis() - depuis > 3 * 60_000L) enCours = false
+        if (enCours) { if (forcer) dire(ctx, "Déjà en cours…"); return }
         val silencieux = peutInstallerSansDemander(ctx)
         if (!forcer && !silencieux && cfg.majProposee == version) return
-        enCours = true
+        enCours = true; depuis = System.currentTimeMillis()
         Thread {
             try {
+                dire(ctx, "Téléchargement de la $version…")
                 val f = telecharger(ctx, cfg, version, path, sha256)
                 if (f != null) {
                     cfg.majProposee = version
-                    if (silencieux || forcer) installer(ctx, f) else proposer(ctx, version, f)
+                    if (silencieux || forcer) installer(ctx, f) else { proposer(ctx, version, f); dire(ctx, "Prête : touche la notification, ou « Installer » ici.") }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                dire(ctx, "Échec : ${e.javaClass.simpleName} ${e.message ?: ""}".trim())
             } finally {
                 enCours = false
             }
         }.start()
     }
 
+    /** Le bouton « Installer » : on télécharge (ou reprend l'APK vérifié) et on lance l'installation tout de suite. */
+    fun installerMaintenant(ctx: Context, cfg: Config) {
+        if (disponible.isEmpty() || dernierPath.isEmpty()) { dire(ctx, "Aucune version annoncée par Home Assistant pour l'instant."); return }
+        traiter(ctx, cfg, disponible, dernierPath, dernierSha, forcer = true)
+    }
+
     private fun telecharger(ctx: Context, cfg: Config, version: String, path: String, sha256: String): File? {
         val cible = File(dossier(ctx), "vision-$version.apk")
-        if (cible.isFile && sha256.isNotEmpty() && empreinte(cible) == sha256.lowercase()) return cible
-        val base = cfg.urlActive.ifEmpty { cfg.adresses().firstOrNull() ?: return null }
-        val octets = Net.getBytes(ctx, base + path) ?: return null
+        if (cible.isFile && sha256.isNotEmpty() && empreinte(cible) == sha256.lowercase()) { dire(ctx, "APK $version déjà téléchargé et vérifié."); return cible }
+        val base = cfg.urlActive.ifEmpty { cfg.adresses().firstOrNull() ?: run { dire(ctx, "Aucune adresse Home Assistant connue."); return null } }
+        val octets = Net.getBytes(ctx, base + path) ?: run { dire(ctx, "Téléchargement impossible depuis $base (${Net.derniereErreur})."); return null }
         if (sha256.isNotEmpty()) {
             val h = MessageDigest.getInstance("SHA-256").digest(octets).joinToString("") { "%02x".format(it) }
-            if (h != sha256.lowercase()) return null
+            if (h != sha256.lowercase()) { dire(ctx, "Empreinte différente : annoncée ${sha256.take(12)}…, reçue ${h.take(12)}… (${octets.size} octets). Le vision.json de HA ne correspond pas à l'APK servi."); return null }
         }
+        dire(ctx, "APK vérifié (${octets.size / 1024} Ko).")
         // On nettoie les anciennes versions téléchargées.
         dossier(ctx).listFiles()?.forEach { if (it.name != cible.name) it.delete() }
         cible.writeBytes(octets)
@@ -121,6 +144,7 @@ object MiseAJour {
                 // place pour que les mises à jour suivantes soient silencieuses.
             }
             val id = pi.createSession(params)
+            dire(ctx, "Installation : session $id ouverte" + (if (silencieux) ", sans confirmation." else ", Android va demander confirmation."))
             pi.openSession(id).use { s ->
                 s.openWrite("vision.apk", 0, f.length()).use { out ->
                     f.inputStream().use { it.copyTo(out) }
@@ -131,9 +155,24 @@ object MiseAJour {
                 if (Build.VERSION.SDK_INT >= 31) flags = flags or PendingIntent.FLAG_MUTABLE
                 s.commit(PendingIntent.getBroadcast(ctx, id, retour, flags).intentSender)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            dire(ctx, "Session refusée (${e.message ?: e.javaClass.simpleName}) : passage par l'écran d'installation du système.")
             installerParIntent(ctx, f)
         }
+    }
+
+    /** Le résultat de la session, remonté par InstallReceiver. */
+    fun resultat(ctx: Context, statut: Int, message: String?) {
+        dire(ctx, when (statut) {
+            PackageInstaller.STATUS_SUCCESS -> "Installée. Vision redémarre."
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> "En attente de ta confirmation à l'écran."
+            PackageInstaller.STATUS_FAILURE_BLOCKED -> "Refusée par Android (bloquée) : ${message ?: ""}"
+            PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "Refusée : APK incompatible (autre clé de signature ?) ${message ?: ""}"
+            PackageInstaller.STATUS_FAILURE_INVALID -> "Refusée : APK invalide ${message ?: ""}"
+            PackageInstaller.STATUS_FAILURE_STORAGE -> "Refusée : plus de place ${message ?: ""}"
+            PackageInstaller.STATUS_FAILURE_ABORTED -> "Annulée ${message ?: ""}"
+            else -> "Échec de la session ($statut) ${message ?: ""} : nouvel essai par l'écran du système."
+        }.trim())
     }
 
     /** Si la session échoue (vérification refusée…), on retente par l'écran du système. */
@@ -148,7 +187,7 @@ object MiseAJour {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (Build.VERSION.SDK_INT >= 24) putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
         }
-        try { ctx.startActivity(i) } catch (_: Exception) {}
+        try { ctx.startActivity(i) } catch (e: Exception) { dire(ctx, "Impossible d'ouvrir l'installateur : ${e.message}") }
     }
 
     /** Vrai si Android autorise cette app à lancer une installation (réglage utilisateur). */

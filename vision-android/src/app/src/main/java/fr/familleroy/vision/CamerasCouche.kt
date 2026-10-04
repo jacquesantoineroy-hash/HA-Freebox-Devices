@@ -53,6 +53,9 @@ class CamerasCouche(ctx: Context) : FrameLayout(ctx) {
 
     private val main = Handler(Looper.getMainLooper())
     private val lecteurs = LinkedHashMap<String, Lecteur>()
+    private val coins = object : android.view.ViewOutlineProvider() {
+        override fun getOutline(v: android.view.View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, rayon) }
+    }
     private var cfg: Config? = null
 
     /** Vrai si cette caméra affiche de la vidéo : le dessin peut alors cacher son instantané. */
@@ -62,8 +65,12 @@ class CamerasCouche(ctx: Context) : FrameLayout(ctx) {
     fun format(id: String): Float? = lecteurs[id]?.let { if (it.vw > 0 && it.vh > 0) it.vw.toFloat() / it.vh else null }
 
     /** Place (ou crée) les lecteurs des caméras données, dans les rectangles donnés, à l'opacité donnée. */
-    fun montrer(cameras: List<Pair<String, RectF>>, alpha: Float) {
+    /** Le rayon des coins de la vidéo, le même que la case dessinée dessous. */
+    var rayon = 0f
+
+    fun montrer(cameras: List<Pair<String, RectF>>, alpha: Float, rayonCoins: Float = rayon) {
         if (cfg == null) cfg = Config(context)
+        rayon = rayonCoins
         val voulus = cameras.map { it.first }.toSet()
         // Les autres lecteurs restent ouverts (prêts pour leur tour), simplement invisibles.
         lecteurs.values.filter { it.id !in voulus }.forEach { it.texture?.alpha = 0f }
@@ -74,6 +81,8 @@ class CamerasCouche(ctx: Context) : FrameLayout(ctx) {
                 val lp = tv.layoutParams as? LayoutParams
                 if (lp == null || lp.width != lw || lp.height != lh) { tv.layoutParams = LayoutParams(lw, lh); if (l.vw > 0) ajuster(l) }
                 tv.x = rect.left; tv.y = rect.top
+                // La vidéo est découpée aux coins ronds de sa case, dès la première image.
+                if (tv.outlineProvider !== coins) { tv.outlineProvider = coins; tv.clipToOutline = true } else if (lp == null || lp.width != lw || lp.height != lh) tv.invalidateOutline()
                 tv.alpha = if (l.rendu && !l.echec) alpha else 0f
             }
         }

@@ -59,7 +59,7 @@ class TableauEditeurActivity : Activity() {
     private fun t(pxMaquette: Float): Float = if (tele) pxMaquette * (dm.heightPixels / dm.density) / 1080f else pxMaquette * 0.62f
     private fun texte(s: String, taille: Float, couleur: Int, police: android.graphics.Typeface = Polices.texte(this)): TextView = TextView(this).apply { text = s; textSize = taille; setTextColor(couleur); typeface = police }
     private fun fondCarte(rayonDp: Float, couleur: Int = theme.carte, bord: Int = theme.carteBord, epaisseurDp: Float = 1f): GradientDrawable = GradientDrawable().apply { cornerRadius = px(rayonDp).toFloat(); setColor(couleur); setStroke(px(epaisseurDp), bord) }
-    private fun focusable(v: View) { v.isFocusable = true; v.isClickable = true; v.background = fondCarte(18f); v.setOnFocusChangeListener { x, a -> x.background = if (a) fondCarte(18f, bord = theme.or, epaisseurDp = 3f) else fondCarte(18f) } }
+    private fun focusable(v: View) { v.isFocusable = true; v.isClickable = true; v.background = fondCarte(18f); v.setOnFocusChangeListener { x, a -> x.background = if (a) fondCarte(18f, bord = theme.or, epaisseurDp = 2f) else fondCarte(18f) } }
 
     private fun sauver() { Local.remplacerLocal(this, tableau); construire() }
 

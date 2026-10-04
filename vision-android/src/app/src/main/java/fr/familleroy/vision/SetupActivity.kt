@@ -127,7 +127,7 @@ class SetupActivity : Activity() {
             racine.postDelayed({ if (assistant && !suivante.ok()) suivante.ouvrir() }, 450)
         }
     }
-    override fun onPause() { auPremierPlan = false; super.onPause() }
+    override fun onPause() { auPremierPlan = false; MiseAJour.surEtat = null; super.onPause() }
 
     // ------------------------------------------------------------- Écran
 
@@ -177,13 +177,15 @@ class SetupActivity : Activity() {
         version.addView(ligneInfo("Mises à jour", MiseAJour.etatAuto(this)))
         if (MiseAJour.disponible.isNotEmpty()) {
             version.addView(ligneInfo("Disponible", MiseAJour.disponible))
+            val etat = Ui.texte(this, MiseAJour.etat.ifEmpty { "Prête à être installée." }, 13f, Ui.TEXTE_2)
+            MiseAJour.surEtat = { t -> etat.text = t }
             version.addView(Ui.marge(this, Ui.boutonPrimaire(this, "Installer la ${MiseAJour.disponible}") {
-                toast("Téléchargement…")
-                // L'agent connaît le chemin et l'empreinte : on force une nouvelle proposition.
+                etat.text = "Téléchargement…"
                 cfg.majProposee = ""
-                AgentService.demarrer(this)
+                MiseAJour.installerMaintenant(this, cfg)
             }, haut = 12f))
-        }
+            version.addView(Ui.marge(this, etat, haut = 8f))
+        } else if (MiseAJour.etat.isNotEmpty()) version.addView(Ui.marge(this, Ui.texte(this, MiseAJour.etat, 13f, Ui.TEXTE_2), haut = 6f))
         val themes = Ui.rangee(this)
         themes.addView(Ui.poids(Ui.texte(this, "Thème et couleurs", 14f, Ui.TEXTE_2)))
         themes.addView(Ui.boutonSecondaire(this, Local.theme(this)) { startActivity(Intent(this, CouleursActivity::class.java)) })

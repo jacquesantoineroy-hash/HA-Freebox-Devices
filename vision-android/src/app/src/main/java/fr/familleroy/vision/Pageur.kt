@@ -12,7 +12,7 @@ import android.widget.LinearLayout
  * atteignable à droite pour y poser une case.
  */
 class Pageur(ctx: Context) : HorizontalScrollView(ctx) {
-    val rangee = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+    val rangee = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false; clipToPadding = false }
     var pagesVisibles = 1
     var surPage: (Int) -> Unit = {}
     private var courante = 0
@@ -21,6 +21,7 @@ class Pageur(ctx: Context) : HorizontalScrollView(ctx) {
     init {
         isHorizontalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
+        clipChildren = false; clipToPadding = false
         addView(rangee)
     }
 

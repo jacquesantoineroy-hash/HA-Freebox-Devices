@@ -85,7 +85,7 @@ class ReglagesTvActivity : Activity() {
     private fun focusable(v: View, tag: String, rayon: Float = 18f) {
         v.isFocusable = true; v.isClickable = true; v.tag = tag
         v.background = fondCarte(rayon)
-        v.setOnFocusChangeListener { x, a -> x.background = if (a) fondCarte(rayon, bord = theme.or, epaisseurDp = 3f) else fondCarte(rayon); if (a) focusTag = tag }
+        v.setOnFocusChangeListener { x, a -> x.background = if (a) fondCarte(rayon, bord = theme.or, epaisseurDp = 2f) else fondCarte(rayon); if (a) focusTag = tag }
     }
 
     private fun trouver(v: View, tag: String): View? {
@@ -213,7 +213,7 @@ class ReglagesTvActivity : Activity() {
             })
             droite.addView(ligne("Voir l'écran de verrouillage", "maintenant", "verrou_voir") { VerrouActivity.montrer(this) })
         }
-        droite.addView(ligne("Lancer l'écran de veille", "maintenant", "veille") { startActivity(Intent(this, VeilleActivity::class.java)) })
+        droite.addView(ligne("Lancer l'écran de veille", "maintenant", "veille") { Veille.ouvrir(this) })
         droite.addView(ligne("Application Vision", "connexion, personne, parents", "appli") { startActivity(Intent(this, SetupActivity::class.java)) })
         if (tele) droite.addView(ligne("Accueil d'origine de la télé", "ouvrir", "origine") { Accueil.accueilSysteme(this)?.let { try { startActivity(it) } catch (_: Exception) {} } })
 
@@ -257,7 +257,7 @@ class ReglagesTvActivity : Activity() {
             FrameLayout.LayoutParams(px(24f), px(24f), (if (l.actif) Gravity.END else Gravity.START) or Gravity.CENTER_VERTICAL).apply { setMargins(px(4f), 0, px(4f), 0) })
         bascule.addView(piste, FrameLayout.LayoutParams(px(58f), px(32f)))
         focusable(bascule, "b_" + l.cle, 22f); bascule.background = fondCarte(22f, couleur = 0, bord = 0)
-        bascule.setOnFocusChangeListener { x, a -> x.background = fondCarte(22f, couleur = 0, bord = if (a) theme.or else 0, epaisseurDp = 3f); if (a) focusTag = "b_" + l.cle }
+        bascule.setOnFocusChangeListener { x, a -> x.background = fondCarte(22f, couleur = 0, bord = if (a) theme.or else 0, epaisseurDp = 2f); if (a) focusTag = "b_" + l.cle }
         bascule.setOnClickListener { Local.poserTableau(this, l.cle, actif = !l.actif); repeindre() }
         rang.addView(bascule, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = px(8f) })
         val nom = texte(l.nom, t(26f), theme.encre, Polices.moyen(this)).apply { alpha = if (l.actif) 1f else 0.45f; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(px(6f), px(8f), px(6f), px(8f)) }

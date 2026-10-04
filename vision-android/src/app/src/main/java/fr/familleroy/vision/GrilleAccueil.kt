@@ -38,6 +38,10 @@ class GrilleAccueil(ctx: Context) : ViewGroup(ctx) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val lc = (w - paddingLeft - paddingRight) / Accueil.COLONNES
         if (hauteurCellule == 0) hauteurCellule = (lc * 1.12f).toInt()
+        if (hauteurFixe && MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.UNSPECIFIED) {
+            val dispo = MeasureSpec.getSize(heightMeasureSpec) - paddingTop - paddingBottom
+            if (dispo > 0 && lignesMin > 0) hauteurCellule = minOf(hauteurCellule, dispo / lignesMin)
+        }
         val h = paddingTop + paddingBottom + lignes() * hauteurCellule
         for (i in 0 until childCount) {
             val v = getChildAt(i); val pl = v.tag as? Accueil.Place ?: continue
