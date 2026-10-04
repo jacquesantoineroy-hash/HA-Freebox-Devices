@@ -142,8 +142,8 @@ class LanceurActivity : Activity() {
 
     /** Sur télé : sans touche pendant le délai choisi, l'écran de veille vient (en plus du réglage système, quand il a pu être écrit). */
     private val veilleAuto = Runnable {
-        val autre = try { (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).isMusicActive } catch (_: Exception) { false }
-        if (tele && !isFinishing && Local.delaiVeille(this) > 0 && !Veille.ouverte && !autre) startActivity(Intent(this, VeilleActivity::class.java))
+        val proteger = try { Local.appAProteger(this) } catch (_: Exception) { false }
+        if (tele && !isFinishing && Local.delaiVeille(this) > 0 && !Veille.ouverte && !proteger) startActivity(Intent(this, VeilleActivity::class.java))
     }
     private fun armerVeille() {
         main.removeCallbacks(veilleAuto)
@@ -217,7 +217,7 @@ class LanceurActivity : Activity() {
 
     private fun carte(rayonDp: Float = 22f, padDp: Float = 16f, orientation: Int = LinearLayout.VERTICAL, bordOr: Boolean = false): LinearLayout = LinearLayout(this).apply {
         this.orientation = orientation
-        background = if (bordOr) fondCarte(rayonDp, bord = theme.or, epaisseurDp = 2f) else fondCarte(rayonDp)
+        background = if (bordOr) fondCarte(rayonDp, bord = theme.or, epaisseurDp = 1.5f) else fondCarte(rayonDp)
         setPadding(px(padDp), px(padDp - 2f), px(padDp), px(padDp - 2f))
     }
 
@@ -291,7 +291,7 @@ class LanceurActivity : Activity() {
     private fun roueReglages(tailleDp: Float): View {
         val b = FrameLayout(this).apply { background = fondCarte(999f); isClickable = true; isFocusable = true; contentDescription = "Réglages Vision"; tag = "roue" }
         b.addView(icone(R.drawable.ic_reglages, tailleDp * 0.5f, theme.or), FrameLayout.LayoutParams(px(tailleDp * 0.5f), px(tailleDp * 0.5f), Gravity.CENTER))
-        b.setOnFocusChangeListener { v, a -> v.background = if (a) fondCarte(999f, bord = theme.or, epaisseurDp = 2f) else fondCarte(999f); v.animate().scaleX(if (a) 1.1f else 1f).scaleY(if (a) 1.1f else 1f).setDuration(120).start() }
+        b.setOnFocusChangeListener { v, a -> v.background = if (a) fondCarte(999f, bord = theme.or, epaisseurDp = 1.5f) else fondCarte(999f); v.animate().scaleX(if (a) 1.1f else 1f).scaleY(if (a) 1.1f else 1f).setDuration(120).start() }
         b.setOnClickListener { startActivity(Intent(this, ReglagesTvActivity::class.java)) }
         return b
     }
@@ -306,6 +306,7 @@ class LanceurActivity : Activity() {
         racine.setBackgroundColor(theme.fond)
         racine.addView(FondAnime(this) { theme }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         if (tele) construireTele() else construireTelephone()
+        Ui.laisserDeborder(racine)
         appliquerDonnees()
         if (focusAvant != null) racine.post { trouverParTag(racine, focusAvant)?.requestFocus() }
     }
@@ -861,7 +862,7 @@ class LanceurActivity : Activity() {
         val ic = FrameLayout(this)
         val dsq = if (c.dossier != null) disqueDossier(c.dossier, 48f) else disque(Accueil.icone(this, c.pkg!!), 48f)
         ic.addView(dsq, FrameLayout.LayoutParams(px(48f), px(48f), Gravity.CENTER))
-        ic.addView(View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(2f), theme.or) } }, FrameLayout.LayoutParams(px(56f), px(56f), Gravity.CENTER))
+        ic.addView(View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(1.5f), theme.or) } }, FrameLayout.LayoutParams(px(56f), px(56f), Gravity.CENTER))
         tete.addView(ic, LinearLayout.LayoutParams(px(56f), px(56f)))
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(14f), 0, 0, 0) }
         val nom = if (c.dossier != null) c.dossier.nom else Accueil.etiquette(this, c.pkg!!)
@@ -945,7 +946,7 @@ class LanceurActivity : Activity() {
             val taille = if (tele) tv(96f) else 56f
             val cell = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(px(4f), px(8f), px(4f), px(8f)); isClickable = true; isFocusable = true }
             val dsq = disque(Accueil.icone(this, pkg), taille)
-            val anneau = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(2f), theme.or) }; visibility = View.INVISIBLE }
+            val anneau = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(1.5f), theme.or) }; visibility = View.INVISIBLE }
             val cadre = FrameLayout(this)
             cadre.addView(dsq, FrameLayout.LayoutParams(px(taille), px(taille), Gravity.CENTER))
             cadre.addView(anneau, FrameLayout.LayoutParams(px(taille + 12f), px(taille + 12f), Gravity.CENTER))

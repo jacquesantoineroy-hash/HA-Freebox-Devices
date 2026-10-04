@@ -23,6 +23,9 @@ object Themes {
             0xFF1A2647.toInt(), 0x882B3A64.toInt(), 0xFF6FA8E8.toInt(), 0xFFE2B24A.toInt(), intArrayOf(0x2E4C8A, 0x5A3A6A, 0x2A6A7A), true),
         Theme("Sauge", 0xFFDDE5DA.toInt(), 0xFF1F2A24.toInt(), 0xFF5E6E64.toInt(), 0xFF7F8F85.toInt(),
             0xFFF2F6EF.toInt(), 0x552F6B55, 0xFF2F6B55.toInt(), 0xFF7F5C0E.toInt(), intArrayOf(0xA9C98F, 0xE0CB7E, 0x98BDCF), false),
+        // D'après les photos du salon (04-10) : mur greige, toiles en relief blanc cassé, chiffres en chêne clair, cadran d'acier noir, canapé taupe.
+        Theme("Salon", 0xFFD9D1C5.toInt(), 0xFF2A2724.toInt(), 0xFF6B645C.toInt(), 0xFF8E867D.toInt(),
+            0xFFF4F1EB.toInt(), 0x552A2724, 0xFFB07E4A.toInt(), 0xFF8A6433.toInt(), intArrayOf(0xD8B98F, 0xFFFFFF, 0x9A948B), false),
         Theme("Rose poudré", 0xFFF0DEDD.toInt(), 0xFF2C1F24.toInt(), 0xFF7A5A60.toInt(), 0xFF998287.toInt(),
             0xFFFBF1F0.toInt(), 0x5596405C, 0xFF96405C.toInt(), 0xFF875A12.toInt(), intArrayOf(0xEBA8B2, 0xEBCC95, 0xC2B0E0), false),
     )

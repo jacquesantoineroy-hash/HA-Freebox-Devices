@@ -74,7 +74,7 @@ class CouleursActivity : Activity() {
     private fun focalisable(v: View, cle: String, rond: Boolean = true, peint: View = v) {
         v.isClickable = true; v.isFocusable = true; v.tag = cle
         val th = theme()
-        val anneau = GradientDrawable().apply { if (rond) shape = GradientDrawable.OVAL else cornerRadius = px(22f).toFloat(); setColor(0); setStroke(px(2f), th.or) }
+        val anneau = GradientDrawable().apply { if (rond) shape = GradientDrawable.OVAL else cornerRadius = px(22f).toFloat(); setColor(0); setStroke(px(1.5f), th.or) }
         v.setOnFocusChangeListener { _, a ->
             if (android.os.Build.VERSION.SDK_INT >= 23) peint.foreground = if (a) anneau else null
             peint.animate().scaleX(if (a) 1.12f else 1f).scaleY(if (a) 1.12f else 1f).setDuration(120).start()
@@ -140,7 +140,7 @@ class CouleursActivity : Activity() {
             focalisable(cell, "theme:" + t.nom, peint = pastille)
             pastille.addView(View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(t.fond); setStroke(px(2f), t.carteBord) } }, FrameLayout.LayoutParams(px(44f), px(44f), Gravity.CENTER))
             pastille.addView(View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(t.pourpre) } }, FrameLayout.LayoutParams(px(14f), px(14f), Gravity.CENTER))
-            if (on) pastille.addView(View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(2f), th.or) } }, FrameLayout.LayoutParams(px(54f), px(54f), Gravity.CENTER))
+            if (on) pastille.addView(View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(1.5f), th.or) } }, FrameLayout.LayoutParams(px(54f), px(54f), Gravity.CENTER))
             cell.addView(pastille, LinearLayout.LayoutParams(px(54f), px(54f)))
             cell.addView(texte(t.nom, 11f, if (on) th.encre else th.encre2, if (on) Polices.gras(this) else Polices.moyen(this)).apply { gravity = Gravity.CENTER; setPadding(0, px(6f), 0, 0); maxLines = 1 })
             cell.setOnClickListener { Local.poserTheme(this, t.nom); reglage = JSONObject(); enregistrer() }
@@ -163,7 +163,7 @@ class CouleursActivity : Activity() {
                 val v = FrameLayout(this).apply { contentDescription = hex }
                 focalisable(v, "$cle:$hex")
                 v.addView(View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c); setStroke(px(2f), th.carteBord) } }, FrameLayout.LayoutParams(px(40f), px(40f), Gravity.CENTER))
-                if (on) v.addView(View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(2f), th.or) } }, FrameLayout.LayoutParams(px(50f), px(50f), Gravity.CENTER))
+                if (on) v.addView(View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(1.5f), th.or) } }, FrameLayout.LayoutParams(px(50f), px(50f), Gravity.CENTER))
                 v.setOnClickListener { poser(cle, c) }
                 pastilles.addView(v, LinearLayout.LayoutParams(px(50f), px(50f)))
             }
@@ -179,7 +179,8 @@ class CouleursActivity : Activity() {
         }
         colonne.addView(texte("Ces couleurs habillent tout l'appareil : l'accueil, l'écran de veille et les écrans de Vision. Le « + » ouvre la roue pour une couleur libre. « Revenir au thème » annule tout.", 13f, th.encre2).apply { setPadding(0, px(16f), 0, 0) })
         focusTag?.let { cle -> colonne.post { chercher(colonne, cle)?.requestFocus() } }
-    }
+            Ui.laisserDeborder(racine)
+}
 
     private fun chercher(v: View, cle: String): View? {
         if (v.tag == cle) return v

@@ -31,6 +31,7 @@ object Veille {
     private var vue: VeilleView? = null
     private var appCtx: Context? = null
     private var ouvertA = 0L
+    private var appFond: String? = null
     private var recepteur: android.content.BroadcastReceiver? = null
 
     fun permise(ctx: Context): Boolean = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(ctx)
@@ -43,8 +44,8 @@ object Veille {
         appCtx = app
         val wm = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val cadre = object : FrameLayout(app) {
-            override fun dispatchKeyEvent(e: KeyEvent): Boolean { if (e.action == KeyEvent.ACTION_DOWN) fermer(); return true }
-            override fun dispatchTouchEvent(e: MotionEvent): Boolean { if (e.action == MotionEvent.ACTION_DOWN) fermer(); return true }
+            override fun dispatchKeyEvent(e: KeyEvent): Boolean { if (e.action == KeyEvent.ACTION_DOWN) fermer(parUtilisateur = true); return true }
+            override fun dispatchTouchEvent(e: MotionEvent): Boolean { if (e.action == MotionEvent.ACTION_DOWN) fermer(parUtilisateur = true); return true }
             // Quelque chose est passé devant (le rêve du système, une autre appli) : la couche n'a plus lieu d'être.
             // Sinon elle resterait dessous, musique et caméras comprises, sans que personne puisse l'arrêter.
             override fun onWindowFocusChanged(a: Boolean) { super.onWindowFocusChanged(a); if (!a && SystemClock.uptimeMillis() - ouvertA > 1500) fermer() }
@@ -63,6 +64,7 @@ object Veille {
         try {
             wm.addView(cadre, lp)
             couche = cadre; vue = v; ouvertA = SystemClock.uptimeMillis()
+            appFond = try { Local.appEnFond(app) } catch (_: Exception) { null }
             Bulle.retirer()
             // L'écran de veille du système ou l'extinction de l'écran ferment la couche.
             val r = object : android.content.BroadcastReceiver() { override fun onReceive(c: Context, i: Intent) { fermer() } }
@@ -79,9 +81,11 @@ object Veille {
 
     private val gardien = Runnable { fermer() }
 
-    fun fermer() {
+    fun fermer(parUtilisateur: Boolean = false) {
         val c = couche ?: return
         couche = null
+        val pk = appFond; appFond = null
+        if (parUtilisateur && pk != null) main.postDelayed({ appCtx?.let { RetourActivity.proposer(it, pk) } }, 150)
         main.removeCallbacks(gardien)
         recepteur?.let { r -> try { appCtx?.unregisterReceiver(r) } catch (_: Exception) {} }
         recepteur = null

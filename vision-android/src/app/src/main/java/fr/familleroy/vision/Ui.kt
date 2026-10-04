@@ -73,6 +73,14 @@ object Ui {
         else { VERT = 0xFF2F8A5E.toInt(); ROUGE = 0xFFB8322A.toInt(); BLEU = 0xFF3E7CC4.toInt() }
     }
 
+    /** Aucun contour ni agrandissement de focus ne doit être coupé : tous les conteneurs laissent déborder. */
+    fun laisserDeborder(v: View) {
+        if (v is ViewGroup) {
+            v.clipChildren = false; v.clipToPadding = false
+            for (i in 0 until v.childCount) laisserDeborder(v.getChildAt(i))
+        }
+    }
+
     fun dp(ctx: Context, v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics).toInt()
 

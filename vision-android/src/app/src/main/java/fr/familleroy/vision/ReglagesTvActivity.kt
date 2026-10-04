@@ -85,7 +85,7 @@ class ReglagesTvActivity : Activity() {
     private fun focusable(v: View, tag: String, rayon: Float = 18f) {
         v.isFocusable = true; v.isClickable = true; v.tag = tag
         v.background = fondCarte(rayon)
-        v.setOnFocusChangeListener { x, a -> x.background = if (a) fondCarte(rayon, bord = theme.or, epaisseurDp = 2f) else fondCarte(rayon); if (a) focusTag = tag }
+        v.setOnFocusChangeListener { x, a -> x.background = if (a) fondCarte(rayon, bord = theme.or, epaisseurDp = 1.5f) else fondCarte(rayon); if (a) focusTag = tag }
     }
 
     private fun trouver(v: View, tag: String): View? {
@@ -166,7 +166,7 @@ class ReglagesTvActivity : Activity() {
             col.addView(texte(detail, t(18f), theme.encre2).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
             b.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             focusable(b, "son_$code", 22f)
-            if (on) b.background = fondCarte(22f, bord = theme.or, epaisseurDp = 2f)
+            if (on) b.background = fondCarte(22f, bord = theme.or, epaisseurDp = 1.5f)
             b.setOnClickListener {
                 when (code) {
                     "radio" -> { val k = Local.RADIOS.indexOfFirst { it.second == musique }; Local.poserMusique(this, Local.RADIOS[(k + 1 + Local.RADIOS.size) % Local.RADIOS.size].second); repeindre() }
@@ -213,12 +213,14 @@ class ReglagesTvActivity : Activity() {
             })
             droite.addView(ligne("Voir l'écran de verrouillage", "maintenant", "verrou_voir") { VerrouActivity.montrer(this) })
         }
+        droite.addView(ligne("Applis qui continuent en fond", "${Local.fond(this).size} choisie${if (Local.fond(this).size > 1) "s" else ""}", "fond") { choisirFond() })
         droite.addView(ligne("Lancer l'écran de veille", "maintenant", "veille") { Veille.ouvrir(this) })
         droite.addView(ligne("Application Vision", "connexion, personne, parents", "appli") { startActivity(Intent(this, SetupActivity::class.java)) })
         if (tele) droite.addView(ligne("Accueil d'origine de la télé", "ouvrir", "origine") { Accueil.accueilSysteme(this)?.let { try { startActivity(it) } catch (_: Exception) {} } })
 
         contenu.addView(texte(if (tele) "OK : afficher ou masquer, − et + : durée · Retour : fermer · Deux appuis sur Accueil : l'écran de veille par-dessus la musique" else "Appui long sur un tableau composé ici : modifier ou supprimer.", t(18f), theme.encre3).apply { setPadding(0, px(18f), 0, 0) })
-    }
+            Ui.laisserDeborder(racine)
+}
 
     // ------------------------------------------------------------------ tableaux
 
@@ -257,7 +259,7 @@ class ReglagesTvActivity : Activity() {
             FrameLayout.LayoutParams(px(24f), px(24f), (if (l.actif) Gravity.END else Gravity.START) or Gravity.CENTER_VERTICAL).apply { setMargins(px(4f), 0, px(4f), 0) })
         bascule.addView(piste, FrameLayout.LayoutParams(px(58f), px(32f)))
         focusable(bascule, "b_" + l.cle, 22f); bascule.background = fondCarte(22f, couleur = 0, bord = 0)
-        bascule.setOnFocusChangeListener { x, a -> x.background = fondCarte(22f, couleur = 0, bord = if (a) theme.or else 0, epaisseurDp = 2f); if (a) focusTag = "b_" + l.cle }
+        bascule.setOnFocusChangeListener { x, a -> x.background = fondCarte(22f, couleur = 0, bord = if (a) theme.or else 0, epaisseurDp = 1.5f); if (a) focusTag = "b_" + l.cle }
         bascule.setOnClickListener { Local.poserTableau(this, l.cle, actif = !l.actif); repeindre() }
         rang.addView(bascule, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = px(8f) })
         val nom = texte(l.nom, t(26f), theme.encre, Polices.moyen(this)).apply { alpha = if (l.actif) 1f else 0.45f; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(px(6f), px(8f), px(6f), px(8f)) }
@@ -295,6 +297,19 @@ class ReglagesTvActivity : Activity() {
         r.setOnClickListener { action() }
         r.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(8f) }
         return r
+    }
+
+    /** Les applis que l'écran de veille peut recouvrir sans les couper (leur son continue, la radio de Vision se tait). */
+    private fun choisirFond() {
+        val pm = packageManager
+        val toutes = Accueil.applicationsInstallees(this)
+        val choisies = Local.fond(this).toMutableSet()
+        val noms = toutes.map { it.loadLabel(pm).toString() }.toTypedArray()
+        val coches = toutes.map { it.activityInfo.packageName in choisies }.toBooleanArray()
+        AlertDialog.Builder(this).setTitle("Pendant la veille, ces applis continuent en fond")
+            .setMultiChoiceItems(noms, coches) { _, k, on -> val p = toutes[k].activityInfo.packageName; if (on) choisies.add(p) else choisies.remove(p) }
+            .setPositiveButton("Garder") { _, _ -> Local.poserFond(this, choisies); repeindre() }
+            .setNegativeButton("Annuler", null).show()
     }
 
     private fun choisirApplis() {

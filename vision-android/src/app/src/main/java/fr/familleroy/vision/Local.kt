@@ -77,6 +77,27 @@ object Local {
     }
     fun peutEcrireSysteme(ctx: Context): Boolean = android.os.Build.VERSION.SDK_INT < 23 || android.provider.Settings.System.canWrite(ctx)
 
+    /** Les applis qui ont le droit de continuer en fond pendant l'écran de veille (Spotify, YouTube Music…). */
+    private val FOND_DEFAUT = listOf("spotify", "music", "deezer", "radio", "tunein", "soundcloud", "qobuz", "tidal")
+    fun fond(ctx: Context): Set<String> {
+        val brut = p(ctx).getStringSet("fond", null)
+        if (brut != null) return brut
+        return try { Accueil.applicationsInstallees(ctx).map { it.activityInfo.packageName }.filter { pk -> FOND_DEFAUT.any { pk.contains(it, ignoreCase = true) } }.toSet() } catch (_: Exception) { emptySet() }
+    }
+    fun poserFond(ctx: Context, s: Set<String>) { p(ctx).edit().putStringSet("fond", HashSet(s)).apply(); toucher() }
+    /** L'appli qui joue en ce moment, si elle a le droit de rester en fond ; null sinon (ou si rien ne joue). */
+    fun appEnFond(ctx: Context): String? {
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        if (!am.isMusicActive || Musique.enCours) return null
+        val pk = Usage.dernierPaquet
+        return if (pk.isNotEmpty() && pk != ctx.packageName && pk in fond(ctx)) pk else null
+    }
+    /** Vrai si une appli joue et n'a PAS le droit d'être recouverte (Netflix, un jeu…). */
+    fun appAProteger(ctx: Context): Boolean {
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        return am.isMusicActive && !Musique.enCours && appEnFond(ctx) == null
+    }
+
     /** Téléphone : l'écran de verrouillage Vision, montré au réveil de l'écran. */
     fun verrou(ctx: Context): Boolean = p(ctx).getBoolean("verrou", false)
     fun poserVerrou(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("verrou", on).apply(); toucher() }

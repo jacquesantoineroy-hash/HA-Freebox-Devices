@@ -87,6 +87,12 @@
             android:exported="false"
             android:label="Couleurs"
             android:theme="@android:style/Theme.Material.NoActionBar" />
+        <!-- À la sortie de la veille : reprendre l'appli qui jouait, ou l'accueil. -->
+        <activity
+            android:name=".RetourActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- L'écran de verrouillage Vision du téléphone : par-dessus le verrou du système, au réveil de l'écran. -->
         <activity
             android:name=".VerrouActivity"
