@@ -1185,12 +1185,16 @@ class VeilleView(ctx: Context) : View(ctx) {
             c.drawPath(chemin, pForme)
         }
         ecrire(c, if (ch.bruleurOn) "brûleur allumé" else "brûleur " + ch.bruleur.lowercase(Locale.FRANCE).ifEmpty { "au repos" }, fx, fy + h * 0.07f, h * 0.024f, encre3, alpha * p1, normal, Paint.Align.CENTER)
-        // Colonne droite : litres par jour, puis mois et saison.
-        val colD = RectF(colG.right + h * 0.02f, haut, droite, bas)
+        // Colonne droite : les 24 h dehors / dedans en haut (le tableau « Courbe » n'a plus besoin d'être à part),
+        // les litres de fioul par jour en bas, puis mois et saison.
+        val series = donnees?.series?.take(2).orEmpty()
+        val avecCourbe = series.size >= 2
+        val colD = if (avecCourbe) RectF(colG.right + h * 0.02f, haut + (bas - haut) * 0.5f + h * 0.01f, droite, bas) else RectF(colG.right + h * 0.02f, haut, droite, bas)
+        if (avecCourbe) tracerCourbes(c, RectF(colG.right + h * 0.02f, haut, droite, haut + (bas - haut) * 0.5f - h * 0.01f), h, alpha * p0, ecoule, t, series, compact = true)
         cartePosee(c, colD, h, alpha * p0)
         ecrire(c, "FIOUL, LITRES PAR JOUR", colD.left + pad, colD.top + pad + h * 0.02f, h * 0.024f, encre3, alpha * p0, gras, espacement = 0.12f)
         val jours = ch.jours.takeLast(14)
-        val zone = RectF(colD.left + pad, colD.top + pad + h * 0.06f, colD.right - pad, colD.bottom - pad - h * 0.12f)
+        val zone = RectF(colD.left + pad, colD.top + pad + h * 0.06f, colD.right - pad, colD.bottom - pad - h * (if (avecCourbe) 0.09f else 0.12f))
         val maxL = (jours.maxOfOrNull { it.second } ?: 1f).coerceAtLeast(1f)
         val lb = zone.width() / jours.size.coerceAtLeast(1)
         jours.forEachIndexed { i, (jour, litres) ->
@@ -1199,7 +1203,7 @@ class VeilleView(ctx: Context) : View(ctx) {
             val x0 = zone.left + i * lb + lb * 0.15f; val x1 = zone.left + (i + 1) * lb - lb * 0.15f
             pForme.style = Paint.Style.FILL; pForme.color = if (i == jours.size - 1) pourpre else or; pForme.alpha = (alpha * 230).toInt()
             c.drawRoundRect(RectF(x0, zone.bottom - hb, x1, zone.bottom), lb * 0.15f, lb * 0.15f, pForme)
-            if (litres > 0f && pi > 0.9f) ecrire(c, String.format(Locale.FRANCE, "%.0f", litres), (x0 + x1) / 2, zone.bottom - hb - h * 0.01f, h * 0.02f, encre2, alpha, normal, Paint.Align.CENTER)
+            if (litres > 0f && pi > 0.9f && !avecCourbe) ecrire(c, String.format(Locale.FRANCE, "%.0f", litres), (x0 + x1) / 2, zone.bottom - hb - h * 0.01f, h * 0.02f, encre2, alpha, normal, Paint.Align.CENTER)
             if (i % 2 == jours.size % 2) ecrire(c, jour.takeLast(2).trimStart('0'), (x0 + x1) / 2, zone.bottom + h * 0.03f, h * 0.02f, encre3, alpha, normal, Paint.Align.CENTER)
         }
         if (jours.isEmpty()) ecrire(c, "Pas encore d'historique", zone.centerX(), zone.centerY(), h * 0.028f, encre3, alpha, normal, Paint.Align.CENTER)
@@ -1545,14 +1549,22 @@ class VeilleView(ctx: Context) : View(ctx) {
         val series = d.series.take(2)
         if (series.size < 2) return
         titre(c, "Dehors et dedans, ${d.courbeHeures} h", w, h, alpha, ecoule)
+        // La carte occupe la même largeur que les autres écrans (8 % de chaque côté).
+        tracerCourbes(c, RectF(w * 0.08f, h * 0.265f, w * 0.92f, h * 0.87f), h, alpha, ecoule, t, series, legendeY = h * 0.235f, legendeX = w * 0.08f)
+    }
+
+    /**
+     * Les courbes de température dans une carte donnée : le tracé garde de la place à gauche pour les
+     * degrés, à droite pour les étiquettes et « maintenant ». `compact` : polices plus petites, pour
+     * une carte partagée (le tableau Chauffage) ; la légende se dessine à `legendeY` si donné.
+     */
+    private fun tracerCourbes(c: Canvas, carte: RectF, h: Float, alpha: Float, ecoule: Long, t: Float, series: List<Serie>, legendeY: Float? = null, legendeX: Float = carte.left, compact: Boolean = false) {
         val avancement = lisser(((ecoule - fonduMs) / traceMs.toFloat()).coerceIn(0f, 1f))
         val pGrille = etape(ecoule, 200, 800)
         val couleurs = intArrayOf(bleu, pourpre)
-        // La carte occupe la même largeur que les autres écrans (8 % de chaque côté) ; le tracé garde
-        // de la place à gauche pour les degrés, à droite pour les étiquettes et « maintenant ».
-        val carte = RectF(w * 0.08f, h * 0.265f, w * 0.92f, h * 0.87f)
-        val gauche = carte.left + h * 0.09f; val droite = carte.right - h * 0.15f
-        val haut = h * 0.33f; val bas = h * 0.79f
+        val k = if (compact) 0.72f else 1f
+        val gauche = carte.left + h * 0.09f * k; val droite = carte.right - h * 0.15f * k
+        val haut = carte.top + carte.height() * (if (compact) 0.16f else 0.11f); val bas = carte.bottom - carte.height() * (if (compact) 0.2f else 0.13f)
         val a255 = (alpha * 255).toInt().coerceIn(0, 255)
 
         var vMin = Float.MAX_VALUE; var vMax = -Float.MAX_VALUE
@@ -1571,12 +1583,12 @@ class VeilleView(ctx: Context) : View(ctx) {
         cartePosee(c, carte, h, alpha * pGrille)
         pForme.style = Paint.Style.STROKE; pForme.strokeWidth = h * 0.0015f
         pForme.color = encre3; pForme.alpha = (a255 * 0.35f * pGrille).toInt()
-        val pas = if (bMax - bMin > 16f) 4f else 2f
+        val pas = if (bMax - bMin > 16f || (compact && bMax - bMin > 8f)) 4f else 2f
         var v = bMin
         while (v <= bMax + 0.01f) {
             val y = py(v)
             c.drawLine(gauche, y, gauche + (droite - gauche) * pGrille, y, pForme)
-            ecrire(c, "${v.toInt()}°", gauche - h * 0.015f, y + h * 0.011f, h * 0.026f, encre3, alpha * pGrille, normal, Paint.Align.RIGHT)
+            ecrire(c, "${v.toInt()}°", gauche - h * 0.015f, y + h * 0.011f * k, h * 0.026f * k, encre3, alpha * pGrille, normal, Paint.Align.RIGHT)
             v += pas
         }
         pForme.style = Paint.Style.FILL
@@ -1588,7 +1600,7 @@ class VeilleView(ctx: Context) : View(ctx) {
                 val x = px(tick)
                 pForme.color = encre3; pForme.alpha = (a255 * 0.5f * pGrille).toInt()
                 c.drawRect(x, bas, x + h * 0.002f, bas + h * 0.012f, pForme)
-                ecrire(c, heureCourte.format(Date(tick * 1000L)), x, bas + h * 0.045f, h * 0.026f, encre3, alpha * pGrille, normal, Paint.Align.CENTER)
+                ecrire(c, heureCourte.format(Date(tick * 1000L)), x, bas + h * 0.045f * k, h * 0.026f * k, encre3, alpha * pGrille, normal, Paint.Align.CENTER)
             }
             tick += 3600L
         }
@@ -1599,49 +1611,47 @@ class VeilleView(ctx: Context) : View(ctx) {
             chemin.reset()
             var dernierX = gauche; var dernierY = py(s.valeurs[0]); var derniereV = s.valeurs[0]
             var premier = true
-            for (k in s.temps.indices) {
-                if (s.temps[k] > tLimite) {
-                    if (k > 0) {
-                        val t0 = s.temps[k - 1]; val t1 = s.temps[k]
+            for (kk in s.temps.indices) {
+                if (s.temps[kk] > tLimite) {
+                    if (kk > 0) {
+                        val t0 = s.temps[kk - 1]; val t1 = s.temps[kk]
                         val f = ((tLimite - t0).toFloat() / (t1 - t0).toFloat()).coerceIn(0f, 1f)
-                        derniereV = s.valeurs[k - 1] + (s.valeurs[k] - s.valeurs[k - 1]) * f
+                        derniereV = s.valeurs[kk - 1] + (s.valeurs[kk] - s.valeurs[kk - 1]) * f
                         dernierX = px(tLimite); dernierY = py(derniereV)
                         chemin.lineTo(dernierX, dernierY)
                     }
                     break
                 }
-                val x = px(s.temps[k]); val y = py(s.valeurs[k])
+                val x = px(s.temps[kk]); val y = py(s.valeurs[kk])
                 if (premier) { chemin.moveTo(x, y); premier = false } else chemin.lineTo(x, y)
-                dernierX = x; dernierY = y; derniereV = s.valeurs[k]
+                dernierX = x; dernierY = y; derniereV = s.valeurs[kk]
             }
             val zone = Path(chemin)
             zone.lineTo(dernierX, bas); zone.lineTo(gauche, bas); zone.close()
             pForme.style = Paint.Style.FILL; pForme.color = couleur; pForme.alpha = (a255 * 0.10f).toInt()
             c.drawPath(zone, pForme)
-            pForme.style = Paint.Style.STROKE; pForme.strokeWidth = h * 0.006f
+            pForme.style = Paint.Style.STROKE; pForme.strokeWidth = h * 0.006f * k
             pForme.strokeCap = Paint.Cap.ROUND; pForme.strokeJoin = Paint.Join.ROUND
             pForme.color = couleur; pForme.alpha = a255
             c.drawPath(chemin, pForme)
             pForme.style = Paint.Style.FILL
             val pulse = 1f + 0.25f * sin(t * 4f)
-            pForme.alpha = (a255 * 0.25f).toInt(); c.drawCircle(dernierX, dernierY, h * 0.02f * pulse, pForme)
-            pForme.alpha = a255; c.drawCircle(dernierX, dernierY, h * 0.009f, pForme)
+            pForme.alpha = (a255 * 0.25f).toInt(); c.drawCircle(dernierX, dernierY, h * 0.02f * k * pulse, pForme)
+            pForme.alpha = a255; c.drawCircle(dernierX, dernierY, h * 0.009f * k, pForme)
             val etiquette = "${String.format(Locale.FRANCE, "%.1f", derniereV)}°"
             // La carte réserve la place à droite : l'étiquette reste à droite de la tête, jamais sur la courbe.
-            val aDroite = true
-            val decal = if (i == 0) -h * 0.045f else h * 0.045f   // l'une au-dessus, l'autre au-dessous
-            ecrire(c, etiquette, if (aDroite) dernierX + h * 0.03f else dernierX - h * 0.03f, dernierY + h * 0.012f + (if (aDroite) 0f else decal), h * 0.034f, couleur, alpha, gras, if (aDroite) Paint.Align.LEFT else Paint.Align.RIGHT)
-            // Légende sous le titre, en ligne.
-            val xLeg = w * 0.08f + i * h * 0.22f
-            val yLeg = h * 0.235f
+            ecrire(c, etiquette, dernierX + h * 0.03f * k, dernierY + h * 0.012f * k, h * 0.034f * k, couleur, alpha, gras, Paint.Align.LEFT)
+            // Légende en ligne : sous le titre (plein écran) ou dans la carte (compact).
+            val xLeg = (if (compact) carte.left + h * 0.03f else legendeX) + i * h * 0.22f * k
+            val yLeg = legendeY ?: (carte.top + h * 0.045f)
             pForme.color = couleur; pForme.alpha = a255
-            c.drawRoundRect(RectF(xLeg, yLeg - h * 0.012f, xLeg + h * 0.03f, yLeg - h * 0.004f), h * 0.004f, h * 0.004f, pForme)
-            ecrire(c, s.nom, xLeg + h * 0.045f, yLeg, h * 0.03f, encre2, alpha, normal)
+            c.drawRoundRect(RectF(xLeg, yLeg - h * 0.012f * k, xLeg + h * 0.03f * k, yLeg - h * 0.004f * k), h * 0.004f, h * 0.004f, pForme)
+            ecrire(c, s.nom, xLeg + h * 0.045f * k, yLeg, h * 0.03f * k, encre2, alpha, normal)
         }
         if (avancement >= 1f) {
             pForme.color = encre3; pForme.alpha = (a255 * 0.6f).toInt()
             c.drawRect(droite - h * 0.001f, haut, droite + h * 0.001f, bas, pForme)
-            ecrire(c, "maintenant", droite, haut - h * 0.012f, h * 0.024f, encre3, alpha, normal, Paint.Align.RIGHT, 0.06f)
+            ecrire(c, "maintenant", droite, haut - h * 0.012f, h * 0.024f * k, encre3, alpha, normal, Paint.Align.RIGHT, 0.06f)
         }
     }
 
