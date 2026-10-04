@@ -73,7 +73,23 @@ def reglages(coord: PcParentalCoordinator) -> dict[str, Any]:
         "musique": str(getattr(s, "veille_musique", "") or ""),
         "radios": [{"nom": n, "url": u} for n, u in RADIOS],
         "themes": THEMES,
+        "tableaux": _tableaux_legers(coord),
     }
+
+
+def _tableaux_legers(coord: PcParentalCoordinator) -> list[dict[str, Any]]:
+    """La liste des tableaux pour les réglages de la télé : nom, actif, durée (sans les cases)."""
+    from . import veille_tableaux as vt
+
+    noms = {c: n for c, n, _d, _e in vt.INTEGRES}
+    sortie = []
+    for t in vt.configuration(coord):
+        sortie.append({
+            "code": t["code"], "id": t.get("id", ""),
+            "nom": t["titre"] if t["code"] == "entites" else noms.get(t["code"], t["code"]),
+            "actif": t["actif"], "duree": t["duree"],
+        })
+    return sortie
 
 
 # --- École (Pronote) ---------------------------------------------------------
@@ -245,6 +261,22 @@ def demandes(hass: HomeAssistant, coord: PcParentalCoordinator) -> list[dict[str
                 "libelle": str(d.get("libelle") or d.get("cle") or "")[:40],
                 "genre": str(d.get("genre") or ""),
                 "ts": int(float(d.get("ts") or 0)),
+                # Pour qu'un parent réponde depuis l'accueil de son téléphone.
+                "pc": str(pc.get("id") or ""),
+                "id": str(d.get("id") or ""),
+                "minutes": int(d.get("minutes") or 0) if str(d.get("minutes") or "").isdigit() or isinstance(d.get("minutes"), int) else 0,
+            })
+        # La demande de temps (une par appareil, hors de la liste des accès).
+        dt = pc.get("demande")
+        if isinstance(dt, dict) and dt.get("id") and time.time() - float(dt.get("ts") or 0) < 6 * 3600:
+            sortie.append({
+                "prenom": module_demandes.prenom(hass, pc),
+                "libelle": "{} min de plus".format(int(dt.get("minutes") or 0)),
+                "genre": "temps",
+                "ts": int(float(dt.get("ts") or 0)),
+                "pc": str(pc.get("id") or ""),
+                "id": str(dt.get("id") or ""),
+                "minutes": int(dt.get("minutes") or 0),
             })
     sortie.sort(key=lambda d: d["ts"], reverse=True)
     return sortie[:4]
@@ -432,6 +464,11 @@ class PcParentalVeilleReglagesView(_VueVeille):
         if nuit is not None and str(nuit) and not re.fullmatch(r"\d\d:\d\d-\d\d:\d\d", str(nuit)):
             return self.json({"ok": False, "error": "nuit"}, status_code=400)
 
+        # Depuis la télé : afficher ou non un tableau, et sa durée. L'ordre et le contenu restent dans Home Assistant.
+        maj_tableaux = corps.get("tableaux")
+        if maj_tableaux is not None and not isinstance(maj_tableaux, list):
+            return self.json({"ok": False, "error": "tableaux"}, status_code=400)
+
         def _faire() -> None:
             if musique is not None:
                 coord.store.veille_musique = str(musique).strip()
@@ -439,6 +476,25 @@ class PcParentalVeilleReglagesView(_VueVeille):
                 coord.store.veille_theme = str(theme)
             if nuit is not None:
                 coord.store.veille_nuit = str(nuit)
+            if maj_tableaux is not None:
+                from . import veille_tableaux as vt
+
+                config = vt.configuration(coord)
+                for m in maj_tableaux:
+                    if not isinstance(m, dict):
+                        continue
+                    for t in config:
+                        meme = (t["code"] == m.get("code")) and (t["code"] != "entites" or t.get("id") == m.get("id"))
+                        if not meme:
+                            continue
+                        if "actif" in m:
+                            t["actif"] = bool(m["actif"])
+                        if "duree" in m:
+                            try:
+                                t["duree"] = max(vt.DUREE_MIN, min(vt.DUREE_MAX, int(m["duree"])))
+                            except (TypeError, ValueError):
+                                pass
+                coord.store.veille_tableaux = config
 
         await appliquer(coord, _faire)
         return self.json(dict(ok=True, **reglages(coord)))

@@ -334,11 +334,56 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator, moi: di
         "photos": await plus.photos(hass),
         "batteries": await _sans_erreur(plus.batteries(hass), []),
         "tableaux": await _sans_erreur(tableaux.pour_appareil(hass, coord, moi, ecran), None),
+        "moi": _moi(hass, coord, moi),
         "erreurs": list(_dernieres_erreurs),
     }
 
 
 _dernieres_erreurs: list[str] = []
+
+
+def _moi(hass: HomeAssistant, coord: PcParentalCoordinator, pc: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Qui tient l'appareil, et ce qui le concerne : prénom, public, règle de moyenne,
+    verrou et temps d'écran du jour. L'accueil du téléphone s'en sert pour parler à la bonne personne."""
+    if pc is None:
+        return None
+    qui = tableaux.profil(hass, coord, pc)
+    personne = qui["personne"]
+    etat_p = hass.states.get(personne) if personne else None
+    store = coord.store
+    sortie: dict[str, Any] = {
+        "public": qui["public"],
+        "personne": personne,
+        "prenom": str(etat_p.name) if etat_p is not None and etat_p.name else "",
+        "nom": str(pc.get("name") or ""),
+    }
+    try:
+        ev = store.evaluate(pc)
+        sortie["verrouille"] = bool(ev.get("locked"))
+        suivant = ev.get("next_change")
+        sortie["prochain"] = suivant.isoformat() if suivant else ""
+        if not ev.get("locked"):
+            from .planner import next_lock
+
+            local = coord.local_now().replace(tzinfo=None)
+            pv = next_lock(pc.get("rules") or [], local)
+            sortie["prochain_verrou"] = pv.isoformat() if pv else ""
+        usage = store.usage_du_jour(pc)
+        sortie["minutes_actif"] = int(usage.get("actif", 0)) // 60
+    except Exception:  # noqa: BLE001
+        pass
+    if personne and qui["public"] == "enfant":
+        try:
+            cfg = store.regle_moyenne(personne)
+            sortie["moyenne"] = {
+                "active": bool(cfg.get("active", False)),
+                "seuil": float(cfg.get("seuil") or 12),
+                "valeur": store.moyenne_de(personne),
+                "etat": store.etat_moyenne(personne),
+            }
+        except Exception:  # noqa: BLE001
+            pass
+    return sortie
 
 
 async def _sans_erreur(coro, defaut):
