@@ -286,7 +286,13 @@ class AgentService : Service() {
                 description = "Présence discrète de Vision (imposée par Android)"
             })
         }
-        startForeground(NOTIF, construireNotif())
+        // Android 14+ exige un type de service de premier plan (ici « usage particulier » : contrôle parental).
+        try {
+            if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF, construireNotif(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            else startForeground(NOTIF, construireNotif())
+        } catch (_: Exception) {
+            try { startForeground(NOTIF, construireNotif()) } catch (_: Exception) {}
+        }
     }
 
     private fun majNotification() {

@@ -72,7 +72,10 @@ object Veille {
             // L'écran de veille du système ou l'extinction de l'écran ferment la couche.
             val r = object : android.content.BroadcastReceiver() { override fun onReceive(c: Context, i: Intent) { fermer() } }
             recepteur = r
-            try { app.registerReceiver(r, android.content.IntentFilter().apply { addAction(Intent.ACTION_DREAMING_STARTED); addAction(Intent.ACTION_SCREEN_OFF) }) } catch (_: Exception) { recepteur = null }
+            try {
+                val filtre = android.content.IntentFilter().apply { addAction(Intent.ACTION_DREAMING_STARTED); addAction(Intent.ACTION_SCREEN_OFF) }
+                if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(r, filtre, Context.RECEIVER_NOT_EXPORTED) else app.registerReceiver(r, filtre)
+            } catch (_: Exception) { recepteur = null }
             main.post { cadre.requestFocus(); v.demarrer() }
             // Filet de sécurité : une couche ne vit jamais plus de deux heures.
             main.postDelayed(gardien, 2 * 3600_000L)

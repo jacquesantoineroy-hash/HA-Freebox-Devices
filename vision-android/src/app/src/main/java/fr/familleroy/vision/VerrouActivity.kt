@@ -157,7 +157,10 @@ class VerrouActivity : Activity() {
                 }
             }
             recepteur = r
-            try { ctx.applicationContext.registerReceiver(r, IntentFilter(Intent.ACTION_SCREEN_OFF)) } catch (_: Exception) { recepteur = null }
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= 33) ctx.applicationContext.registerReceiver(r, IntentFilter(Intent.ACTION_SCREEN_OFF), Context.RECEIVER_NOT_EXPORTED)
+                else ctx.applicationContext.registerReceiver(r, IntentFilter(Intent.ACTION_SCREEN_OFF))
+            } catch (_: Exception) { recepteur = null }
         }
 
         fun montrer(ctx: Context) {

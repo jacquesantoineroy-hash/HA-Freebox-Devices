@@ -522,11 +522,21 @@ class LanceurActivity : Activity() {
         val profil = profil()
         val pages = Accueil.mode(this) == Accueil.MODE_PAGES
         // Le bas de l'écran (poignée du tiroir et dock) est fixe ; le reste défile ou se feuillette au-dessus.
-        val hauteurBas = px(96f)
+        val hauteurBas = px(110f)
         val colonne = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(16f), px(40f), px(16f), if (pages) 0 else px(12f)); clipChildren = false; clipToPadding = false }
         val defile: View = if (pages) colonne else ScrollView(this).apply { isVerticalScrollBarEnabled = false; isFillViewport = true; clipToPadding = false; clipChildren = false; addView(colonne) }
         racine.addView(defile, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply { bottomMargin = hauteurBas })
-        val bas = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(16f), 0, px(16f), px(8f)) }
+        // Tout le bas de l'écran ouvre le tiroir d'un glissement vers le haut, même en partant d'une icône du dock.
+        val bas = object : LinearLayout(this) {
+            private var y0 = 0f; private var x0 = 0f
+            override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { y0 = e.rawY; x0 = e.rawX }
+                    MotionEvent.ACTION_MOVE -> if (y0 - e.rawY > px(22f) && Math.abs(y0 - e.rawY) > Math.abs(x0 - e.rawX) * 1.3f && enDrag == null && enDragNouveau == null) { tiroirApplis(); return true }
+                }
+                return false
+            }
+        }.apply { orientation = LinearLayout.VERTICAL; setPadding(px(16f), 0, px(16f), px(8f)) }
         racine.addView(bas, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, hauteurBas, Gravity.BOTTOM))
 
         colonne.addView(marque(24f, 13f), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -588,12 +598,13 @@ class LanceurActivity : Activity() {
             colonne.addView(g, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             colonne.addView(View(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             // La grille défile : glisser vers le haut sert à ça, le tiroir s'ouvre depuis la poignée ou le dock.
-            brancherGestes(defile, glisser = false)
+            // Mais arrivé en bas de la grille (ou si elle tient dans l'écran), le même geste ouvre le tiroir.
+            brancherGestes(defile, si = { !defile.canScrollVertically(1) })
         }
 
         // La poignée du tiroir : un trait, comme Android ; toucher ou glisser vers le haut ouvre toutes les applications.
-        val poignee = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, px(10f), 0, px(6f)); contentDescription = "Toutes les applications" }
-        poignee.addView(View(this).apply { background = GradientDrawable().apply { cornerRadius = px(3f).toFloat(); setColor(theme.encre3) } }, LinearLayout.LayoutParams(px(44f), px(5f)))
+        val poignee = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, px(16f), 0, px(12f)); contentDescription = "Toutes les applications" }
+        poignee.addView(View(this).apply { background = GradientDrawable().apply { cornerRadius = px(3f).toFloat(); setColor(theme.encre3) } }, LinearLayout.LayoutParams(px(56f), px(5f)))
         brancherGestes(poignee, consomme = true, toucher = { tiroirApplis() })
         bas.addView(poignee)
 
@@ -653,10 +664,10 @@ class LanceurActivity : Activity() {
      * Posés sur la vue qui reçoit les touchers du vide (le défilement ou les
      * pages), sans lui voler le défilement.
      */
-    private fun brancherGestes(v: View, consomme: Boolean = false, glisser: Boolean = true, toucher: (() -> Unit)? = null) {
+    private fun brancherGestes(v: View, consomme: Boolean = false, glisser: Boolean = true, si: (() -> Boolean)? = null, toucher: (() -> Unit)? = null) {
         val gestes = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onLongPress(e: MotionEvent) { if (enDrag == null && enDragNouveau == null && panneau == null) montrerPanneau() }
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean { if (glisser && e1 != null && e1.y - e2.y > px(60f) && vy < -600 && Math.abs(vy) > Math.abs(vx)) { tiroirApplis(); return true }; return false }
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean { if (glisser && (si == null || si()) && e1 != null && e1.y - e2.y > px(40f) && vy < -350 && Math.abs(vy) > Math.abs(vx)) { tiroirApplis(); return true }; return false }
             override fun onSingleTapUp(e: MotionEvent): Boolean { toucher?.invoke(); return toucher != null }
             override fun onDown(e: MotionEvent) = true
         })

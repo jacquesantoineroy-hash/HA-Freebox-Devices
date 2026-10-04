@@ -214,12 +214,12 @@ object MiseAJour {
         if (Build.VERSION.SDK_INT < 31 || !peutInstaller(ctx)) return false
         return try {
             val src = ctx.packageManager.getInstallSourceInfo(ctx.packageName)
-            val installeur = src.installingPackageName == ctx.packageName
-            if (Build.VERSION.SDK_INT < 34) return installeur
-            // Android 14+ : sans propriétaire déclaré, une app qui se met à jour
-            // elle-même n'a besoin que d'être son propre installateur.
+            // Une appli qui se met à jour elle-même n'a pas besoin d'être son propre installateur
+            // (Android l'accepte tel quel) : peu importe qu'elle ait été posée par ADB, le navigateur ou Fichiers.
+            // Seul un autre « propriétaire des mises à jour » (Android 14+) impose une confirmation.
+            if (Build.VERSION.SDK_INT < 34) return true
             val proprietaire = src.updateOwnerPackageName
-            proprietaire == ctx.packageName || (proprietaire == null && installeur)
+            proprietaire == null || proprietaire == ctx.packageName
         } catch (_: Exception) { false }
     }
 
