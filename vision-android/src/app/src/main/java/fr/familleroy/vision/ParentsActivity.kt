@@ -113,12 +113,18 @@ class ParentsActivity : Activity() {
                 }, haut = 4f))
                 if (motif.isNotEmpty()) c.addView(Ui.marge(this, Ui.texte(this, "« $motif »", 13f, Ui.TEXTE_2), haut = 4f))
                 d.optString("raison").takeIf { it.isNotEmpty() }?.let { c.addView(Ui.marge(this, Ui.texte(this, "Fermé car : $it", 13f, Ui.TEXTE_3), haut = 6f)) }
+                val duree = d.optString("duree")
+                val etiquettes = d.optJSONArray("etiquettes")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty()
+                val souhait = when (duree) { "1h" -> "1 heure"; "toujours" -> "en permanence (quand l'écran est ouvert)"; "categorie" -> "toute la catégorie" + (if (etiquettes.isNotEmpty()) " (${etiquettes.joinToString(", ")})" else ""); else -> "" }
+                if (souhait.isNotEmpty()) c.addView(Ui.marge(this, Ui.texte(this, "Souhait : $souhait", 13f, Ui.OR), haut = 6f))
                 val r = Ui.rangee(this)
                 val pc = d.optString("pc"); val id = d.optString("id")
-                r.addView(Ui.poids(Ui.boutonPrimaire(this, "1 h") { repondreAcces(pc, id, "temporaire", 60) }))
-                r.addView(Ui.marge(this, Ui.poids(Ui.boutonPrimaire(this, "Toujours") { repondreAcces(pc, id, "toujours") }), gauche = 8f))
+                fun choix(t: String, principal: Boolean, action: () -> Unit) = if (principal) Ui.boutonPrimaire(this, t, action) else Ui.boutonSecondaire(this, t, action)
+                r.addView(Ui.poids(choix("1 h", duree == "1h" || duree.isEmpty()) { repondreAcces(pc, id, "temporaire", 60) }))
+                r.addView(Ui.marge(this, Ui.poids(choix("Toujours", duree == "toujours" || duree.isEmpty()) { repondreAcces(pc, id, "toujours") }), gauche = 8f))
                 r.addView(Ui.marge(this, Ui.poids(Ui.boutonDanger(this, "Non") { repondreAcces(pc, id, "non") }), gauche = 8f))
                 c.addView(Ui.marge(this, r, haut = 14f))
+                if (etiquettes.isNotEmpty()) c.addView(Ui.marge(this, choix("Toute la catégorie : ${etiquettes.joinToString(", ")}", duree == "categorie") { repondreAcces(pc, id, "categorie") }, haut = 8f))
                 c.addView(Ui.marge(this, Ui.boutonSecondaire(this, "Autre durée…") {
                     AlertDialog.Builder(this).setTitle("Ouvrir ${d.optString("libelle")} pour…")
                         .setItems(arrayOf("15 minutes", "30 minutes", "2 heures", "Jusqu'à ce soir (6 h)")) { _, k ->

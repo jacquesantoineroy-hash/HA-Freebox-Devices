@@ -178,23 +178,23 @@ object Ui {
     }
 
     fun boutonPrimaire(ctx: Context, t: String, action: () -> Unit): Button = Button(ctx).apply {
-        text = t; isAllCaps = false; textSize = 15f
+        text = t; isAllCaps = false; textSize = 15f; isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.END; minWidth = 0; minimumWidth = 0
         setTextColor(OR_SOMBRE); typeface = policeGras ?: Typeface.DEFAULT_BOLD
         background = fondInteractif(ctx, OR, Palette.melanger(OR, TEXTE, 0.15f), dp(ctx, 999f).toFloat(), TEXTE)
         stateListAnimator = null
         minHeight = dp(ctx, 48f); minimumHeight = dp(ctx, 48f)
-        setPadding(dp(ctx, 20f), 0, dp(ctx, 20f), 0)
+        setPadding(dp(ctx, 14f), 0, dp(ctx, 14f), 0)
         isFocusable = true
         setOnClickListener { action() }
     }
 
     fun boutonSecondaire(ctx: Context, t: String, action: () -> Unit): Button = Button(ctx).apply {
-        text = t; isAllCaps = false; textSize = 14f
+        text = t; isAllCaps = false; textSize = 14f; isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.END; minWidth = 0; minimumWidth = 0
         setTextColor(TEXTE); typeface = policeGras ?: Typeface.DEFAULT_BOLD
         background = fondInteractif(ctx, CARTE_HAUTE, Palette.melanger(CARTE_HAUTE, TEXTE, 0.1f), dp(ctx, 999f).toFloat())
         stateListAnimator = null
         minHeight = dp(ctx, 44f); minimumHeight = dp(ctx, 44f)
-        setPadding(dp(ctx, 16f), 0, dp(ctx, 16f), 0)
+        setPadding(dp(ctx, 14f), 0, dp(ctx, 14f), 0)
         isFocusable = true
         setOnClickListener { action() }
     }

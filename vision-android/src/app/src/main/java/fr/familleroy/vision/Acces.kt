@@ -20,7 +20,7 @@ object Acces {
         return System.currentTimeMillis() - t < 15 * 60_000L
     }
 
-    fun demander(ctx: Context, genre: String, nom: String, libelle: String, lien: String = "", motif: String = "", apres: ((Boolean) -> Unit)? = null) {
+    fun demander(ctx: Context, genre: String, nom: String, libelle: String, lien: String = "", motif: String = "", apres: ((Boolean) -> Unit)? = null, duree: String = "") {
         val cfg = Config(ctx.applicationContext)
         val principal = Handler(Looper.getMainLooper())
         envoyees["$genre:$nom"] = System.currentTimeMillis()
@@ -29,7 +29,7 @@ object Acces {
                 Net.post(ctx, cfg, "/api/pc_parental/demande", JSONObject()
                     .put("id", cfg.id).put("secret", cfg.secret)
                     .put("genre", genre).put("nom", nom).put("libelle", libelle)
-                    .put("lien", lien).put("motif", motif)).optBoolean("ok")
+                    .put("lien", lien).put("motif", motif).put("duree", duree)).optBoolean("ok")
             } catch (_: Exception) { false }
             if (!ok) envoyees.remove("$genre:$nom")
             principal.post {
@@ -58,6 +58,21 @@ object Acces {
         if (lien != null) cadre.addView(lien)
         val motif = Ui.champ(act, "Pourquoi ? (facultatif)", "")
         cadre.addView(Ui.marge(act, motif, haut = 8f))
+        // Pour combien de temps : une heure, en permanence (quand l'écran est ouvert), ou toute la catégorie.
+        cadre.addView(Ui.marge(act, Ui.texte(act, "Pour combien de temps ?", 13f, Ui.TEXTE_2), haut = 12f))
+        val durees = listOf("1h" to "Pour 1 heure", "toujours" to "En permanence", "categorie" to "Toute la catégorie")
+        var choisie = "1h"
+        val rang = Ui.rangee(act)
+        val boutons = ArrayList<android.widget.Button>()
+        fun peindre() { boutons.forEachIndexed { i, b -> val on = durees[i].first == choisie; b.alpha = if (on) 1f else 0.55f; b.scaleX = if (on) 1f else 0.96f; b.scaleY = b.scaleX } }
+        durees.forEachIndexed { i, (code, nomD) ->
+            val b = Ui.boutonSecondaire(act, nomD) { choisie = code; peindre() }
+            boutons.add(b)
+            rang.addView(Ui.marge(act, Ui.poids(b), gauche = if (i == 0) 0f else 6f))
+        }
+        peindre()
+        cadre.addView(Ui.marge(act, rang, haut = 6f))
+        cadre.addView(Ui.marge(act, Ui.texte(act, "« En permanence » : chaque fois que ton écran est ouvert. « Toute la catégorie » : aussi ce qui est fermé pour la même raison.", 11f, Ui.TEXTE_3), haut = 6f))
         android.app.AlertDialog.Builder(act)
             .setTitle("Demander l'accès à $libelle")
             .setView(cadre)
@@ -65,7 +80,7 @@ object Acces {
                 val l = lien?.text?.toString()?.trim() ?: ""
                 val h = hoteDe(l)
                 demander(act, genre, if (genre == "sites" && h.isNotEmpty()) h else nom,
-                    if (genre == "sites" && h.isNotEmpty()) h else libelle, l, motif.text.toString().trim(), apres)
+                    if (genre == "sites" && h.isNotEmpty()) h else libelle, l, motif.text.toString().trim(), apres, choisie)
             }
             .setNegativeButton("Annuler", null)
             .show()
