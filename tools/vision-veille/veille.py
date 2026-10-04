@@ -306,7 +306,7 @@ async def _courbe(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict[str
     return valeur
 
 
-async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator, moi: dict[str, Any] | None = None, ecran: str = "tele") -> dict[str, Any]:
+async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator, moi: dict[str, Any] | None = None, ecran: str = "tele", locaux: Any = None) -> dict[str, Any]:
     tuiles = []
     for entree in coord.store.veille_entites:
         t = _tuile(hass, entree)
@@ -335,6 +335,7 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator, moi: di
         "batteries": await _sans_erreur(plus.batteries(hass), []),
         "tableaux": await _sans_erreur(tableaux.pour_appareil(hass, coord, moi, ecran), None),
         "moi": _moi(hass, coord, moi),
+        "locaux": await _sans_erreur(tableaux.resoudre_locaux(hass, locaux), []),
         "erreurs": list(_dernieres_erreurs),
     }
 
@@ -429,7 +430,30 @@ class PcParentalVeilleView(HomeAssistantView):
         moi = coord.store.by_secret(str(corps.get("id") or ""), str(corps.get("secret") or ""))
         if moi is None:
             return self.json({"ok": False, "error": "auth"}, status_code=401)
-        return self.json(await etat_veille(self.hass, coord, moi, str(corps.get("ecran") or "tele")))
+        return self.json(await etat_veille(self.hass, coord, moi, str(corps.get("ecran") or "tele"), corps.get("locaux")))
+
+
+class PcParentalVeilleEntitesView(HomeAssistantView):
+    """Le catalogue des entités, pour composer un tableau depuis l'appareil."""
+
+    url = URL_VEILLE + "/entites"
+    name = "api:pc_parental:veille_entites"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def post(self, request: web.Request) -> web.Response:
+        try:
+            corps: dict[str, Any] = await request.json()
+        except ValueError:
+            return self.json({"ok": False, "error": "json"}, status_code=400)
+        coord = _coordinateur(self.hass)
+        if coord is None:
+            return self.json({"ok": False, "error": "loading"}, status_code=503)
+        if coord.store.by_secret(str(corps.get("id") or ""), str(corps.get("secret") or "")) is None:
+            return self.json({"ok": False, "error": "auth"}, status_code=401)
+        return self.json({"ok": True, "entites": tableaux.catalogue_entites(self.hass), "rendus": tableaux.catalogue(self.hass)["rendus"]})
 
 
 class PcParentalVeilleImageView(HomeAssistantView):

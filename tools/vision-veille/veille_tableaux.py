@@ -373,6 +373,46 @@ async def pour_appareil(hass: HomeAssistant, coord: PcParentalCoordinator, pc: d
     return {"profil": qui["public"], "ecran": ecran, "liste": liste}
 
 
+async def resoudre_locaux(hass: HomeAssistant, locaux: Any) -> list[dict[str, Any]]:
+    """Les tableaux composés sur l'appareil lui-même : on résout leurs cases, sans rien enregistrer."""
+    sortie = []
+    if not isinstance(locaux, list):
+        return sortie
+    for t in locaux[:MAX_TABLEAUX]:
+        n = _nettoyer(t) if isinstance(t, dict) else None
+        if n is None or n["code"] != "entites" or not n["cases"]:
+            continue
+        cases = [await _case(hass, c) for c in n["cases"]]
+        sortie.append({"code": "entites", "id": n["id"], "titre": n["titre"], "duree": n["duree"], "cases": cases, "local": True})
+    return sortie
+
+
+DOMAINES_UTILES = ("sensor", "binary_sensor", "climate", "light", "switch", "cover", "lock", "person", "device_tracker", "weather",
+                   "media_player", "input_boolean", "input_number", "number", "fan", "vacuum", "alarm_control_panel", "water_heater", "humidifier", "camera")
+
+
+def catalogue_entites(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """Ce que l'appareil peut mettre dans une case : les entités utiles, avec leur nom, domaine, unité et classe."""
+    sortie = []
+    for s in hass.states.async_all():
+        domaine = s.entity_id.split(".", 1)[0]
+        if domaine not in DOMAINES_UTILES:
+            continue
+        nom = str(s.attributes.get("friendly_name") or s.entity_id)
+        if s.entity_id.startswith(("sensor.pc_", "sensor.comvision", "select.comvision")):
+            continue
+        sortie.append({
+            "id": s.entity_id,
+            "nom": nom,
+            "domaine": domaine,
+            "unite": str(s.attributes.get("unit_of_measurement") or ""),
+            "classe": str(s.attributes.get("device_class") or ""),
+            "etat": str(s.state)[:24],
+        })
+    sortie.sort(key=lambda e: (e["domaine"], e["nom"].lower()))
+    return sortie
+
+
 # --- Vue d'administration ----------------------------------------------------------------
 
 class PcParentalVeilleTableauxView(HomeAssistantView):
