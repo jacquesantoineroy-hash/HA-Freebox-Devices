@@ -21,6 +21,7 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN
 from .coordinator import PcParentalCoordinator
 from . import veille_plus as plus
+from . import veille_tableaux as tableaux
 from .esports import esports
 
 URL_VEILLE = "/api/pc_parental/veille"
@@ -305,7 +306,7 @@ async def _courbe(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict[str
     return valeur
 
 
-async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict[str, Any]:
+async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator, moi: dict[str, Any] | None = None, ecran: str = "tele") -> dict[str, Any]:
     tuiles = []
     for entree in coord.store.veille_entites:
         t = _tuile(hass, entree)
@@ -332,6 +333,7 @@ async def etat_veille(hass: HomeAssistant, coord: PcParentalCoordinator) -> dict
         "chauffage": await plus.chauffage(hass, coord),
         "photos": await plus.photos(hass),
         "batteries": await _sans_erreur(plus.batteries(hass), []),
+        "tableaux": await _sans_erreur(tableaux.pour_appareil(hass, coord, moi, ecran), None),
         "erreurs": list(_dernieres_erreurs),
     }
 
@@ -382,7 +384,7 @@ class PcParentalVeilleView(HomeAssistantView):
         moi = coord.store.by_secret(str(corps.get("id") or ""), str(corps.get("secret") or ""))
         if moi is None:
             return self.json({"ok": False, "error": "auth"}, status_code=401)
-        return self.json(await etat_veille(self.hass, coord))
+        return self.json(await etat_veille(self.hass, coord, moi, str(corps.get("ecran") or "tele")))
 
 
 class PcParentalVeilleImageView(HomeAssistantView):
