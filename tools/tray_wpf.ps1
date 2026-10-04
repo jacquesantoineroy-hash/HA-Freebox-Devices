@@ -351,9 +351,18 @@ function PageMaison() {
             if (Prop $d 'lien') { $det += [string](Prop $d 'lien') }
             if (Prop $d 'motif') { $det += ('« {0} »' -f [string](Prop $d 'motif')) }
             if (Prop $d 'raison') { $det += ('Fermé car : {0}' -f [string](Prop $d 'raison')) }
+            $duree = [string](Prop $d 'duree'); $cats = @(Prop $d 'etiquettes' @())
+            switch ($duree) {
+                '1h' { $det += 'Souhait : 1 heure' }
+                'toujours' { $det += 'Souhait : en permanence (quand l''écran est ouvert)' }
+                'categorie' { $det += ('Souhait : toute la catégorie' + $(if ($cats.Count) { ' (' + ($cats -join ', ') + ')' } else { '' })) }
+            }
             if ($det.Count) { $sp.Children.Add((Txt ($det -join '   ') 12 'Texte2' $false '0,4,0,0')) | Out-Null }
             $r = Rangee; $r.Margin = [System.Windows.Thickness]::new(0, 12, 0, 0)
-            foreach ($def in @(@('1 h', 'temporaire', 60, 'Secondaire'), @('Toujours', 'toujours', 0, 'Primaire'), @('Non', 'non', 0, 'Danger'))) {
+            $choix = @(@('1 h', 'temporaire', 60, $(if ($duree -eq '1h') { 'Primaire' } else { 'Secondaire' })), @('Toujours', 'toujours', 0, $(if ($duree -eq 'toujours' -or -not $duree) { 'Primaire' } else { 'Secondaire' })))
+            if ($cats.Count) { $choix += ,@('Catégorie', 'categorie', 0, $(if ($duree -eq 'categorie') { 'Primaire' } else { 'Secondaire' })) }
+            $choix += ,@('Non', 'non', 0, 'Danger')
+            foreach ($def in $choix) {
                 $r.Children.Add((Bouton $def[0] $def[3] {
                     param($s, $e); $t = $s.Tag
                     Agir @{ action = 'acces'; pc = [string]$t.pc; demande = [string]$t.id; decision = [string]$t.decision; minutes = [int]$t.minutes }
@@ -408,19 +417,96 @@ function PageMaison() {
     $Contenu.Children.Add((Txt ('Actualisé à {0}' -f (Get-Date -Format 'HH:mm')) 11 'Texte3' $false '4,4,0,0')) | Out-Null
 }
 
-function EnvoyerMot($a) {
+function EnvoyerMot($a) { $script:Vue = @{ type = 'mot'; appareil = $a }; Rafraichir }
+
+function ChampLong([string]$indice) {
+    $tb = Champ $indice
+    $tb.AcceptsReturn = $true; $tb.TextWrapping = 'Wrap'; $tb.Height = 72; $tb.VerticalContentAlignment = 'Top'
+    return $tb
+}
+
+# Tout se passe dans la fenêtre : pas de boîte de dialogue à côté.
+function VueMot($a) {
     $prenom = [string](Prop $a 'prenom'); if (-not $prenom) { $prenom = [string](Prop $a 'nom') }
-    $texte = [Microsoft.VisualBasic.Interaction]::InputBox("Un mot pour $prenom (il s'affiche sur son appareil)", 'Vision', '')
-    if ($texte) { Agir @{ action = 'message'; pc = [string](Prop $a 'id'); texte = [string]$texte } }
+    $c = Carte; $sp = $c.Child
+    $sp.Children.Add((Txt "Le mot s'affiche sur l'appareil de $prenom." 12 'Texte2' $false '0,0,0,10')) | Out-Null
+    $texte = ChampLong 'Ton message'
+    $sp.Children.Add($texte) | Out-Null
+    $ok = Bouton 'Envoyer' 'Primaire' {
+        param($s, $e); $t = $s.Tag
+        $m = Valeur $t.texte
+        if (-not $m) { return }
+        Agir @{ action = 'message'; pc = [string](Prop $t.appareil 'id'); texte = [string]$m }
+        $s.Content = 'Envoyé ✓'; $s.IsEnabled = $false
+    } @{ texte = $texte; appareil = $a }
+    $ok.HorizontalAlignment = 'Right'
+    $sp.Children.Add($ok) | Out-Null
+    $Contenu.Children.Add($c) | Out-Null
+}
+
+# La demande d'accès de l'enfant : pour qui, pourquoi, et pour combien de temps.
+function VueDemande($item) {
+    $c = Carte 'Haute'; $sp = $c.Child
+    $sp.Children.Add((Txt ([string]$item.nom) 17 'Texte' $true)) | Out-Null
+    $sousTitre = [string]$item.type
+    if ($item.raison) { $sousTitre += ' · fermé car : ' + [string]$item.raison }
+    $sp.Children.Add((Txt $sousTitre 12 'Texte2' $false '0,2,0,0')) | Out-Null
+    $Contenu.Children.Add($c) | Out-Null
+
+    $c2 = Carte; $sp2 = $c2.Child
+    $lien = $null
+    if ($item.genre -eq 'sites' -and $item.saisie) {
+        $sp2.Children.Add((Txt 'Le site' 12 'Texte2' $false '0,0,0,6')) | Out-Null
+        $lien = Champ 'Colle le lien ou le nom du site'
+        if ($item.lien) { $lien.Text = [string]$item.lien; $lien.Foreground = (Pinceau 'Texte') }
+        $sp2.Children.Add($lien) | Out-Null
+    }
+    $sp2.Children.Add((Txt 'Pourquoi en as-tu besoin ? Les parents le liront.' 12 'Texte2' $false '0,0,0,6')) | Out-Null
+    $motif = ChampLong 'Explique en quelques mots (facultatif)'
+    $sp2.Children.Add($motif) | Out-Null
+    $sp2.Children.Add((Txt 'Pour combien de temps ?' 12 'Texte2' $false '0,4,0,6')) | Out-Null
+    $script:DureeChoisie = '1h'
+    $rd = Rangee
+    $boutons = @()
+    foreach ($def in @(@('1h', 'Pour 1 heure'), @('toujours', 'En permanence'), @('categorie', 'Toute la catégorie'))) {
+        $t = New-Object System.Windows.Controls.Primitives.ToggleButton
+        $t.Content = $def[1]; $t.Style = $W.Resources['Onglet']; $t.Tag = $def[0]; $t.IsChecked = ($def[0] -eq '1h'); $t.Margin = [System.Windows.Thickness]::new(0, 0, 8, 0)
+        $t.Add_Click({ param($s, $e) $script:DureeChoisie = [string]$s.Tag; foreach ($x in $s.Parent.Children) { $x.IsChecked = ($x.Tag -eq $s.Tag) } })
+        $rd.Children.Add($t) | Out-Null
+    }
+    $sp2.Children.Add($rd) | Out-Null
+    $sp2.Children.Add((Txt '« En permanence » : à chaque fois que ton écran est ouvert. « Toute la catégorie » : aussi ce qui est fermé pour la même raison (par exemple tous les jeux).' 11 'Texte3' $false '0,8,0,12')) | Out-Null
+    $ok = Bouton "Demander l'accès" 'Primaire' {
+        param($s, $e); $t = $s.Tag
+        $nom = [string]$t.item.nom; $l = ''
+        if ($t.lien) {
+            $l = Valeur $t.lien; $h = Hote $l
+            if (-not $h -or $h -notlike '*.*') { $t.erreur.Text = 'Ce lien ne ressemble pas à un site. Exemple : youtube.com'; $t.erreur.Visibility = 'Visible'; return }
+            $nom = $h
+        }
+        Deposer @{ genre = [string]$t.item.genre; nom = $nom; libelle = $nom; lien = $l; motif = (Valeur $t.motif); duree = [string]$script:DureeChoisie }
+        $script:Demandees[[string]$t.item.genre + ':' + $nom] = $true
+        $s.Content = 'Envoyé aux parents ✓'; $s.IsEnabled = $false
+        $t.erreur.Text = 'Tu seras prévenu de la réponse ici et par une notification.'; $t.erreur.Foreground = (Pinceau 'Vert'); $t.erreur.Visibility = 'Visible'
+    } @{ item = $item; motif = $motif; lien = $lien; erreur = $null }
+    $erreur = Txt '' 12 'Rouge' $false '0,8,0,0'; $erreur.Visibility = 'Collapsed'
+    $ok.Tag.erreur = $erreur
+    $ok.HorizontalAlignment = 'Right'
+    $sp2.Children.Add($ok) | Out-Null
+    $sp2.Children.Add($erreur) | Out-Null
+    $Contenu.Children.Add($c2) | Out-Null
 }
 
 function PageSousVue() {
     $a = $script:Vue.appareil
-    $prenom = [string](Prop $a 'prenom'); if (-not $prenom) { $prenom = [string](Prop $a 'nom') }
+    $prenom = ''
+    if ($a) { $prenom = [string](Prop $a 'prenom'); if (-not $prenom) { $prenom = [string](Prop $a 'nom') } }
     switch ($script:Vue.type) {
         'fermes' { Retour "Ce qui est fermé chez $prenom"; VueFermes $a }
         'planning' { Retour "Planning de $prenom"; VuePlanning $a }
         'categories' { Retour "Catégories de $prenom"; VueCategories $a }
+        'mot' { Retour "Un mot pour $prenom"; VueMot $a }
+        'demande' { Retour "Demander l'accès"; VueDemande $script:Vue.item }
     }
 }
 
@@ -590,11 +676,35 @@ function PageMoi($etat, [bool]$ferme) {
     }
     $Contenu.Children.Add($c) | Out-Null
 
+    $data = Lire 'fermes.json'
+
+    # Ce qui vient d'être bloqué : les derniers refus, pour demander tout de suite.
+    $recents = @(Prop $data 'recents' @())
+    if ($recents.Count -gt 0) {
+        $Contenu.Children.Add((Section 'Bloqué récemment')) | Out-Null
+        $cr = Carte 'Haute'; $spr = $cr.Child
+        $k = 0
+        foreach ($x in ($recents | Select-Object -First 8)) {
+            if ($k++ -gt 0) { $spr.Children.Add((Separateur)) | Out-Null }
+            $genre = [string](Prop $x 'genre' 'apps'); $nom = [string](Prop $x 'nom'); $raison = [string](Prop $x 'raison')
+            $type = $(if ($genre -eq 'sites') { 'Site' } else { 'Appli' })
+            $g = New-Object System.Windows.Controls.StackPanel
+            $g.Children.Add((Txt $nom 14 'Or' $true)) | Out-Null
+            $g.Children.Add((Txt (([string](Prop $x 'quand')) + ' · ' + $type + $(if ($raison) { ' · ' + $raison } else { '' })) 11 'Texte2')) | Out-Null
+            $deja = $script:Demandees.ContainsKey($genre + ':' + $nom)
+            $b = Bouton $(if ($deja) { 'Demandé ✓' } else { 'Demander' }) 'Primaire' {
+                param($s, $e); $script:Vue = @{ type = 'demande'; item = $s.Tag }; Rafraichir
+            } @{ genre = $genre; nom = $nom; raison = $raison; type = $type; saisie = $false }
+            if ($deja) { $b.IsEnabled = $false }
+            $spr.Children.Add((Deux $g $b)) | Out-Null
+        }
+        $Contenu.Children.Add($cr) | Out-Null
+    }
+
     $Contenu.Children.Add((Section 'Ce qui est fermé ici')) | Out-Null
-    $Contenu.Children.Add((Txt "Choisis une ligne et demande l'accès : un parent répond sur son téléphone. Tu peux aussi coller le lien d'un autre site." 12 'Texte2' $false '0,0,0,8')) | Out-Null
+    $Contenu.Children.Add((Txt "Choisis une ligne et demande l'accès : tu diras pourquoi et pour combien de temps, un parent répond sur son téléphone." 12 'Texte2' $false '0,0,0,8')) | Out-Null
     $filtre = Champ 'Chercher une appli ou un site'
     $Contenu.Children.Add($filtre) | Out-Null
-    $data = Lire 'fermes.json'
     $card = Carte; $sp2 = $card.Child
     $script:VM = @{ sp2 = $sp2; filtre = $filtre; data = $data }
     $script:RemplirMoi = {
@@ -602,7 +712,7 @@ function PageMoi($etat, [bool]$ferme) {
         $sp2.Children.Clear()
         $q = (Valeur $filtre).ToLowerInvariant()
         $lignes = @()
-        foreach ($x in @(Prop $data 'apps' @())) { $lignes += @{ genre = 'apps'; nom = [string](Prop $x 'nom'); raison = [string](Prop $x 'raison'); type = 'Appli'; recent = $false } }
+        foreach ($x in @(Prop $data 'apps' @())) { $lignes += @{ genre = 'apps'; nom = [string](Prop $x 'nom'); raison = [string](Prop $x 'raison'); type = 'Appli'; recent = [bool](Prop $x 'recent' $false) } }
         foreach ($x in @(Prop $data 'sites' @())) { $lignes += @{ genre = 'sites'; nom = [string](Prop $x 'nom'); raison = [string](Prop $x 'raison'); type = 'Site'; recent = [bool](Prop $x 'recent' $false) } }
         $lignes = @($lignes | Where-Object { -not $q -or $_.nom.ToLowerInvariant() -like "*$q*" } | Sort-Object { -not $_.recent }, { $_.type }, { $_.nom })
         if ($lignes.Count -eq 0) { $sp2.Children.Add((Txt 'Rien de fermé ici.' 13 'Texte2')) | Out-Null }
@@ -614,12 +724,8 @@ function PageMoi($etat, [bool]$ferme) {
             $g.Children.Add((Txt ($l.type + ' · ' + $l.raison) 11 'Texte2')) | Out-Null
             $deja = $script:Demandees.ContainsKey($l.genre + ':' + $l.nom)
             $b = Bouton $(if ($deja) { 'Demandé ✓' } else { 'Demander' }) 'Secondaire' {
-                param($s, $e); $t = $s.Tag
-                $motif = [Microsoft.VisualBasic.Interaction]::InputBox('Pourquoi en as-tu besoin ? (facultatif, les parents le verront)', 'Vision', '')
-                Deposer @{ genre = $t.genre; nom = $t.nom; libelle = $t.nom; lien = ''; motif = [string]$motif }
-                $script:Demandees[$t.genre + ':' + $t.nom] = $true
-                $s.Content = 'Demandé ✓'; $s.IsEnabled = $false
-            } @{ genre = $l.genre; nom = $l.nom }
+                param($s, $e); $script:Vue = @{ type = 'demande'; item = $s.Tag }; Rafraichir
+            } @{ genre = $l.genre; nom = $l.nom; raison = $l.raison; type = $l.type; saisie = $false }
             if ($deja) { $b.IsEnabled = $false }
             $sp2.Children.Add((Deux $g $b)) | Out-Null
         }
@@ -630,17 +736,12 @@ function PageMoi($etat, [bool]$ferme) {
 
     $Contenu.Children.Add((Section 'Un autre site')) | Out-Null
     $c3 = Carte; $sp3 = $c3.Child
-    $lien = Champ 'Colle le lien ou le nom du site'
-    try { $presse = [System.Windows.Clipboard]::GetText(); if ($presse -match '^https?://\S+$') { $lien.Text = $presse.Trim(); $lien.Foreground = (Pinceau 'Texte') } } catch { }
-    $motif = Champ 'Pourquoi ? (facultatif, les parents le verront)'
-    $sp3.Children.Add($lien) | Out-Null; $sp3.Children.Add($motif) | Out-Null
-    $ok = Bouton "Demander l'accès" 'Primaire' {
-        param($s, $e); $t = $s.Tag
-        $l = Valeur $t.lien; $h = Hote $l
-        if (-not $h -or $h -notlike '*.*') { [System.Windows.MessageBox]::Show('Ce lien ne ressemble pas à un site. Exemple : youtube.com', 'Vision') | Out-Null; return }
-        Deposer @{ genre = 'sites'; nom = $h; libelle = $h; lien = $l; motif = (Valeur $t.motif) }
-        $s.Content = 'Envoyé ✓'; $s.IsEnabled = $false
-    } @{ lien = $lien; motif = $motif }
+    $presse = ''
+    try { $pp = [System.Windows.Clipboard]::GetText(); if ($pp -match '^https?://\S+$') { $presse = $pp.Trim() } } catch { }
+    $sp3.Children.Add((Txt $(if ($presse) { 'Un lien est dans le presse-papiers : ' + $presse } else { 'Un site qui n''est pas dans la liste.' }) 12 'Texte2' $false '0,0,0,10')) | Out-Null
+    $ok = Bouton "Demander l'accès à un site…" 'Secondaire' {
+        param($s, $e); $script:Vue = @{ type = 'demande'; item = @{ genre = 'sites'; nom = $(if ($s.Tag) { Hote $s.Tag } else { 'Un autre site' }); raison = ''; type = 'Site'; saisie = $true; lien = [string]$s.Tag } }; Rafraichir
+    } $presse
     $ok.HorizontalAlignment = 'Right'
     $sp3.Children.Add($ok) | Out-Null
     $Contenu.Children.Add($c3) | Out-Null
