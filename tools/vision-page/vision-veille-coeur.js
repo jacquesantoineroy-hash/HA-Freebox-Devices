@@ -351,6 +351,7 @@ class VisionVeillePanel extends HTMLElement {
         const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
         for (const el of c.querySelectorAll(".section > *")) {
           if (!el._largeurLibre) continue;
+          try { this._note(`${el.localName} : ${el.getGridOptions ? JSON.stringify(el.getGridOptions()) : "sans largeur propre"}`); } catch (err) { this._note(`${el.localName} : ${err}`); }
           try { const g = el.getGridOptions && el.getGridOptions(); if (g && typeof g.columns === "number") el.style.gridColumn = `span ${Math.max(3, Math.min(12, g.columns))}`; } catch (err) { /* reste pleine largeur */ }
         }
         await pause(120);
