@@ -230,6 +230,8 @@ if (Test-Path $logoPath) {
     } catch { }
 }
 $W.Add_Closing({ param($s, $e) $e.Cancel = $true; $script:W.Hide() })
+# Sans cela, une fenêtre WPF ouverte depuis une boucle Windows Forms ne reçoit pas les frappes : impossible d'écrire un mot.
+try { Add-Type -AssemblyName WindowsFormsIntegration; [System.Windows.Forms.Integration.ElementHost]::EnableModelessKeyboardInterop($W) } catch { }
 
 function Pinceau([string]$cle) { return $script:W.Resources[$cle] }
 function Txt([string]$t, [double]$taille = 13, [string]$couleur = 'Texte', [bool]$gras = $false, [string]$marge = '0') {
@@ -636,11 +638,11 @@ function VueCategories($a) {
             if ($choix -eq 'autoriser') { $d += ' · autorisé explicitement' }
             $g.Children.Add((Txt $d 11 'Texte2')) | Out-Null
             if ($raison -and ($parRegle -or $verrou)) { $g.Children.Add((Txt $raison 11 $(if ($parRegle) { 'Or' } else { 'Texte3' }))) | Out-Null }
-            $contenu = New-Object System.Windows.Controls.StackPanel; $contenu.Visibility = 'Collapsed'; $contenu.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
-            foreach ($x in @(Prop $c 'apps' @())) { $contenu.Children.Add((Txt ('•  ' + [string](Prop $x 'libelle')) 12 'Texte')) | Out-Null }
-            foreach ($x in @(Prop $c 'sites' @())) { $contenu.Children.Add((Txt ('◦  ' + [string]$x) 12 'Texte2')) | Out-Null }
-            if ($contenu.Children.Count -eq 0) { $contenu.Children.Add((Txt 'Rien de classé ici pour l''instant.' 12 'Texte3')) | Out-Null }
-            $g.Children.Add($contenu) | Out-Null
+            $detailCat = New-Object System.Windows.Controls.StackPanel; $detailCat.Visibility = 'Collapsed'; $detailCat.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
+            foreach ($x in @(Prop $c 'apps' @())) { $detailCat.Children.Add((Txt ('•  ' + [string](Prop $x 'libelle')) 12 'Texte')) | Out-Null }
+            foreach ($x in @(Prop $c 'sites' @())) { $detailCat.Children.Add((Txt ('◦  ' + [string]$x) 12 'Texte2')) | Out-Null }
+            if ($detailCat.Children.Count -eq 0) { $detailCat.Children.Add((Txt 'Rien de classé ici pour l''instant.' 12 'Texte3')) | Out-Null }
+            $g.Children.Add($detailCat) | Out-Null
             $g.Add_MouseLeftButtonUp({ param($s, $e) $cc = $s.Children[$s.Children.Count - 1]; $cc.Visibility = $(if ($cc.Visibility -eq 'Visible') { 'Collapsed' } else { 'Visible' }); $e.Handled = $true })
             if ($verrou) { $droite = Chip 'MAISON' 'Texte3' }
             else {
@@ -776,5 +778,337 @@ $horloge.Add_Tick({
     if ($script:W.IsVisible -and $script:Page -eq 'maison' -and -not $script:Vue) { Rafraichir }
 })
 $horloge.Start()
+
+# ------------------------------------------------------------------ Écran de veille
+# Le PC a le même écran de veille que les télés : l'horloge, puis les tableaux de
+# bord que Home Assistant rend disponibles (l'agent dépose veille.json). Chaque
+# PC garde ses propres réglages (activé, délai, thème) dans le profil de l'utilisateur.
+$svNatif = 'using System; using System.Runtime.InteropServices; public static class VisionVeilleNatif { [StructLayout(LayoutKind.Sequential)] struct LII { public uint cb; public uint t; } [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LII p); [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; } [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] static extern IntPtr GetDesktopWindow(); [DllImport("user32.dll")] static extern IntPtr GetShellWindow(); public static uint Inactif() { LII l = new LII(); l.cb = (uint)Marshal.SizeOf(l); if (!GetLastInputInfo(ref l)) return 0; return ((uint)Environment.TickCount - l.t) / 1000; } public static bool PleinEcran(int w, int h) { IntPtr f = GetForegroundWindow(); if (f == IntPtr.Zero || f == GetDesktopWindow() || f == GetShellWindow()) return false; RECT r; if (!GetWindowRect(f, out r)) return false; return (r.R - r.L) >= w && (r.B - r.T) >= h; } }'
+$script:SvPret = $false
+try { Add-Type -TypeDefinition $svNatif -ErrorAction Stop; $script:SvPret = $true } catch { }
+
+$script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
+$script:SvFenetres = @()
+$script:SvListe = @()
+$script:SvIndice = 0
+$script:SvDepuis = [datetime]::MinValue
+$script:SvOuvertA = [datetime]::MinValue
+$script:SvOrigine = $null
+$script:SvPalettes = @{
+    'Sombre' = @{ fond = '#FF0E0A0B'; carte = '#FF1D1517'; encre = '#FFF4EDE4'; encre2 = '#FFB9AAA0'; accent = '#FFE9B949'; piste = '#FF33272A' }
+    'Beige'  = @{ fond = '#FFF1E9DA'; carte = '#FFFBF6EC'; encre = '#FF2A1E16'; encre2 = '#FF7A6A5C'; accent = '#FFA9781F'; piste = '#FFE2D6C0' }
+}
+
+function SvReglages() {
+    $r = @{ actif = $true; delai = 10; theme = 'Sombre' }
+    try {
+        if (Test-Path $script:SvFichier) {
+            $lu = Get-Content $script:SvFichier -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($null -ne (Prop $lu 'actif')) { $r.actif = [bool](Prop $lu 'actif') }
+            if (Prop $lu 'delai') { $r.delai = [int](Prop $lu 'delai') }
+            if ($script:SvPalettes.ContainsKey([string](Prop $lu 'theme'))) { $r.theme = [string](Prop $lu 'theme') }
+        }
+    } catch { }
+    return $r
+}
+function SvEcrire($r) {
+    try {
+        $d = Split-Path $script:SvFichier -Parent
+        if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+        ($r | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
+    } catch { }
+}
+function SvPinceau([string]$cle) {
+    $pal = $script:SvPalettes[(SvReglages).theme]
+    return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($pal[$cle])
+}
+function SvTexte([string]$t, [double]$taille, [string]$couleur = 'encre', [bool]$gras = $false) {
+    $b = New-Object System.Windows.Controls.TextBlock
+    $b.Text = $t; $b.FontSize = $taille; $b.Foreground = (SvPinceau $couleur); $b.TextTrimming = 'CharacterEllipsis'
+    if ($gras) { $b.FontWeight = 'SemiBold' }
+    return $b
+}
+function SvMeteo([string]$etat) {
+    $noms = @{ 'sunny' = 'Ensoleillé'; 'clear-night' = 'Nuit claire'; 'partlycloudy' = 'Éclaircies'; 'cloudy' = 'Nuageux'; 'rainy' = 'Pluie'; 'pouring' = 'Forte pluie'; 'fog' = 'Brouillard'; 'snowy' = 'Neige'; 'snowy-rainy' = 'Neige fondue'; 'lightning' = 'Orage'; 'lightning-rainy' = 'Orage'; 'windy' = 'Vent'; 'windy-variant' = 'Vent'; 'hail' = 'Grêle'; 'exceptional' = 'Exceptionnel' }
+    if ($noms.ContainsKey($etat)) { return $noms[$etat] }
+    return ''
+}
+function SvValeur($k) {
+    $v = Prop $k 'valeur'
+    if ($null -ne $v) {
+        try {
+            $n = [double]$v
+            $fr = [Globalization.CultureInfo]::GetCultureInfo('fr-FR')
+            $s = if ([Math]::Abs($n - [Math]::Round($n)) -lt 0.05) { [Math]::Round($n).ToString('0', $fr) } else { $n.ToString('0.#', $fr) }
+            $u = [string](Prop $k 'unite' '')
+            if ($u) { return "$s $u" } else { return $s }
+        } catch { }
+    }
+    return [string](Prop $k 'texte' '')
+}
+function SvHauteur($k) { if (@('jauge', 'courbe') -contains [string](Prop $k 'rendu')) { return 2 } else { return 1 } }
+
+# Une case d'un tableau de bord, redessinée dans le thème du PC.
+function SvCase($k) {
+    $bord = New-Object System.Windows.Controls.Border
+    $bord.Background = (SvPinceau 'carte'); $bord.CornerRadius = [System.Windows.CornerRadius]::new(14)
+    $bord.Padding = [System.Windows.Thickness]::new(18, 10, 18, 10); $bord.Margin = [System.Windows.Thickness]::new(0, 0, 0, 8)
+    $rendu = [string](Prop $k 'rendu' 'valeur')
+    $pile = New-Object System.Windows.Controls.StackPanel
+    if ($rendu -eq 'texte' -and -not (Prop $k 'entite')) {
+        $tx = SvTexte ([string](Prop $k 'texte' '')) 20 'encre2'; $tx.TextWrapping = 'Wrap'; $tx.MaxHeight = 56
+        $pile.Children.Add($tx) | Out-Null; $bord.Child = $pile; $bord.Height = 60
+        return $bord
+    }
+    $ligne = New-Object System.Windows.Controls.DockPanel; $ligne.LastChildFill = $true
+    $val = SvTexte (SvValeur $k) 24 'encre' $true; $val.Margin = [System.Windows.Thickness]::new(14, 0, 0, 0)
+    $allume = Prop $k 'on'
+    if ($null -ne $allume -and [bool]$allume) { $val.Foreground = (SvPinceau 'accent') }
+    [System.Windows.Controls.DockPanel]::SetDock($val, 'Right'); $ligne.Children.Add($val) | Out-Null
+    $nomCase = SvTexte ([string](Prop $k 'nom' '')) 21 'encre2'; $nomCase.VerticalAlignment = 'Center'
+    $ligne.Children.Add($nomCase) | Out-Null
+    $pile.Children.Add($ligne) | Out-Null
+    $bord.Height = 60
+    if ($rendu -eq 'jauge') {
+        $mini = [double](Prop $k 'min' 0); $maxi = [double](Prop $k 'max' 100); $part = 0.0
+        try { if ($maxi -gt $mini) { $part = [Math]::Max(0.0, [Math]::Min(1.0, ([double](Prop $k 'valeur' $mini) - $mini) / ($maxi - $mini))) } } catch { }
+        $piste = New-Object System.Windows.Controls.Border; $piste.Height = 12; $piste.CornerRadius = [System.Windows.CornerRadius]::new(6); $piste.Background = (SvPinceau 'piste')
+        $piste.Margin = [System.Windows.Thickness]::new(0, 22, 0, 0); $piste.HorizontalAlignment = 'Left'; $piste.Width = 524
+        $plein = New-Object System.Windows.Controls.Border; $plein.CornerRadius = [System.Windows.CornerRadius]::new(6); $plein.Background = (SvPinceau 'accent')
+        $plein.HorizontalAlignment = 'Left'; $plein.Width = [Math]::Max(12.0, 524 * $part)
+        $piste.Child = $plein
+        $pile.Children.Add($piste) | Out-Null; $bord.Height = 128
+    } elseif ($rendu -eq 'courbe') {
+        $serie = @(Prop $k 'serie' @())
+        $trace = New-Object System.Windows.Shapes.Polyline; $trace.Stroke = (SvPinceau 'accent'); $trace.StrokeThickness = 3; $trace.StrokeLineJoin = 'Round'
+        $trace.Margin = [System.Windows.Thickness]::new(0, 12, 0, 0); $trace.Height = 56; $trace.Width = 524; $trace.HorizontalAlignment = 'Left'
+        if ($serie.Count -ge 2) {
+            try {
+                $t0 = [double]$serie[0][0]; $t1 = [double]$serie[$serie.Count - 1][0]
+                $bas = [double]::MaxValue; $haut = [double]::MinValue
+                foreach ($pt in $serie) { $y = [double]$pt[1]; if ($y -lt $bas) { $bas = $y }; if ($y -gt $haut) { $haut = $y } }
+                if ($haut - $bas -lt 0.001) { $haut = $bas + 1 }
+                if ($t1 -le $t0) { $t1 = $t0 + 1 }
+                foreach ($pt in $serie) {
+                    $x = 524 * (([double]$pt[0] - $t0) / ($t1 - $t0)); $y = 52 - 48 * (([double]$pt[1] - $bas) / ($haut - $bas))
+                    $trace.Points.Add([System.Windows.Point]::new($x, $y))
+                }
+            } catch { }
+        }
+        $pile.Children.Add($trace) | Out-Null; $bord.Height = 128
+    }
+    $bord.Child = $pile
+    return $bord
+}
+
+# Les tableaux à montrer : l'horloge, puis chaque tableau de bord découpé en écrans de trois colonnes.
+function SvTableaux() {
+    $sortie = @()
+    $data = Lire 'veille.json'
+    $liste = @(Prop (Prop $data 'tableaux') 'liste' @())
+    foreach ($def in $liste) {
+        $code = [string](Prop $def 'code')
+        $duree = [int](Prop $def 'duree' 20); if ($duree -lt 5) { $duree = 5 }
+        if ($code -eq 'horloge') { $sortie += @{ genre = 'horloge'; duree = $duree; data = $data }; continue }
+        if ($code -ne 'dash') { continue }
+        # Des blocs (un titre, des cases) d'au plus dix unités de hauteur.
+        $blocs = @()
+        foreach ($s in @(Prop $def 'sections' @())) {
+            $courant = @(); $unites = 1; $premier = $true
+            foreach ($k in @(Prop $s 'cases' @())) {
+                $hk = SvHauteur $k
+                if ($unites + $hk -gt 10 -and $courant.Count -gt 0) {
+                    $blocs += @{ titre = $(if ($premier) { [string](Prop $s 'titre' '') } else { '' }); cases = $courant; unites = $unites }
+                    $courant = @(); $unites = 1; $premier = $false
+                }
+                $courant += $k; $unites += $hk
+            }
+            if ($courant.Count -gt 0) { $blocs += @{ titre = $(if ($premier) { [string](Prop $s 'titre' '') } else { '' }); cases = $courant; unites = $unites } }
+        }
+        # Trois colonnes de dix unités ; ce qui ne tient pas fait un écran de plus.
+        $pages = @(); $colonnes = @(@(), @(), @()); $col = 0; $pris = 0
+        foreach ($b in $blocs) {
+            if ($pris + $b.unites -gt 10 -and $pris -gt 0) { $col++; $pris = 0 }
+            if ($col -gt 2) { $pages += , $colonnes; $colonnes = @(@(), @(), @()); $col = 0; $pris = 0 }
+            $colonnes[$col] += $b; $pris += $b.unites
+        }
+        if (@($colonnes[0]).Count -gt 0) { $pages += , $colonnes }
+        $n = 0
+        foreach ($pg in $pages) {
+            $n++
+            $sortie += @{ genre = 'dash'; duree = $duree; titre = [string](Prop $def 'titre' ''); colonnes = $pg; numero = $n; total = $pages.Count }
+        }
+    }
+    if ($sortie.Count -eq 0) { $sortie += @{ genre = 'horloge'; duree = 30; data = $data } }
+    return $sortie
+}
+
+function SvDessiner($tab) {
+    $scene = $script:SvScene
+    $scene.Children.Clear()
+    if ($tab.genre -eq 'horloge') {
+        $pile = New-Object System.Windows.Controls.StackPanel; $pile.HorizontalAlignment = 'Center'; $pile.VerticalAlignment = 'Center'
+        $h = SvTexte ((Get-Date).ToString('HH:mm')) 300 'encre'; $h.FontWeight = 'Light'; $h.HorizontalAlignment = 'Center'; $h.Tag = 'heure'
+        $fr = [Globalization.CultureInfo]::GetCultureInfo('fr-FR')
+        $jour = (Get-Date).ToString('dddd d MMMM', $fr); $jour = $jour.Substring(0, 1).ToUpper() + $jour.Substring(1)
+        $d = SvTexte $jour 52 'encre2'; $d.HorizontalAlignment = 'Center'
+        $pile.Children.Add($h) | Out-Null; $pile.Children.Add($d) | Out-Null
+        $m = Prop $tab.data 'meteo'
+        if ($m) {
+            $morceaux = @()
+            $temp = Prop $m 'temperature'; if ($null -ne $temp) { try { $morceaux += ('{0:0}°' -f [double]$temp) } catch { } }
+            $ciel = SvMeteo ([string](Prop $m 'etat' '')); if ($ciel) { $morceaux += $ciel }
+            if ($morceaux.Count) { $mt = SvTexte ($morceaux -join '  ·  ') 44 'accent'; $mt.HorizontalAlignment = 'Center'; $mt.Margin = [System.Windows.Thickness]::new(0, 26, 0, 0); $pile.Children.Add($mt) | Out-Null }
+        }
+        $script:SvHeure = $h
+        $scene.Children.Add($pile) | Out-Null
+        return
+    }
+    $dock = New-Object System.Windows.Controls.DockPanel; $dock.Margin = [System.Windows.Thickness]::new(70, 50, 70, 50)
+    $tete = New-Object System.Windows.Controls.DockPanel; $tete.Margin = [System.Windows.Thickness]::new(0, 0, 0, 22)
+    $petite = SvTexte ((Get-Date).ToString('HH:mm')) 40 'encre2'; [System.Windows.Controls.DockPanel]::SetDock($petite, 'Right'); $tete.Children.Add($petite) | Out-Null
+    $script:SvHeure = $petite
+    $titre = [string]$tab.titre; if ($tab.total -gt 1) { $titre = '{0}   {1}/{2}' -f $titre, $tab.numero, $tab.total }
+    $tete.Children.Add((SvTexte $titre 44 'encre' $true)) | Out-Null
+    [System.Windows.Controls.DockPanel]::SetDock($tete, 'Top'); $dock.Children.Add($tete) | Out-Null
+    $grille = New-Object System.Windows.Controls.Grid
+    for ($i = 0; $i -lt 3; $i++) { $cd = New-Object System.Windows.Controls.ColumnDefinition; $cd.Width = [System.Windows.GridLength]::new(1, 'Star'); $grille.ColumnDefinitions.Add($cd) }
+    for ($i = 0; $i -lt 3; $i++) {
+        $colonne = New-Object System.Windows.Controls.StackPanel; $colonne.Width = 560; $colonne.HorizontalAlignment = 'Center'
+        foreach ($b in @($tab.colonnes[$i])) {
+            if ($null -eq $b) { continue }
+            $tb = SvTexte ([string]$b.titre).ToUpper() 18 'accent' $true; $tb.Margin = [System.Windows.Thickness]::new(4, 6, 0, 10); $tb.Height = 26
+            $colonne.Children.Add($tb) | Out-Null
+            foreach ($k in @($b.cases)) { $colonne.Children.Add((SvCase $k)) | Out-Null }
+        }
+        [System.Windows.Controls.Grid]::SetColumn($colonne, $i); $grille.Children.Add($colonne) | Out-Null
+    }
+    $dock.Children.Add($grille) | Out-Null
+    $scene.Children.Add($dock) | Out-Null
+}
+
+function SvFondu([double]$de, [double]$vers, $ensuite) {
+    $anim = New-Object System.Windows.Media.Animation.DoubleAnimation($de, $vers, [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(450)))
+    if ($ensuite) { $anim.Add_Completed($ensuite) }
+    $script:SvScene.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $anim)
+}
+
+function SvSuivant([int]$pas = 1) {
+    # Les valeurs sont relues à chaque changement de tableau.
+    $script:SvListe = @(SvTableaux)
+    $nb = $script:SvListe.Count
+    $script:SvIndice = (($script:SvIndice + $pas) % $nb + $nb) % $nb
+    $script:SvDepuis = Get-Date
+    if ($nb -le 1) { SvDessiner $script:SvListe[0]; return }
+    SvFondu 1 0 { SvDessiner $script:SvListe[$script:SvIndice]; SvFondu 0 1 $null }
+}
+
+function SvFermer() {
+    try { $script:SvTic.Stop() } catch { }
+    foreach ($f in @($script:SvFenetres)) { try { $f.Close() } catch { } }
+    $script:SvFenetres = @()
+}
+
+function SvOuvrir() {
+    if ($script:SvFenetres.Count -gt 0) { return }
+    $script:SvOrigine = $null; $script:SvOuvertA = Get-Date
+    $ecrans = [System.Windows.Forms.Screen]::AllScreens
+    $echelle = 1.0
+    try { $echelle = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width / [System.Windows.SystemParameters]::PrimaryScreenWidth } catch { }
+    foreach ($ecran in $ecrans) {
+        $f = New-Object System.Windows.Window
+        $f.WindowStyle = 'None'; $f.ResizeMode = 'NoResize'; $f.ShowInTaskbar = $false; $f.Topmost = $true
+        $f.Background = (SvPinceau 'fond'); $f.Cursor = [System.Windows.Input.Cursors]::None; $f.FontFamily = (New-Object System.Windows.Media.FontFamily('Segoe UI'))
+        $f.WindowStartupLocation = 'Manual'
+        $f.Left = $ecran.Bounds.Left / $echelle; $f.Top = $ecran.Bounds.Top / $echelle
+        $f.Width = $ecran.Bounds.Width / $echelle; $f.Height = $ecran.Bounds.Height / $echelle
+        if ($ecran.Primary) {
+            # Une scène de 1920 × 1080 mise à l'échelle : la même mise en page sur tous les écrans.
+            $boite = New-Object System.Windows.Controls.Viewbox; $boite.Stretch = 'Uniform'
+            $scene = New-Object System.Windows.Controls.Grid; $scene.Width = 1920; $scene.Height = 1080
+            $boite.Child = $scene; $f.Content = $boite
+            $script:SvScene = $scene
+        }
+        $f.Add_PreviewKeyDown({ param($s, $e)
+            if ($e.Key -eq 'Right') { SvSuivant 1 } elseif ($e.Key -eq 'Left') { SvSuivant -1 } else { SvFermer }
+            $e.Handled = $true })
+        $f.Add_PreviewMouseDown({ SvFermer })
+        $f.Add_MouseMove({ param($s, $e)
+            if (((Get-Date) - $script:SvOuvertA).TotalMilliseconds -lt 900) { return }
+            $pos = $e.GetPosition($s)
+            if ($null -eq $script:SvOrigine) { $script:SvOrigine = $pos; return }
+            if ([Math]::Abs($pos.X - $script:SvOrigine.X) + [Math]::Abs($pos.Y - $script:SvOrigine.Y) -gt 14) { SvFermer } })
+        $f.Add_Closed({ param($s, $e) $script:SvFenetres = @($script:SvFenetres | Where-Object { $_ -ne $s }) })
+        $script:SvFenetres += $f
+        try { [System.Windows.Forms.Integration.ElementHost]::EnableModelessKeyboardInterop($f) } catch { }
+        $f.Show()
+        if ($ecran.Primary) { $f.Activate() | Out-Null }
+    }
+    $script:SvListe = @(SvTableaux); $script:SvIndice = 0; $script:SvDepuis = Get-Date
+    SvDessiner $script:SvListe[0]
+    SvFondu 0 1 $null
+    $script:SvTic.Start()
+}
+
+# Une fois par seconde pendant la veille : l'heure, et le passage au tableau suivant.
+$script:SvTic = New-Object System.Windows.Threading.DispatcherTimer
+$script:SvTic.Interval = [TimeSpan]::FromSeconds(1)
+$script:SvTic.Add_Tick({
+    try {
+        if ($script:SvFenetres.Count -eq 0) { $script:SvTic.Stop(); return }
+        if ($script:SvHeure) { $script:SvHeure.Text = (Get-Date).ToString('HH:mm') }
+        $courant = $script:SvListe[$script:SvIndice]
+        if (((Get-Date) - $script:SvDepuis).TotalSeconds -ge [int]$courant.duree) {
+            if ($script:SvListe.Count -gt 1) { SvSuivant 1 } else { $script:SvDepuis = Get-Date; SvSuivant 0 }
+        }
+    } catch { }
+})
+
+# Le guet : personne au clavier ni à la souris depuis le délai choisi, et rien en plein écran (film, jeu).
+$script:SvGuet = New-Object System.Windows.Threading.DispatcherTimer
+$script:SvGuet.Interval = [TimeSpan]::FromSeconds(5)
+$script:SvGuet.Add_Tick({
+    try {
+        if (-not $script:SvPret -or $script:SvFenetres.Count -gt 0) { return }
+        $r = SvReglages
+        if (-not $r.actif) { return }
+        if ([VisionVeilleNatif]::Inactif() -lt ($r.delai * 60)) { return }
+        $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        if ([VisionVeilleNatif]::PleinEcran($b.Width, $b.Height)) { return }
+        SvOuvrir
+    } catch { }
+})
+$script:SvGuet.Start()
+
+# Les réglages, dans le menu de l'icône : propres à ce PC et à cette session.
+$svMenu = New-Object System.Windows.Forms.ToolStripMenuItem('Écran de veille')
+$svActif = New-Object System.Windows.Forms.ToolStripMenuItem('Activé')
+$svActif.Add_Click({ $r = SvReglages; $r.actif = -not $r.actif; SvEcrire $r })
+$svMenu.DropDownItems.Add($svActif) | Out-Null
+$svMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+$script:SvItemsDelai = @()
+foreach ($minutes in @(2, 5, 10, 20, 30)) {
+    $it = New-Object System.Windows.Forms.ToolStripMenuItem(('Après {0} min' -f $minutes)); $it.Tag = $minutes
+    $it.Add_Click({ param($s, $e) $r = SvReglages; $r.delai = [int]$s.Tag; SvEcrire $r })
+    $svMenu.DropDownItems.Add($it) | Out-Null; $script:SvItemsDelai += $it
+}
+$svMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+$script:SvItemsTheme = @()
+foreach ($nomTheme in @('Sombre', 'Beige')) {
+    $it = New-Object System.Windows.Forms.ToolStripMenuItem(('Thème {0}' -f $nomTheme)); $it.Tag = $nomTheme
+    $it.Add_Click({ param($s, $e) $r = SvReglages; $r.theme = [string]$s.Tag; SvEcrire $r })
+    $svMenu.DropDownItems.Add($it) | Out-Null; $script:SvItemsTheme += $it
+}
+$svMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+$svVoir = New-Object System.Windows.Forms.ToolStripMenuItem('Lancer maintenant')
+$svVoir.Add_Click({ SvOuvrir })
+$svMenu.DropDownItems.Add($svVoir) | Out-Null
+$svMenu.Add_DropDownOpening({
+    $r = SvReglages
+    $svActif.Checked = [bool]$r.actif
+    foreach ($it in $script:SvItemsDelai) { $it.Checked = ([int]$it.Tag -eq [int]$r.delai) }
+    foreach ($it in $script:SvItemsTheme) { $it.Checked = ([string]$it.Tag -eq [string]$r.theme) }
+})
+$menu.Items.Add($svMenu) | Out-Null
 
 [System.Windows.Forms.Application]::Run()
