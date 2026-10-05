@@ -95,7 +95,7 @@ class VisionVeillePanel extends HTMLElement {
       "--control-select-background": moyen, "--control-slider-background": accent, "--control-number-buttons-background-color": texte,
       "--info-color": accent, "--scrollbar-thumb-color": "transparent", "--rgb-disabled": this._rvb(fort), "--rgb-state-inactive-color": this._rvb(eteint),
       "--graph-color-1": accent, "--graph-color-2": "#5B8FD9", "--graph-color-3": "#4FAE8C", "--graph-color-4": "#D9705F", "--graph-color-5": "#9C7AD1", "--graph-color-6": "#49A9C2",
-      "--v-ligne": ligne, "--v-doux": doux, "--v-moyen": moyen,
+      "--v-ligne": ligne, "--v-doux": doux, "--v-moyen": moyen, "--v-fort": fort, "--v-eteint": eteint, "--v-accent-doux": this._melange(carte, accent, 0.38),
     });
     for (const fam of ["neutral", "primary"]) {
       const base = fam === "primary" ? accent : texte;
@@ -160,6 +160,15 @@ class VisionVeillePanel extends HTMLElement {
     const net = this._style === "neoretro";
     return `
       :host { ${this._jetons} }
+      :host(ha-switch) {
+        --ha-switch-checked-background-color: var(--v-accent-doux) !important; --ha-switch-checked-background-color-hover: var(--v-accent-doux) !important;
+        --ha-switch-checked-border-color: var(--v-accent-doux) !important; --ha-switch-checked-border-color-hover: var(--v-accent-doux) !important;
+        --ha-switch-checked-thumb-background-color: var(--v-accent) !important; --ha-switch-checked-thumb-background-color-hover: var(--v-accent) !important;
+        --ha-switch-checked-thumb-border-color: var(--v-accent) !important; --ha-switch-checked-thumb-border-color-hover: var(--v-accent) !important;
+        --ha-switch-background-color: var(--v-moyen) !important; --ha-switch-background-color-hover: var(--v-moyen) !important;
+        --ha-switch-border-color: var(--v-fort) !important; --ha-switch-thumb-background-color: var(--v-eteint) !important;
+        --ha-switch-thumb-background-color-hover: var(--v-eteint) !important; --ha-switch-thumb-border-color: var(--v-eteint) !important; --ha-switch-thumb-border-color-hover: var(--v-eteint) !important;
+      }
       ::-webkit-scrollbar { display: none !important; }
       * { scrollbar-width: none !important; }
       ha-icon-button, ha-button-menu, ha-icon-next, ha-icon-button-next, ha-icon-button-prev, mwc-icon-button, .more-info { display: none !important; }
@@ -197,17 +206,6 @@ class VisionVeillePanel extends HTMLElement {
       for (const x of noeud.children) voir(x);
     };
     try { voir(racine); } catch (e) { /* sans gravité */ }
-    if (this._q.get("diag") === "2" && !this._diagVu) {
-      const trouver = (n, nom) => { if (n.localName === nom) return n; for (const y of [...(n.shadowRoot ? n.shadowRoot.children : []), ...n.children]) { const r = trouver(y, nom); if (r) return r; } return null; };
-      const sw = trouver(racine, "ha-switch");
-      if (sw && sw.shadowRoot) {
-        this._diagVu = true;
-        const cs = getComputedStyle(sw), d = document.createElement("div");
-        d.style.cssText = "position:absolute;left:1vw;top:12vh;width:60vw;z-index:9;font:22px Consolas,monospace;color:#fff;background:#000;white-space:normal;word-break:break-all";
-        d.textContent = `regle0=${this._feuille.cssRules[0].cssText.slice(0, 160)} ## nb=${this._feuille.cssRules.length} ## fill=${cs.getPropertyValue("--ha-color-fill-primary-normal-resting")} ## sw=${cs.getPropertyValue("--ha-switch-checked-background-color")} ## on=${cs.getPropertyValue("--ha-color-on-primary-normal")} ## ` + [...sw.shadowRoot.adoptedStyleSheets].map((f) => [...f.cssRules].filter((r) => /checked/.test(r.cssText)).map((r) => r.cssText.slice(0, 260)).join(" // ")).join(" ");
-        this.shadowRoot.appendChild(d);
-      }
-    }
   }
 
   // Avec « diag=1 » dans l'adresse, les temps de chargement s'écrivent en haut de l'écran.
@@ -299,6 +297,11 @@ class VisionVeillePanel extends HTMLElement {
     // L'heure s'affiche tout de suite ; les tableaux arrivent dès que Home Assistant a répondu.
     { const j = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); this.shadowRoot.querySelector(".date").textContent = j.charAt(0).toUpperCase() + j.slice(1); }
     this._tic();
+    // Plusieurs écrans : jamais la même chose sur deux d'entre eux. L'heure est sur le premier dès l'ouverture ;
+    // les autres attendent leur tableau sans la répéter.
+    const nbEcrans = parseInt(this._q.get("ecrans") || "1", 10) || 1;
+    this._rang = parseInt(this._q.get("dec") || "0", 10) || 0;
+    if (nbEcrans > 1 && this._rang > 0) this.shadowRoot.querySelector("#s0 .horloge").style.visibility = "hidden";
     let page = null, aides = null;
     try {
       [page, aides] = await Promise.all([
@@ -327,9 +330,20 @@ class VisionVeillePanel extends HTMLElement {
     }
     if (!liste.length) liste.push({ genre: "horloge", duree: 30 });
     this._ecrans = liste;
-    this._indice = (parseInt(this._q.get("dec") || "0", 10) || 0) % liste.length;
+    this._indice = this._rang % liste.length;
     setInterval(() => this._tic(), 1000);
     this._oeil();
+    // Les écrans avancent ensemble, au même pas, chacun décalé d'un cran : l'écran 1 montre l'horloge quand le 2
+    // montre le premier tableau, puis le 1 passe au premier tableau et le 2 au suivant, et ainsi de suite.
+    // L'heure de départ commune (donnée par l'appareil) et l'horloge du système tiennent les écrans d'accord.
+    this._synchro = nbEcrans > 1 && liste.length > 1;
+    if (this._synchro) {
+      this._t0 = parseInt(this._q.get("t0") || "0", 10) || 0;
+      const impose = parseInt(this._q.get("duree") || "0", 10);
+      this._pas = impose > 0 ? Math.max(5, impose) : Math.max(12, Math.round(liste.reduce((a, x) => a + (x.duree || 20), 0) / liste.length));
+      this._montrer();
+      return;
+    }
     // L'heure est à l'écran depuis l'ouverture : dès que les cartes sont prêtes (et après quatre secondes
     // d'horloge au moins), on passe au premier tableau au lieu de refaire un tour d'horloge.
     const premier = liste[this._indice];
@@ -419,6 +433,14 @@ class VisionVeillePanel extends HTMLElement {
   }
 
   async _montrer(reste) {
+    let cran = 0;
+    if (this._synchro) {
+      const n = this._ecrans.length;
+      cran = Math.max(0, Math.floor((Date.now() / 1000 - this._t0) / this._pas));
+      const p = cran + this._rang;
+      this._indice = p % n; this._tour = Math.floor(p / n);
+      if (this._ecrans[this._indice].genre === "tableau") this._ecrans[this._indice].page = 0;
+    }
     const e = this._ecrans[this._indice];
     const ancienne = this.shadowRoot.querySelector(".scene.vue");
     const scene = document.createElement("div");
@@ -511,6 +533,8 @@ class VisionVeillePanel extends HTMLElement {
         e.pages = e._pages.length || 1;
         scene.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   1/${e.pages}` : "");
       }
+      // À plusieurs écrans, un tableau trop grand pour un écran montre sa partie suivante à chaque tour.
+      if (this._synchro) { e.page = this._tour % (e.pages || 1); scene.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   ${e.page + 1}/${e.pages}` : ""); }
       // L'écran demandé : ses sections seules, à la plus grande taille qui tient, centrées.
       const pg = e._pages[e.page] || e._pages[0];
       if (pg) {
@@ -524,6 +548,7 @@ class VisionVeillePanel extends HTMLElement {
     if (e.genre === "tableau") { this._percer(e._colonnes); for (const t of [700, 2000, 4500]) setTimeout(() => this._percer(e._colonnes), t); }
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
+    if (this._synchro) { this._minuteur = setTimeout(() => this._montrer(), Math.max(2500, ((cran + 1) * this._pas + this._t0) * 1000 - Date.now())); return; }
     this._minuteur = setTimeout(() => this._suivant(), reste || Math.max(5, e.duree) * 1000);
   }
 

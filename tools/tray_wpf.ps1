@@ -1091,10 +1091,14 @@ function SvOuvrirWeb() {
     $edge = SvEdge
     if (-not $jeton -or -not $base -or -not $edge) { return $false }
     $r = SvReglages; $pal = $script:Pal; $j = 0
-    foreach ($ecran in [System.Windows.Forms.Screen]::AllScreens) {
-        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}&cfond={11}&ccontour={12}' -f `
+    # Plusieurs écrans : ils partent de la même heure et avancent ensemble, décalés d'un cran, pour ne jamais
+    # montrer la même chose. L'écran principal ouvre sur l'horloge, les autres sur les tableaux qui suivent.
+    $tous = @([System.Windows.Forms.Screen]::AllScreens | Sort-Object { -not $_.Primary })
+    $depart = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    foreach ($ecran in $tous) {
+        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}&cfond={11}&ccontour={12}&ecrans={13}&t0={14}' -f `
             [uri]::EscapeDataString([string](Prop $acces 'id' '')), $j, $pal.Fond.Substring(3), $pal.Carte.Substring(3), $pal.Texte.Substring(3), $pal.Texte2.Substring(3), $pal.Or.Substring(3), $pal.Ligne.Substring(3), `
-            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 })
+            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 }), $tous.Count, $depart
         $adresse = '{0}/api/pc_parental/veille/entree#t={1}&q={2}' -f $base, $jeton, [uri]::EscapeDataString($q)
         $profilEdge = Join-Path $env:LOCALAPPDATA ('Vision\veille-edge-{0}' -f $j)
         # Une fenêtre d'application en mode borne par écran, placée sur le sien ; en navigation privée, pour
