@@ -539,7 +539,15 @@ class LanceurActivity : Activity() {
         val hauteurBas = px(110f)
         val colonne = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(16f), px(40f), px(16f), if (pages) 0 else px(12f)); clipChildren = false; clipToPadding = false }
         val defile: View = if (pages) colonne else ScrollView(this).apply { isVerticalScrollBarEnabled = false; isFillViewport = true; clipToPadding = false; clipChildren = false; addView(colonne) }
-        racine.addView(defile, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply { bottomMargin = hauteurBas })
+        // Glisser vers le haut n'importe où sur l'accueil, même en partant d'une icône, tire le tiroir sous le doigt
+        // (en mode « grille qui défile », seulement une fois arrivé en bas de la grille).
+        val zone = object : FrameLayout(this) {
+            private val geste = GesteTiroir(ouvre = true, seuilFacteur = 1f) { pages || !defile.canScrollVertically(1) }
+            override fun onInterceptTouchEvent(e: MotionEvent): Boolean = geste.suivre(e, this)
+            override fun onTouchEvent(e: MotionEvent): Boolean = geste.suivre(e, this)
+        }.apply { clipChildren = false; clipToPadding = false }
+        zone.addView(defile, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        racine.addView(zone, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply { bottomMargin = hauteurBas })
         // Tout le bas de l'écran ouvre le tiroir d'un glissement vers le haut, même en partant d'une icône du dock.
         val bas = object : LinearLayout(this) {
             private val geste = GesteTiroir(ouvre = true)
@@ -1055,10 +1063,10 @@ class LanceurActivity : Activity() {
     private fun courseTiroir(): Float = (tiroirFeuille?.height?.takeIf { it > 0 } ?: (dm.heightPixels * 0.86f).toInt()).toFloat()
 
     /** Suit un doigt : vers le haut depuis le bas de l'écran pour ouvrir, vers le bas depuis la feuille pour fermer. */
-    private inner class GesteTiroir(private val ouvre: Boolean) {
+    private inner class GesteTiroir(private val ouvre: Boolean, private val seuilFacteur: Float = 0.6f, private val si: () -> Boolean = { true }) {
         private var y0 = 0f; private var x0 = 0f; private var tire = false
         private var yAvant = 0f; private var tAvant = 0L; private var vitesse = 0f
-        private val seuil by lazy { ViewConfiguration.get(this@LanceurActivity).scaledTouchSlop * 0.6f }
+        private val seuil by lazy { ViewConfiguration.get(this@LanceurActivity).scaledTouchSlop * seuilFacteur }
 
         fun suivre(e: MotionEvent, v: View): Boolean {
             when (e.actionMasked) {
@@ -1070,7 +1078,7 @@ class LanceurActivity : Activity() {
                     val dy = e.rawY - y0; val dx = e.rawX - x0
                     val sens = if (ouvre) -dy else dy
                     if (!tire && sens > seuil && Math.abs(dy) > Math.abs(dx) && enDrag == null && enDragNouveau == null && panneau == null
-                        && (ouvre || (tiroirContenu?.scrollY ?: 0) <= 0)) {
+                        && (ouvre || (tiroirContenu?.scrollY ?: 0) <= 0) && si()) {
                         tire = true; y0 = e.rawY
                         tiroirAnim?.cancel()
                         v.parent?.requestDisallowInterceptTouchEvent(true)
