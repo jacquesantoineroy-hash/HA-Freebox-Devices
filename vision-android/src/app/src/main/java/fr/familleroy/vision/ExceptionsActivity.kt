@@ -27,6 +27,7 @@ class ExceptionsActivity : Activity() {
     private lateinit var a: JSONObject
     private val autorises = ArrayList<Element>()
     private val bloques = ArrayList<Element>()
+    private val disponibles = ArrayList<Element>()
     private val connus = ArrayList<Element>()
     private var recherche = ""
 
@@ -42,6 +43,7 @@ class ExceptionsActivity : Activity() {
         val ex = a.optJSONObject("exceptions")
         lire(ex?.optJSONArray("autorises"), autorises)
         lire(ex?.optJSONArray("bloques"), bloques)
+        lire(ex?.optJSONArray("toujours"), disponibles)
         // Tout ce que Vision connaît déjà : les applis et les sites classés dans une catégorie.
         val vus = HashSet<String>()
         val categories = cats ?: JSONArray()
@@ -64,7 +66,7 @@ class ExceptionsActivity : Activity() {
         col.addView(Ui.titre(this, "Exceptions"))
         col.addView(Ui.sousTitre(this, "Ce qui est décidé à part pour $prenom, sur tous ses appareils"))
         racine.addView(Ui.marge(this, col, bas = 14f))
-        racine.addView(Ui.texte(this, "Une exception passe devant les catégories et l'âge. Le planning et un interdit de toute la maison restent plus forts. Touche une ligne pour la changer.", 13f, Ui.TEXTE_2))
+        racine.addView(Ui.texte(this, "Une exception passe devant les catégories et l'âge, pas devant le planning. Pour qu'une appli reste ouverte même appareil fermé, mets-la dans « Toujours disponibles ». Touche une ligne pour la changer.", 13f, Ui.TEXTE_2))
         if (ex == null) racine.addView(Ui.marge(this, Ui.texte(this, "Les exceptions arrivent avec la prochaine mise à jour de Home Assistant.", 13f, Ui.OR), haut = 10f))
         liste = Ui.colonne(this)
         racine.addView(Ui.marge(this, liste, haut = 6f))
@@ -95,6 +97,18 @@ class ExceptionsActivity : Activity() {
 
     private fun remplir() {
         liste.removeAllViews()
+        // Toujours disponibles : ce qui reste ouvert quand le planning ferme l'appareil.
+        liste.addView(Ui.section(this, "Toujours disponibles, même appareil fermé (${disponibles.size})"))
+        val cd = Ui.carte(this)
+        if (disponibles.isEmpty()) cd.addView(Ui.texte(this, "Rien de plus que le téléphone, les messages, le réveil et Pronote.", 14f, Ui.TEXTE_3))
+        disponibles.sortedBy { it.libelle.lowercase() }.forEachIndexed { k, e ->
+            if (k > 0) cd.addView(Ui.separateur(this))
+            cd.addView(ligne(e, if (e.maison) "pour toute la maison" else "") {
+                if (e.maison) Toast.makeText(this, "Pour toute la maison : étiquette « Toujours autorisé » dans Vision.", Toast.LENGTH_LONG).show()
+                else AlertDialog.Builder(this).setTitle(e.libelle).setItems(arrayOf("Retirer : elle suivra le planning")) { _, _ -> decider(e, "indisponible") }.setNegativeButton("Annuler", null).show()
+            })
+        }
+        liste.addView(cd)
         for ((titre, vide, elements, autorise) in listOf(
             Quatre("Toujours autorisé", "Rien d'autorisé à part.", autorises, true),
             Quatre("Toujours fermé", "Rien de fermé à part.", bloques, false),
@@ -142,8 +156,9 @@ class ExceptionsActivity : Activity() {
         trouves.forEachIndexed { k, e ->
             if (k > 0) resultats.addView(Ui.separateur(this))
             resultats.addView(ligne(e, "") {
+                val choix = if (e.genre == "apps") arrayOf("Toujours autoriser", "Toujours fermer", "Toujours disponible, même appareil fermé") else arrayOf("Toujours autoriser", "Toujours fermer")
                 AlertDialog.Builder(this).setTitle(e.libelle)
-                    .setItems(arrayOf("Toujours autoriser", "Toujours fermer")) { _, i -> decider(e, if (i == 0) "toujours" else "bloquer") }
+                    .setItems(choix) { _, i -> decider(e, when (i) { 0 -> "toujours"; 1 -> "bloquer"; else -> "disponible" }) }
                     .setNegativeButton("Annuler", null).show()
             })
         }
@@ -154,6 +169,7 @@ class ExceptionsActivity : Activity() {
         val cfg = Config(this)
         Thread {
             var ok = false
+            var x404 = false
             val texte = try {
                 val r = Net.post(this, cfg, "/api/pc_parental/parent", JSONObject()
                     .put("id", cfg.id).put("secret", cfg.secret).put("action", "autoriser")
@@ -161,13 +177,19 @@ class ExceptionsActivity : Activity() {
                 ok = true
                 r.optString("retour").ifEmpty { "C'est fait." }
             } catch (x: Net.Echec) {
-                when (x.code) { 409 -> "Interdit pour toute la maison : à lever dans Vision."; 404 -> "Cette exception n'existe plus."; else -> "Refusé (${x.code})." }
+                when (x.code) { 409 -> "Interdit pour toute la maison : à lever dans Vision."; 404 -> { x404 = true; "Ce n'est déjà plus dans la liste." }; else -> "Refusé (${x.code})." }
             } catch (_: Exception) { "Home Assistant injoignable." }
             runOnUiThread {
                 Toast.makeText(this, texte, Toast.LENGTH_SHORT).show()
-                if (ok || texte.startsWith("Cette exception")) {
-                    autorises.removeAll { it.nom.equals(e.nom, true) }; bloques.removeAll { it.nom.equals(e.nom, true) }
-                    if (decision == "toujours") autorises.add(e) else if (decision == "bloquer") bloques.add(e)
+                if (ok || x404) {
+                    when (decision) {
+                        "disponible" -> if (disponibles.none { it.nom.equals(e.nom, true) }) disponibles.add(e)
+                        "indisponible" -> disponibles.removeAll { it.nom.equals(e.nom, true) }
+                        else -> {
+                            autorises.removeAll { it.nom.equals(e.nom, true) }; bloques.removeAll { it.nom.equals(e.nom, true) }
+                            if (decision == "toujours") autorises.add(e) else if (decision == "bloquer") bloques.add(e)
+                        }
+                    }
                     remplir()
                 }
             }

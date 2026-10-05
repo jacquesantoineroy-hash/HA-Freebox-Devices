@@ -799,11 +799,34 @@ function VueExceptions($a) {
     $idPc = [string](Prop $a 'id')
     foreach ($x in @(Prop $maison 'appareils' @())) { if ([string](Prop $x 'id') -eq $idPc) { $a = $x } }
     $ex = Prop $a 'exceptions'
-    $Contenu.Children.Add((Txt 'Ce qui est décidé nom par nom pour cette personne, sur tous ses appareils. Une exception passe devant les catégories et l''âge ; le planning et un interdit de toute la maison restent plus forts.' 12 'Texte2' $false '0,0,0,6')) | Out-Null
+    $Contenu.Children.Add((Txt 'Ce qui est décidé nom par nom pour cette personne, sur tous ses appareils. Une exception passe devant les catégories et l''âge ; le planning et un interdit de toute la maison restent plus forts.' 12 'Texte2' $false '0,0,0,0')) | Out-Null
     if ($null -eq $ex) {
         $Contenu.Children.Add((Txt 'Les exceptions arrivent avec la prochaine mise à jour de Home Assistant.' 12 'Texte3')) | Out-Null
         return
     }
+    # Toujours disponibles : les applis qui restent ouvertes même quand le planning ferme l'appareil.
+    $dispo = @(Prop $ex 'toujours' @())
+    $Contenu.Children.Add((Section ('Toujours disponibles, même appareil fermé ({0})' -f $dispo.Count))) | Out-Null
+    $c = Carte; $sp = $c.Child
+    $sp.Children.Add((Txt 'Une exception ne lève pas le planning. Les applis de cette liste, si : elles restent ouvertes sur le téléphone ou la tablette quand tout le reste est fermé (musique pour s''endormir, par exemple).' 12 'Texte2' $false '0,0,0,6')) | Out-Null
+    $k = 0
+    foreach ($e in $dispo) {
+        if ($k++ -gt 0) { $sp.Children.Add((Separateur)) | Out-Null }
+        $g = New-Object System.Windows.Controls.StackPanel
+        $lib = [string](Prop $e 'libelle'); $nom = [string](Prop $e 'nom')
+        $g.Children.Add((Txt $lib 14 'Texte' $true)) | Out-Null
+        $deMaison = [bool](Prop $e 'maison' $false)
+        $g.Children.Add((Txt $(if ($deMaison) { 'Appli · pour toute la maison (étiquette « Toujours autorisé »)' } else { 'Appli' }) 11 'Texte2')) | Out-Null
+        if ($deMaison) { $sp.Children.Add($g) | Out-Null; continue }
+        $r = Rangee
+        $r.Children.Add((Bouton 'Retirer' 'Secondaire' {
+            param($s, $e2); $t = $s.Tag
+            ExAgir $t.pc 'apps' $t.nom 'indisponible'
+            $s.Content = '✓'; $s.IsEnabled = $false
+        } @{ pc = $idPc; nom = $nom })) | Out-Null
+        $sp.Children.Add((Deux $g $r)) | Out-Null
+    }
+    $Contenu.Children.Add($c) | Out-Null
     foreach ($def in @(@('autorises', 'Toujours autorisé', 'Rien d''autorisé à part.', 'Fermer', 'bloquer'), @('bloques', 'Toujours fermé', 'Rien de fermé à part.', 'Autoriser', 'toujours'))) {
         $liste = @(Prop $ex $def[0] @())
         $Contenu.Children.Add((Section ('{0} ({1})' -f $def[1], $liste.Count))) | Out-Null
@@ -859,7 +882,9 @@ function VueExceptions($a) {
             $g.Children.Add((Txt $e.lib 14 'Texte' $true)) | Out-Null
             $g.Children.Add((Txt $(if ($e.genre -eq 'apps') { 'Appli' } else { 'Site' }) 11 'Texte2')) | Out-Null
             $r = Rangee
-            foreach ($b in @(@('Autoriser', 'toujours', 'Primaire'), @('Fermer', 'bloquer', 'Secondaire'))) {
+            $choix = @(@('Autoriser', 'toujours', 'Primaire'), @('Fermer', 'bloquer', 'Secondaire'))
+            if ($e.genre -eq 'apps') { $choix += , @('Même fermé', 'disponible', 'Secondaire') }
+            foreach ($b in $choix) {
                 $r.Children.Add((Bouton $b[0] $b[2] {
                     param($s, $e2); $t = $s.Tag
                     ExAgir $t.pc $t.genre $t.nom $t.decision
@@ -1483,15 +1508,45 @@ function ChangerTheme([string]$nom) {
 function PageReglages() {
     $r = SvReglages
     $Contenu.Children.Add((Section 'Thème de couleur')) | Out-Null
-    $carteT = Carte; $enveloppe = New-Object System.Windows.Controls.WrapPanel
-    foreach ($nomTheme in $script:Themes.Keys) {
-        $bt = New-Object System.Windows.Controls.Primitives.ToggleButton
-        $bt.Content = $nomTheme; $bt.Style = $W.Resources['Onglet']; $bt.Tag = $nomTheme; $bt.IsChecked = ($r.theme -eq $nomTheme)
-        $bt.Margin = [System.Windows.Thickness]::new(0, 0, 6, 6)
-        $bt.Add_Click({ param($s, $e) if ((SvReglages).theme -eq [string]$s.Tag) { $s.IsChecked = $true; return }; ChangerTheme ([string]$s.Tag) })
-        $enveloppe.Children.Add($bt) | Out-Null
+    # Vingt-huit thèmes en boutons prenaient la moitié de la page : un menu qui se déroule, fermé par défaut,
+    # avec la pastille de chaque thème (son fond, son accent) devant son nom.
+    $carteT = Carte
+    $pastille = {
+        param([string]$nom)
+        $pal = $script:Themes[$nom]
+        $rond = New-Object System.Windows.Shapes.Ellipse
+        $rond.Width = 16; $rond.Height = 16; $rond.StrokeThickness = 4; $rond.VerticalAlignment = 'Center'
+        $rond.Fill = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString([string]$pal.Or))
+        $rond.Stroke = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString([string]$pal.Fond))
+        $cadre = New-Object System.Windows.Controls.Border
+        $cadre.CornerRadius = [System.Windows.CornerRadius]::new(10); $cadre.BorderThickness = [System.Windows.Thickness]::new(1); $cadre.BorderBrush = (Pinceau 'Ligne')
+        $cadre.Margin = [System.Windows.Thickness]::new(0, 0, 8, 0); $cadre.Child = $rond; $cadre.VerticalAlignment = 'Center'
+        return $cadre
     }
-    $carteT.Child.Children.Add($enveloppe) | Out-Null
+    $tete = New-Object System.Windows.Controls.Button
+    $tete.Style = $W.Resources['Secondaire']; $tete.HorizontalAlignment = 'Left'; $tete.Margin = [System.Windows.Thickness]::new(0, 0, 0, 8)
+    $lt = Rangee
+    $lt.Children.Add((& $pastille ([string]$r.theme))) | Out-Null
+    $lt.Children.Add((Txt ([string]$r.theme) 13 'Texte' $true)) | Out-Null
+    $lt.Children.Add((Txt '▾' 13 'Texte2' $false '10,0,0,0')) | Out-Null
+    $tete.Content = $lt
+    $carteT.Child.Children.Add($tete) | Out-Null
+    $script:ListeThemes = New-Object System.Windows.Controls.StackPanel
+    $script:ListeThemes.Visibility = 'Collapsed'; $script:ListeThemes.Margin = [System.Windows.Thickness]::new(0, 0, 0, 8)
+    $tete.Add_Click({ if ($script:ListeThemes.Visibility -eq 'Visible') { $script:ListeThemes.Visibility = 'Collapsed' } else { $script:ListeThemes.Visibility = 'Visible' } })
+    foreach ($nomTheme in $script:Themes.Keys) {
+        $bt = New-Object System.Windows.Controls.Button
+        $bt.Style = $W.Resources['Secondaire']; $bt.Tag = $nomTheme; $bt.HorizontalAlignment = 'Stretch'; $bt.HorizontalContentAlignment = 'Left'
+        $bt.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4)
+        $li = Rangee
+        $li.Children.Add((& $pastille ([string]$nomTheme))) | Out-Null
+        $li.Children.Add((Txt ([string]$nomTheme) 13 'Texte' ($r.theme -eq $nomTheme))) | Out-Null
+        if ($r.theme -eq $nomTheme) { $li.Children.Add((Txt '✓' 13 'Or' $true '10,0,0,0')) | Out-Null }
+        $bt.Content = $li
+        $bt.Add_Click({ param($s, $e) if ((SvReglages).theme -eq [string]$s.Tag) { $script:ListeThemes.Visibility = 'Collapsed'; return }; ChangerTheme ([string]$s.Tag) })
+        $script:ListeThemes.Children.Add($bt) | Out-Null
+    }
+    $carteT.Child.Children.Add($script:ListeThemes) | Out-Null
     $carteT.Child.Children.Add((Txt 'Pour la fenêtre Vision et l''écran de veille de cet ordinateur.' 11 'Texte2')) | Out-Null
     # Le style graphique (formes, bordures, lettres) se choisit à part des couleurs.
     $carteT.Child.Children.Add((Txt 'Style graphique de l''écran de veille' 12 'Texte2' $false '0,12,0,6')) | Out-Null
