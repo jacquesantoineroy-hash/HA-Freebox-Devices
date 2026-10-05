@@ -67,6 +67,13 @@ Verifier 'produit : le plus precis'   (Find-ProduitPour 'C:\Program Files\Acme\O
 Verifier 'produit : la suite'         (Find-ProduitPour 'C:\Program Files\Acme\autre.exe' $faux).nom 'Suite'
 Verifier 'produit : dossier large'    ($null -eq (Find-ProduitPour 'C:\Program Files\Inconnu\x.exe' $faux)) 'True'
 Verifier 'produit : par desinstalleur' (Find-ProduitPour 'C:\Program Files\Ygrec\y.exe' $faux).nom 'Sans dossier'
+$suite = @(
+    @{ cle = 's1'; code = 'A'; nom = 'Suite Photo'; editeur = 'Ed'; dossier = 'C:\Program Files\Ed'; commande = ''; silencieux = ''; icone = ''; composant = $false; msi = $false },
+    @{ cle = 's2'; code = 'B'; nom = 'Suite Video'; editeur = 'Ed'; dossier = 'C:\Program Files\Ed'; commande = ''; silencieux = ''; icone = ''; composant = $false; msi = $false },
+    @{ cle = 's3'; code = 'C'; nom = 'Suite Son'; editeur = 'Ed'; dossier = 'C:\Program Files\Ed\Son'; commande = ''; silencieux = ''; icone = ''; composant = $false; msi = $false }
+)
+Verifier 'produit : dossier partage, on ne choisit pas' ($null -eq (Find-ProduitPour 'C:\Program Files\Ed\Video\v.exe' $suite)) 'True'
+Verifier 'produit : dossier propre dans la suite' (Find-ProduitPour 'C:\Program Files\Ed\Son\s.exe' $suite).nom 'Suite Son'
 Verifier 'produit : voisin de nom'    ($null -eq (Find-ProduitPour 'C:\Program Files\AcmeBis\x.exe' $faux)) 'True'
 
 # --- 3. Ce que l'agent refuse
