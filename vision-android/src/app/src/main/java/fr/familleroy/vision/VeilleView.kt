@@ -388,10 +388,10 @@ class VeilleView(ctx: Context) : View(ctx) {
         invalidate()
     }
 
-    /** Montre l'indicateur sans rien changer (touche sans effet). */
     /** Un flux vient de démarrer ou de s'arrêter derrière la veille : la radio de Vision se tait ou revient. */
     fun sonChange() { try { rafraichirTheme() } catch (_: Exception) {} }
 
+    /** Montre l'indicateur sans rien changer (touche sans effet). */
     fun signaler() { interactionA = SystemClock.uptimeMillis(); invalidate() }
 
     fun arreter() {

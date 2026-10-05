@@ -81,14 +81,19 @@ object Local {
     private val FOND_DEFAUT = listOf("spotify", "music", "deezer", "radio", "tunein", "soundcloud", "qobuz", "tidal")
     /** YouTube et le récepteur de cast : on peut y envoyer un flux depuis un téléphone pendant que la veille est affichée. */
     val FOND_FLUX = listOf("com.google.android.youtube.tv", "com.google.android.youtube", "com.google.android.apps.mediashell")
+    @Volatile private var fondDefaut: Set<String>? = null
+    @Volatile private var fondDefautA = 0L
     private fun installe(ctx: Context, pk: String): Boolean = try { ctx.packageManager.getPackageInfo(pk, 0); true } catch (_: Exception) { false }
     /** Ceux de `FOND_FLUX` présents sur l'appareil (le récepteur de cast n'a pas d'icône : il n'est pas dans la liste des applis). */
     fun fondFlux(ctx: Context): List<String> = FOND_FLUX.filter { installe(ctx, it) }
     fun fond(ctx: Context): Set<String> {
         val brut = p(ctx).getStringSet("fond", null)
         if (brut == null) {
+            // Calculée à partir des applis installées : on la garde une minute, la veille la consulte souvent.
+            val now = android.os.SystemClock.uptimeMillis()
+            fondDefaut?.let { if (now - fondDefautA < 60_000) return it }
             val mots = try { Accueil.applicationsInstallees(ctx).map { it.activityInfo.packageName }.filter { pk -> FOND_DEFAUT.any { pk.contains(it, ignoreCase = true) } } } catch (_: Exception) { emptyList() }
-            return (mots + fondFlux(ctx)).toSet()
+            return (mots + fondFlux(ctx)).toSet().also { fondDefaut = it; fondDefautA = now }
         }
         // La liste a déjà été réglée ici : YouTube et le cast la rejoignent une seule fois, sans rien retirer du choix ;
         // les décocher ensuite reste possible, ils ne reviendront pas.

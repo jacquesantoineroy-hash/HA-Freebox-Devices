@@ -57,11 +57,11 @@ object Flux {
     fun paquets(ctx: Context): List<String>? =
         controleurs(ctx)?.filter { joue(it) }?.map { it.packageName }?.filter { it != ctx.packageName }?.distinct()
 
-    /** Une appli qui n'a pas le droit de rester en fond joue (Netflix…) ; faux quand on ne sait pas. */
-    fun interditJoue(ctx: Context): Boolean {
-        val vus = paquets(ctx) ?: return false
+    /** Les applis qui jouent sans avoir le droit de rester en fond (Netflix…) ; vide quand on ne sait pas. */
+    fun interdits(ctx: Context): Set<String> {
+        val vus = paquets(ctx) ?: return emptySet()
         val permis = Local.fond(ctx)
-        return vus.isNotEmpty() && vus.none { it in permis }
+        return if (vus.any { it in permis }) emptySet() else vus.toSet()
     }
 
     /** Lecture, pause, suivant… : à l'appli qui joue derrière la veille, directement quand on la connaît. */
@@ -123,6 +123,8 @@ object Flux {
     class Guetteur(ctx: Context, private val autorise: (String) -> Unit, private val interdit: () -> Unit = {}) {
         private val app = ctx.applicationContext
         private var dernier: String? = null
+        /** Ce qui jouait déjà sans droit de fond quand la veille s'est ouverte : on l'a recouvert exprès, on ne s'efface pas pour lui. */
+        private var dejaLa: Set<String> = emptySet()
         private var actif = false
         private val voir = Runnable { regarder() }
         private val tour = object : Runnable { override fun run() { if (!actif) return; regarder(); main.postDelayed(this, 2500) } }
@@ -131,13 +133,19 @@ object Flux {
             if (!actif) return
             val pk = try { Local.appEnFond(app) } catch (_: Exception) { null }
             if (pk != null && pk != dernier) { dernier = pk; android.util.Log.i(TAG, "Flux : $pk joue pendant la veille"); autorise(pk); return }
-            if (pk == null) { dernier = null; if (interditJoue(app)) interdit() }
+            if (pk == null) {
+                dernier = null
+                val la = interdits(app)
+                val nouveaux = la - dejaLa
+                dejaLa = dejaLa intersect la
+                if (nouveaux.isNotEmpty()) { android.util.Log.i(TAG, "Flux : $nouveaux démarre, la veille lui laisse l'écran"); interdit() }
+            }
         }
 
         /** `connu` : l'appli qui jouait déjà à l'ouverture, pour ne pas la signaler une seconde fois. */
         fun demarrer(connu: String? = null) {
             if (actif) return
-            actif = true; dernier = connu
+            actif = true; dernier = connu; dejaLa = try { interdits(app) } catch (_: Exception) { emptySet() }
             abonnes.add(voir); brancher(app)
             main.postDelayed(tour, 2500)
         }
