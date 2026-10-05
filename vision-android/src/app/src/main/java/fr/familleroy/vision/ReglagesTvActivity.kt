@@ -48,6 +48,7 @@ class ReglagesTvActivity : Activity() {
     private lateinit var racine: ScrollView
     private lateinit var contenu: LinearLayout
     private var focusTag: String? = null
+    private var enCharge = false
     private val tele by lazy { estTele(this) }
 
     companion object {
@@ -131,6 +132,8 @@ class ReglagesTvActivity : Activity() {
         gauche.addView(section("Tableaux de l'écran de veille"))
         if (liste.isEmpty()) gauche.addView(texte("Chargement…", t(20f), theme.encre3))
         liste.forEach { gauche.addView(rangTableau(it), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(8f) }) }
+        val releve = Local.listeWebA(this)
+        gauche.addView(ligne("Actualiser les tableaux", if (enCharge) "Relevé en cours…" else if (releve > 0) "Relevé à " + java.text.SimpleDateFormat("HH:mm", Locale.FRANCE).format(java.util.Date(releve)) else "maintenant", "actualiser") { charger() })
         gauche.addView(texte("L'horloge, puis les tableaux de bord Home Assistant choisis dans Vision → Écran de veille. Ici, chaque appareil choisit ceux qu'il montre, leur durée et, en appuyant sur un nom, les cartes affichées.", t(17f), theme.encre3).apply { setPadding(px(4f), px(8f), 0, 0) })
 
         // --- La source du son ----------------------------------------------------------
@@ -178,6 +181,15 @@ class ReglagesTvActivity : Activity() {
         droite.addView(ligne("Mode nuit", if (nuit.isEmpty()) "Jamais" else "Sombre et sans son de ${nuit.replace("-", " à ")}", "nuit") { Local.poserNuit(this, Local.PLAGES_NUIT[(Local.PLAGES_NUIT.indexOf(nuit) + 1) % Local.PLAGES_NUIT.size]); repeindre() })
         val themes = Themes.liste.map { it.nom }
         droite.addView(ligne("Thème de couleurs", Local.theme(this), "theme") { Local.poserTheme(this, themes[(themes.indexOf(Local.theme(this)) + 1) % themes.size]); appliquerTheme(); repeindre() })
+        val web = Local.veilleWeb(this)
+        droite.addView(ligne("Cartes de l'écran de veille", if (web) "Celles de Home Assistant" else "Dessin simplifié", "veille_web") { Local.poserVeilleWeb(this, !web); repeindre() })
+        if (web) {
+            val styles = Local.STYLES
+            val style = Local.styleCartes(this)
+            droite.addView(ligne("Style des cartes", styles.first { it.first == style }.second, "style") { Local.poserStyleCartes(this, styles[(styles.indexOfFirst { it.first == style } + 1) % styles.size].first); repeindre() })
+            droite.addView(ligne("Fond sous les cartes", if (Local.fondCartes(this)) "Oui" else "Non", "fond_cartes") { Local.poserFondCartes(this, !Local.fondCartes(this)); repeindre() })
+            droite.addView(ligne("Contour des cartes", if (Local.contourCartes(this)) "Oui" else "Non", "contour_cartes") { Local.poserContourCartes(this, !Local.contourCartes(this)); repeindre() })
+        }
         droite.addView(ligne("Couleurs à la carte", if (Palette.personnalisee(this, Palette.LANCEUR) || Palette.personnalisee(this, Palette.APPLI)) "Personnalisées" else "Celles du thème", "couleurs") { startActivity(Intent(this, CouleursActivity::class.java)) })
 
         droite.addView(section("Accueil"))
@@ -225,8 +237,9 @@ class ReglagesTvActivity : Activity() {
         if (ha != null) for (i in 0 until ha.length()) {
             val o = ha.getJSONObject(i)
             val cle = Local.cleTableau(o.optString("code"), o.optString("id"))
-            val cartes = o.optJSONArray("cartes")
-            val montrees = if (cartes == null) 0 else { val m = Local.cartesMasquees(this, cle); (0 until cartes.length()).count { cartes.getJSONObject(it).optString("cle") !in m } }
+            // Avec les vraies cartes de Home Assistant, la liste est celle de la page de veille (cartes de la communauté comprises).
+            val cartes = (if (Local.veilleWeb(this) && o.optString("code") == "dash") cartesWeb(o.optString("id")) else null) ?: o.optJSONArray("cartes")
+            val montrees = if (cartes == null) 0 else { val m = Local.cartesMasquees(this, cle); (0 until cartes.length()).count { !masquee(cartes.getJSONObject(it), m) } }
             val nom = if (cartes == null) o.optString("nom") else "${o.optString("nom")}  · $montrees/${cartes.length()} cartes"
             sortie.add(Ligne(cle, nom, Local.actif(this, cle, o.optBoolean("actif", true)), Local.duree(this, cle, o.optInt("duree", 20)), null, cartes))
         } else {
@@ -234,6 +247,19 @@ class ReglagesTvActivity : Activity() {
             sortie.add(Ligne("horloge", "Horloge", Local.actif(this, "horloge", true), Local.duree(this, "horloge", 20), null))
         }
         return sortie
+    }
+
+    private fun cartesWeb(id: String): JSONArray? {
+        val l = Local.listeWeb(this)
+        for (i in 0 until l.length()) if (l.getJSONObject(i).optString("id") == id) return l.getJSONObject(i).optJSONArray("cartes")
+        return null
+    }
+
+    /** Une carte est masquée si sa clé l'est, ou si tous ses éléments le sont (choix faits avant les vraies cartes). */
+    private fun masquee(carte: JSONObject, m: Set<String>): Boolean {
+        if (carte.optString("cle") in m) return true
+        val cles = carte.optJSONArray("cles") ?: return false
+        return cles.length() > 0 && (0 until cles.length()).all { cles.optString(it) in m }
     }
 
     /** Une ligne de tableau : interrupteur, nom, − durée + ; trois cases focusables. */
@@ -275,13 +301,14 @@ class ReglagesTvActivity : Activity() {
     /** Les cartes d'un tableau de bord : cocher celles que cet appareil montre. */
     private fun choisirCartes(l: Ligne) {
         val cartes = l.cartes ?: return
-        val cles = (0 until cartes.length()).map { cartes.getJSONObject(it).optString("cle") }
+        // Masquer une carte, c'est retenir sa clé et celles de ses éléments : la page de veille et le dessin simplifié s'y retrouvent.
+        val cles = (0 until cartes.length()).map { i -> val o = cartes.getJSONObject(i); val a = o.optJSONArray("cles"); listOf(o.optString("cle")) + (0 until (a?.length() ?: 0)).map { a!!.optString(it) } }
         val noms = (0 until cartes.length()).map { val o = cartes.getJSONObject(it); val s = o.optString("section"); if (s.isEmpty()) o.optString("nom") else "$s · ${o.optString("nom")}" }
         val masquees = Local.cartesMasquees(this, l.cle)
-        val coches = BooleanArray(cles.size) { cles[it] !in masquees }
+        val coches = BooleanArray(cles.size) { !masquee(cartes.getJSONObject(it), masquees) }
         AlertDialog.Builder(this).setTitle(l.nom.substringBefore("  ·"))
             .setMultiChoiceItems(noms.toTypedArray(), coches) { _, i, c -> coches[i] = c }
-            .setPositiveButton("Valider") { _, _ -> Local.poserCartesMasquees(this, l.cle, cles.filterIndexed { i, _ -> !coches[i] }); repeindre() }
+            .setPositiveButton("Valider") { _, _ -> Local.poserCartesMasquees(this, l.cle, cles.filterIndexed { i, _ -> !coches[i] }.flatten().distinct()); repeindre() }
             .setNegativeButton("Annuler", null).show()
     }
 
@@ -329,14 +356,22 @@ class ReglagesTvActivity : Activity() {
     }
 
     private fun charger() {
+        if (enCharge) return
+        enCharge = true
+        main.post { if (::contenu.isInitialized && contenu.childCount > 0) repeindre() }
         Thread {
+            // Les tableaux et leurs cartes tels que la page de veille les montre (cartes de la communauté comprises).
+            try {
+                val a = Net.post(this, cfg, "/api/pc_parental/veille/acces", JSONObject().put("id", cfg.id).put("secret", cfg.secret).put("ecran", if (tele) "tele" else "telephone"), 20_000)
+                Local.retenirListeWeb(this, a.optJSONArray("tableaux"))
+            } catch (_: Exception) {}
             try {
                 val r = Net.post(this, cfg, "/api/pc_parental/veille", JSONObject().put("id", cfg.id).put("secret", cfg.secret).put("ecran", if (tele) "tele" else "telephone"), 20_000)
                 Local.amorcer(this, r.optJSONObject("reglages"))
                 reglages = r.optJSONObject("reglages")
                 tableauxHA = reglages?.optJSONArray("tableaux")
-                main.post { appliquerTheme(); repeindre() }
             } catch (_: Exception) {}
+            main.post { enCharge = false; appliquerTheme(); repeindre() }
         }.also { it.isDaemon = true }.start()
     }
 

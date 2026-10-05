@@ -124,6 +124,31 @@ object Local {
         toucher()
     }
 
+    // ------------------------------------------------------------ cartes de l'écran de veille
+
+    /** Les vraies cartes de Home Assistant (la même page que sur les PC), ou le dessin simplifié de l'appli. */
+    fun veilleWeb(ctx: Context): Boolean = p(ctx).getBoolean("veille_web", true)
+    fun poserVeilleWeb(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("veille_web", on).apply(); toucher() }
+
+    /** Le style graphique des cartes, distinct des couleurs : formes, lettres, angles. */
+    val STYLES = listOf("doux" to "Doux", "neoretro" to "Néo-rétro")
+    fun styleCartes(ctx: Context): String = (p(ctx).getString("style_cartes", "doux") ?: "doux").let { s -> if (STYLES.any { it.first == s }) s else "doux" }
+    fun poserStyleCartes(ctx: Context, s: String) { p(ctx).edit().putString("style_cartes", s).apply(); toucher() }
+    fun fondCartes(ctx: Context): Boolean = p(ctx).getBoolean("fond_cartes", true)
+    fun poserFondCartes(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("fond_cartes", on).apply(); toucher() }
+    fun contourCartes(ctx: Context): Boolean = p(ctx).getBoolean("contour_cartes", false)
+    fun poserContourCartes(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("contour_cartes", on).apply(); toucher() }
+
+    /** Les tableaux et leurs cartes tels que la page de veille les montre : [{id, titre, cartes: [{cle, cles, nom, section}]}]. */
+    fun listeWeb(ctx: Context): JSONArray = try { JSONArray(p(ctx).getString("liste_web", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
+    fun retenirListeWeb(ctx: Context, a: JSONArray?) {
+        if (a == null) return
+        val s = a.toString()
+        if (s != p(ctx).getString("liste_web", "")) { p(ctx).edit().putString("liste_web", s).putLong("liste_web_a", System.currentTimeMillis()).apply(); toucher() }
+        else p(ctx).edit().putLong("liste_web_a", System.currentTimeMillis()).apply()
+    }
+    fun listeWebA(ctx: Context): Long = p(ctx).getLong("liste_web_a", 0L)
+
     // ------------------------------------------------------------ tableaux de veille
 
     /** Les choix par tableau : {"horloge": {"actif": true, "duree": 15}, "entites:abc": {...}}. */

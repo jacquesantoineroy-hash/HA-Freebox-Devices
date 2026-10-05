@@ -270,12 +270,23 @@ class VisionVeillePanel extends HTMLElement {
         .scene { position: absolute; inset: 0; opacity: 0; transition: opacity .6s ease; pointer-events: none; }
         .scene.vue { opacity: 1; }
         .horloge { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
-        .heure { font-size: 26vh; font-weight: 300; line-height: 1; letter-spacing: -.02em; }
-        .date { font-size: 4.6vh; color: var(--v-texte2); margin-top: 2vh; }
-        .ciel { font-size: 3.8vh; color: var(--v-accent); margin-top: 3vh; }
+        .heure { font-size: min(26vh, 30vw); font-weight: 300; line-height: 1; letter-spacing: -.02em; }
+        .date { font-size: min(4.6vh, 6vw); color: var(--v-texte2); margin-top: 2vh; }
+        .ciel { font-size: min(3.8vh, 5vw); color: var(--v-accent); margin-top: 3vh; }
+        /* Anti-marquage : tout dérive de quelques points au fil des minutes (écrans OLED, vieilles dalles). */
+        @keyframes derive { 0% { transform: translate(0, 0); } 25% { transform: translate(.5vw, .35vh); } 50% { transform: translate(0, .7vh); } 75% { transform: translate(-.5vw, .35vh); } 100% { transform: translate(0, 0); } }
+        .scene, .marque { animation: derive 420s linear infinite; }
+        .annonce { position: absolute; right: 3.5vw; bottom: 2.6vh; z-index: 6; max-width: 60vw; padding: .9vh 2.2vh; border-radius: 99px; background: var(--v-carte); color: var(--v-texte2);
+                   font-size: min(2.4vh, 3.6vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .5s ease; }
+        .annonce::before { content: ""; display: inline-block; width: 1.1vh; height: 1.1vh; border-radius: 50%; background: var(--v-accent); margin-right: 1.2vh; }
+        .annonce.vu { opacity: .96; }
+        :host([data-style="neoretro"]) .annonce { border-radius: 3px; letter-spacing: .06em; }
+        :host([data-style="neoretro"]) .annonce::before { border-radius: 0; }
+        .fige { position: absolute; left: 0; right: 0; text-align: center; bottom: 3vh; z-index: 6; pointer-events: none; font-size: min(2.4vh, 4vw); letter-spacing: .14em; text-transform: uppercase; color: var(--v-texte2); opacity: 0; transition: opacity .4s ease; }
+        .fige.vu { opacity: .95; }
         .tete { display: flex; justify-content: space-between; align-items: baseline; padding: 3.2vh 3.5vw 1.6vh; }
-        .titre { font-size: 3.6vh; font-weight: 600; }
-        .petite { font-size: 3.2vh; color: var(--v-texte2); }
+        .titre { font-size: min(3.6vh, 6.5vw); font-weight: 600; }
+        .petite { font-size: min(3.2vh, 5.5vw); color: var(--v-texte2); }
         .cadre { position: absolute; left: 3.5vw; right: 3.5vw; top: 11vh; bottom: 9.5vh; overflow: hidden; }
         .grille { position: absolute; left: 0; top: 0; display: grid; gap: 34px 44px; align-items: start; transform-origin: top left; }
         .section { display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; align-items: start; }
@@ -288,21 +299,23 @@ class VisionVeillePanel extends HTMLElement {
         :host([data-style="neoretro"]) .titre::before { content: ""; display: inline-block; width: 1.5vh; height: 1.5vh; background: var(--v-accent); margin-right: 1.6vh; }
         :host([data-style="neoretro"]) .petite { letter-spacing: .12em; font-variant-numeric: tabular-nums; color: var(--v-texte); }
         :host([data-style="neoretro"]) .sec { letter-spacing: .26em; font-weight: 400; }
-        :host([data-style="neoretro"]) .heure { font-weight: 300; letter-spacing: .04em; font-variant-numeric: tabular-nums; font-size: 30vh; }
+        :host([data-style="neoretro"]) .heure { font-weight: 300; letter-spacing: .04em; font-variant-numeric: tabular-nums; font-size: min(30vh, 28vw); }
         :host([data-style="neoretro"]) .horloge::before { content: "VISION"; letter-spacing: .6em; font-size: 2.2vh; color: var(--v-accent); margin-bottom: 4vh; padding-left: .6em; }
-        :host([data-style="neoretro"]) .date { text-transform: uppercase; letter-spacing: .3em; font-size: 3vh; margin-top: 3vh; padding-top: 3vh; border-top: 1.5px solid var(--v-accent); min-width: 46vw; text-align: center; }
-        :host([data-style="neoretro"]) .ciel { text-transform: uppercase; letter-spacing: .3em; font-size: 2.6vh; }
+        :host([data-style="neoretro"]) .date { text-transform: uppercase; letter-spacing: .3em; font-size: min(3vh, 4.2vw); margin-top: 3vh; padding-top: 3vh; border-top: 1.5px solid var(--v-accent); min-width: 46vw; text-align: center; }
+        :host([data-style="neoretro"]) .ciel { text-transform: uppercase; letter-spacing: .3em; font-size: min(2.6vh, 3.8vw); }
         /* La marque, en bas à gauche : l'œil de Vision (le même que sur les télés) et son nom. */
         .marque { position: absolute; left: 3.5vw; bottom: 1.6vh; height: 7vh; display: flex; align-items: center; z-index: 5; pointer-events: none; }
         .marque span { margin-left: 1vh; font-size: 2.6vh; font-weight: 700; letter-spacing: .12em; color: var(--v-texte2); opacity: .9; }
         mushroom-chips-card { margin-bottom: 4px; }
         .vide { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--v-texte2); font-size: 3vh; }
       </style>
-      <div class="marque"><canvas></canvas><span>Vision</span></div>
+      <div class="marque"><canvas></canvas><span>Vision</span></div><div class="fige"></div><div class="annonce"></div>
       <div class="scene vue" id="s0"><div class="horloge"><div class="heure"></div><div class="date"></div></div></div>`;
     // L'heure s'affiche tout de suite ; les tableaux arrivent dès que Home Assistant a répondu.
     { const j = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); this.shadowRoot.querySelector(".date").textContent = j.charAt(0).toUpperCase() + j.slice(1); }
     this._tic();
+    // L'appli Android garde son propre dessin tant que cette page n'a pas dit qu'elle est là.
+    try { if (window.VisionAndroid && window.VisionAndroid.pret) window.VisionAndroid.pret(); } catch (e) { /* hors de l'appli */ }
     // Plusieurs écrans : jamais la même chose sur deux d'entre eux. L'heure est sur le premier dès l'ouverture ;
     // les autres attendent leur tableau sans la répéter.
     const nbEcrans = parseInt(this._q.get("ecrans") || "1", 10) || 1;
@@ -322,7 +335,10 @@ class VisionVeillePanel extends HTMLElement {
     const cachees = new Set((this._q.get("cartes") || "").split(",").filter(Boolean));
     // La liste des écrans à enchaîner : l'horloge, puis les tableaux (découpés à l'affichage).
     const liste = [];
-    if (this._page.horloge && this._page.horloge.actif && !masques.has("horloge")) liste.push({ genre: "horloge", duree: this._page.horloge.duree || 15 });
+    // Chaque appareil peut donner sa durée à chaque tableau (« durees=horloge:20,dash_x_y:35 »).
+    const durees = {};
+    for (const m of (this._q.get("durees") || "").split(",")) { const k = m.lastIndexOf(":"); const v = parseInt(m.slice(k + 1), 10); if (k > 0 && v > 0) durees[m.slice(0, k)] = Math.max(5, Math.min(600, v)); }
+    if (this._page.horloge && this._page.horloge.actif && !masques.has("horloge")) liste.push({ genre: "horloge", duree: durees.horloge || this._page.horloge.duree || 15 });
     for (const t of this._page.tableaux || []) {
       if (masques.has(t.id)) continue;
       const sections = [];
@@ -331,6 +347,7 @@ class VisionVeillePanel extends HTMLElement {
         // Une section dont il ne reste que le titre (toutes ses cartes sont décochées) disparaît avec lui.
         if (cartes.some((c) => c.config && c.config.type !== "heading")) sections.push({ titre: s.titre, span: s.span || 1, cartes });
       }
+      if (durees[t.id]) t.duree = durees[t.id];
       if (parseInt(this._q.get("duree") || "0", 10) > 0) t.duree = parseInt(this._q.get("duree"), 10);
       if (sections.length) liste.push({ genre: "tableau", duree: t.duree || 25, titre: t.titre, colonnes: t.colonnes || 4, sections, pages: 1, page: 0 });
     }
@@ -438,7 +455,35 @@ class VisionVeillePanel extends HTMLElement {
     return el;
   }
 
+  // Les gestes de l'appareil (télécommande, doigt) : précédent, suivant, figer.
+  aller(delta) {
+    if (!this._ecrans.length) return;
+    clearTimeout(this._minuteur);
+    if (this._synchro) { this._montrer(); return; }
+    if (delta > 0) { this._suivant(true); return; }
+    const e = this._ecrans[this._indice];
+    if (e.genre === "tableau" && e.page > 0) e.page -= 1;
+    else { if (e.genre === "tableau") e.page = 0; const n = this._ecrans.length; this._indice = (this._indice - 1 + n) % n; const p = this._ecrans[this._indice]; if (p.genre === "tableau") p.page = 0; }
+    this._montrer();
+  }
+  // Un mot de l'appareil, en bas à droite (une demande d'accès en attente, par exemple) ; vide pour l'effacer.
+  annoncer(texte) {
+    const b = this.shadowRoot.querySelector(".annonce");
+    if (!b) return;
+    if (texte) b.textContent = String(texte).slice(0, 140);
+    b.classList.toggle("vu", !!texte);
+  }
+  figer() {
+    this._fige = !this._fige;
+    const f = this.shadowRoot.querySelector(".fige");
+    if (f) { f.textContent = this._fige ? "Figé" : "Reprise"; f.classList.add("vu"); clearTimeout(this._figeT); if (!this._fige) this._figeT = setTimeout(() => f.classList.remove("vu"), 1500); }
+    clearTimeout(this._minuteur);
+    if (!this._fige) this._minuteur = setTimeout(() => (this._synchro ? this._montrer() : this._suivant()), 4000);
+    return this._fige;
+  }
+
   async _montrer(reste) {
+    const passage = this._passage = (this._passage || 0) + 1;
     let cran = 0;
     if (this._synchro) {
       const n = this._ecrans.length;
@@ -477,7 +522,10 @@ class VisionVeillePanel extends HTMLElement {
           for (const c of s.cartes) { const el = this._carte(c.config); if (el) bloc.appendChild(el); }
           if (bloc.children.length) blocs.push(bloc);
         }
-        const voulu = Math.max(1, Math.min(6, e.colonnes || 4));
+        // Écran en hauteur (téléphone, tablette debout) : les sections passent les unes sous les autres, comme
+        // Home Assistant le fait lui-même sur un téléphone ; l'ordre reste celui du tableau de bord.
+        const debout = window.innerWidth < window.innerHeight;
+        const voulu = debout ? (window.innerWidth >= 700 ? 2 : 1) : Math.max(1, Math.min(6, e.colonnes || 4));
         const n = Math.max(1, Math.min(voulu, blocs.reduce((a, x) => a + x._span, 0)));
         colonnes.style.gridTemplateColumns = `repeat(${n}, 460px)`;
         colonnes.style.width = `${n * 460 + (n - 1) * 44}px`;
@@ -501,8 +549,10 @@ class VisionVeillePanel extends HTMLElement {
       if (e.page === 0) {
         // Le temps que les cartes se dessinent, puis on compte les écrans nécessaires.
         await pause(900);
+        if (passage !== this._passage) { scene.remove(); return; }
         this._percer(c);
         await pause(300);
+        if (passage !== this._passage) { scene.remove(); return; }
         const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
         for (const el of c.querySelectorAll(".section > *")) {
           if (!el._largeurLibre) continue;
@@ -554,6 +604,7 @@ class VisionVeillePanel extends HTMLElement {
     if (e.genre === "tableau") { this._percer(e._colonnes); for (const t of [700, 2000, 4500]) setTimeout(() => this._percer(e._colonnes), t); }
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
+    if (this._fige) return;
     if (this._synchro) { this._minuteur = setTimeout(() => this._montrer(), Math.max(2500, ((cran + 1) * this._pas + this._t0) * 1000 - Date.now())); return; }
     this._minuteur = setTimeout(() => this._suivant(), reste || Math.max(5, e.duree) * 1000);
   }
@@ -576,11 +627,11 @@ class VisionVeillePanel extends HTMLElement {
     }
   }
 
-  _suivant() {
+  _suivant(force) {
     const e = this._ecrans[this._indice];
     if (e.genre === "tableau" && e.page + 1 < e.pages) e.page += 1;
     else { if (e.genre === "tableau") e.page = 0; this._indice = (this._indice + 1) % this._ecrans.length; }
-    if (this._ecrans.length === 1 && e.genre === "horloge") { this._minuteur = setTimeout(() => this._suivant(), 60000); return; }
+    if (this._ecrans.length === 1 && e.genre === "horloge" && !force) { this._minuteur = setTimeout(() => this._suivant(), 60000); return; }
     this._montrer();
   }
 }

@@ -204,7 +204,7 @@ def legere(hass: HomeAssistant, complet: dict[str, Any]) -> list[dict[str, Any]]
                 if config.get("type") == "heading":
                     section = str(config.get("heading") or section)
                     continue
-                cartes.append({"cle": c["cle"], "nom": _nom_carte(hass, config), "section": section})
+                cartes.append({"cle": c["cle"], "cles": c.get("cles") or [], "nom": _nom_carte(hass, config), "section": section})
         sortie.append({"id": t["id"], "titre": t["titre"], "cartes": cartes})
     return sortie
 

@@ -223,6 +223,10 @@ class VeilleView(ctx: Context) : View(ctx) {
 
     /** La couche vidéo posée au-dessus, quand la télé sait lire les flux. */
     var cameras: CamerasCouche? = null
+    /** La page de veille de Home Assistant (les vraies cartes), posée par-dessus ce dessin quand elle est disponible. */
+    var web: VeilleWeb? = null
+    /** Vrai quand la page recouvre ce dessin : inutile de le repeindre trente fois par seconde dessous. */
+    @Volatile var couverte = false
     private var derive = floatArrayOf(0f, 0f)
 
     @Volatile private var donnees: Donnees? = null
@@ -276,8 +280,8 @@ class VeilleView(ctx: Context) : View(ctx) {
             if (!actif) return
             val now = SystemClock.uptimeMillis()
             if (now - dernierControleNuit > 60_000 || Local.version != versionReglages) { dernierControleNuit = now; rafraichirTheme() }
-            invalidate()
-            main.postDelayed(this, 33)
+            if (!couverte) invalidate()
+            main.postDelayed(this, if (couverte) 1000 else 33)
         }
     }
 
@@ -358,12 +362,14 @@ class VeilleView(ctx: Context) : View(ctx) {
         }.also { it.isDaemon = true; it.start() }
         main.removeCallbacks(tic)
         main.post(tic)
+        web?.demarrer()
     }
 
     /** Tableau précédent (-1) ou suivant (+1), à la demande de l'utilisateur. */
     fun naviguer(delta: Int) {
         val now = SystemClock.uptimeMillis()
         interactionA = now
+        web?.takeIf { it.montree }?.let { it.naviguer(delta); return }
         if (tableaux.size <= 1) return
         val n = tableaux.size
         indice = ((indice + delta) % n + n) % n
@@ -373,6 +379,7 @@ class VeilleView(ctx: Context) : View(ctx) {
 
     /** Figer le tableau en cours, ou reprendre le défilement. */
     fun basculerPause() {
+        web?.takeIf { it.montree }?.let { it.basculerPause(); return }
         pause = !pause
         interactionA = SystemClock.uptimeMillis()
         if (!pause) changeA = interactionA
@@ -383,6 +390,8 @@ class VeilleView(ctx: Context) : View(ctx) {
     fun signaler() { interactionA = SystemClock.uptimeMillis(); invalidate() }
 
     fun arreter() {
+        web?.arreter()
+        couverte = false
         musique.arreter()
         cameras?.cacher()
         actif = false
@@ -457,6 +466,8 @@ class VeilleView(ctx: Context) : View(ctx) {
     private fun reconstruire() {
         val d = donnees
         rafraichirTheme()
+        // La page de veille montre la demande d'accès en attente, comme ce dessin le fait.
+        web?.annoncer(d?.demandes?.firstOrNull()?.let { x -> "${x.prenom} demande ${x.libelle}" + (if (d.demandes.size > 1) "  +${d.demandes.size - 1}" else "") + "  ·  " + ilYA(x.ts) } ?: "")
         // Les flux des caméras s'ouvrent dès le départ et restent ouverts : toujours prêts.
         if (d != null && d.cameras.isNotEmpty()) cameras?.prechauffer(d.cameras.map { it.id })
         val liste = ArrayList<Tableau>()

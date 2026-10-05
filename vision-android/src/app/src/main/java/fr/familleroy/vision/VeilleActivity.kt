@@ -26,6 +26,7 @@ class VeilleActivity : Activity() {
         v.cameras = cameras
         cadre.addView(v, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         cadre.addView(cameras, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        VeilleWeb.attacher(cadre, v)
         vue = v
         setContentView(cadre)
     }
