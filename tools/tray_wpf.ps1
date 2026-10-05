@@ -1097,9 +1097,13 @@ function SvOuvrirWeb() {
             [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 })
         $adresse = '{0}/api/pc_parental/veille/entree#t={1}&q={2}' -f $base, $jeton, [uri]::EscapeDataString($q)
         $profilEdge = Join-Path $env:LOCALAPPDATA ('Vision\veille-edge-{0}' -f $j)
-        $arguments = @('--kiosk', ('"{0}"' -f $adresse), '--edge-kiosk-type=fullscreen', '--no-first-run', '--no-default-browser-check',
-            ('--user-data-dir="{0}"' -f $profilEdge), ('--window-position={0},{1}' -f ($ecran.Bounds.Left + 40), ($ecran.Bounds.Top + 40)),
+        # L'écran principal en mode borne ; les autres en fenêtre d'application plein écran, placée sur leur écran
+        # (le mode borne s'ouvre toujours sur l'écran principal).
+        $communs = @('--no-first-run', '--no-default-browser-check', ('--user-data-dir="{0}"' -f $profilEdge),
+            ('--window-position={0},{1}' -f $ecran.Bounds.Left, $ecran.Bounds.Top), ('--window-size={0},{1}' -f $ecran.Bounds.Width, $ecran.Bounds.Height),
             '--disable-features=msEdgeSidebarV2,Translate', '--hide-crash-restore-bubble', '--autoplay-policy=no-user-gesture-required')
+        if ($ecran.Primary) { $arguments = @('--kiosk', ('"{0}"' -f $adresse), '--edge-kiosk-type=fullscreen') + $communs }
+        else { $arguments = @(('--app="{0}"' -f $adresse), '--start-fullscreen') + $communs }
         if ([bool](Prop $acces 'insecure' $false)) { $arguments += @('--ignore-certificate-errors', '--test-type') }
         try { Start-Process -FilePath $edge -ArgumentList $arguments } catch { return $false }
         $j++

@@ -278,8 +278,9 @@ class VisionVeillePanel extends HTMLElement {
     // Une page web embarquée (carte météo animée…) est dessinée deux fois plus grande puis réduite de moitié :
     // le site dispose d'une vraie largeur et ses boutons ne se chevauchent plus.
     if (config.type === "iframe") {
-      el.style.display = "block"; el.style.width = "200%"; el.style.zoom = "0.5";
+      el.style.display = "block"; el.style.width = "200%"; el.style.transformOrigin = "0 0"; el.style.transform = "scale(0.5)";
       const boite = document.createElement("div");
+      boite.className = "web";
       boite.style.cssText = "overflow:hidden;width:100%;border-radius:var(--ha-card-border-radius,18px);break-inside:avoid;";
       boite.style.gridColumn = `span ${colonnes}`;
       boite.appendChild(el);
@@ -337,6 +338,8 @@ class VisionVeillePanel extends HTMLElement {
         await pause(1200);
         const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
         this._uneLigne(c);
+        // Une page web embarquée est dessinée en double puis réduite de moitié : sa boîte prend la moitié de sa hauteur.
+        for (const b of c.querySelectorAll(".web")) { const h = b.firstElementChild ? b.firstElementChild.offsetHeight : 0; if (h) b.style.height = `${h / 2}px`; }
         const sections = [...c.querySelectorAll(".section")];
         // Peu de sections : leurs cartes se répartissent librement dans les colonnes, pour occuper l'écran.
         const visibles = Math.max(1, Math.floor((L + 40) / 440));
