@@ -824,6 +824,19 @@ class VisionVeillePanel extends HTMLElement {
     requestAnimationFrame(pas);
     setInterval(() => { this._note(`${n} images, ${lentes} lentes, pire ${Math.round(pire)} ms  [${[...etapes].join(" ")}]`); n = 0; lentes = 0; pire = 0; etapes = new Set(); }, 2000);
     if (this._q.get("derive") === "0") this.setAttribute("data-fixe", "1");
+    // D'où vient le temps perdu : script (lequel), calcul des styles et de la mise en page, ou dessin.
+    try {
+      let dits = 0;
+      new PerformanceObserver((liste) => {
+        for (const f of liste.getEntries()) {
+          if (this._etape !== "pose" || dits >= 6) continue;
+          dits++;
+          const fin = f.startTime + f.duration;
+          const scripts = (f.scripts || []).map((x) => `${Math.round(x.duration)} ms ${x.invoker || "?"} ${x.sourceFunctionName || ""} ${(x.sourceURL || "").split("/").pop().slice(0, 40)} (mise en page forcée ${Math.round(x.forcedStyleAndLayoutDuration || 0)})`).join("\n            ");
+          this._note(`longue ${Math.round(f.duration)} ms : scripts jusqu'à ${Math.round((f.renderStart || fin) - f.startTime)}, rendu ${Math.round((f.styleAndLayoutStart || fin) - (f.renderStart || fin))}, styles et mise en page ${Math.round(fin - (f.styleAndLayoutStart || fin))}\n            ${scripts}`);
+        }
+      }).observe({ type: "long-animation-frame", buffered: false });
+    } catch (err) { this._note("sonde longue : " + err); }
   }
 
   async _montrer(reste) {
