@@ -3,7 +3,7 @@
 import { chromium } from "playwright";
 import fs from "fs";
 const [, , donnees, sortie] = process.argv;
-const js = fs.readFileSync(new URL("../vision-maison/vision-maison-card.js", import.meta.url), "utf8");
+const js = fs.readFileSync(new URL("../www/vision-maison-card.js", import.meta.url), "utf8");
 const maison = fs.readFileSync(donnees, "utf8");
 const nav = await chromium.launch();
 const page = await nav.newPage({ viewport: { width: 900, height: 1100 } });

@@ -56,6 +56,59 @@ try {
     while ((Get-Date) -lt $fin) { $script:W.Dispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Background); Start-Sleep -Milliseconds 20; $n++ }
     ('oeil: minuteur actif=' + $script:OeilTic.IsEnabled + ' regard=' + [Math]::Round($script:Oeil.rx, 2)) | Add-Content $journal
     ('icone: ' + $tray.Icon.Width + 'x' + $tray.Icon.Height) | Add-Content $journal
+    # ---- 1.57 : le bouton « Ce qui est fermé », le planning modifiable, les limites, les logiciels.
+    function Boutons($racine) {
+        $trouves = @()
+        if ($racine -is [System.Windows.Controls.Button]) { $trouves += $racine }
+        elseif ($racine -is [System.Windows.Controls.Panel]) { foreach ($e in $racine.Children) { $trouves += @(Boutons $e) } }
+        elseif ($racine -is [System.Windows.Controls.Border]) { $trouves += @(Boutons $racine.Child) }
+        elseif ($racine -is [System.Windows.Controls.ContentControl]) { $trouves += @(Boutons $racine.Content) }
+        return $trouves
+    }
+    function Cliquer([string]$debut) {
+        $b = @(Boutons $Contenu | Where-Object { ([string]$_.Content).StartsWith($debut) })[0]
+        if ($null -eq $b) { ("  bouton introuvable : $debut") | Add-Content $journal; return $false }
+        $b.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))); return $true
+    }
+    function Deposees() {
+        $sortie = @()
+        foreach ($f in @(Get-ChildItem -Path $script:Dossier -Filter 'action-*.json' | Sort-Object Name)) { $sortie += (Get-Content $f.FullName -Raw -Encoding UTF8).Trim(); Remove-Item $f.FullName -Force }
+        return $sortie
+    }
+    [void](Deposees)
+    $script:Page = 'maison'; $script:Vue = @{ type = 'personne'; personne = [string]$enfant.entite }; Rafraichir
+    ('boutons de la fiche : ' + ((Boutons $Contenu | ForEach-Object { [string]$_.Content } | Select-Object -Unique) -join ' | ')) | Add-Content $journal
+    Photo '11-fiche'
+    $propre = @($enfant.appareils | Where-Object { [string](Prop $_ 'personne') -eq [string]$enfant.entite -and @(Prop $_ 'plages' @()).Count -gt 0 })[0]
+    $ici = @{ type = 'personne'; personne = [string]$enfant.entite }
+    $script:Vue = @{ type = 'planning'; appareil = $propre; retour = $ici }; Rafraichir; Photo '12-planning'
+    [void](Cliquer 'Supprimer'); Photo '12b-supprimer-question'
+    ('après un clic sur Supprimer : ' + @(Deposees).Count + ' action (attendu 0)') | Add-Content $journal
+    [void](Cliquer 'Modifier'); Photo '13-plage-modifier'
+    [void](Cliquer 'Enregistrer')
+    ('modifier sans rien changer : ' + ((Deposees) -join ' ;; ')) | Add-Content $journal
+    $script:Vue = @{ type = 'plage'; appareil = $propre; plage = $null; retour = @{ type = 'planning'; appareil = $propre; retour = $ici } }; Rafraichir; Photo '14-plage-neuve'
+    [void](Cliquer 'Ajouter la plage'); Photo '14b-plage-faute'
+    ('plage sans nom : ' + @(Deposees).Count + ' action (attendu 0), message : ' + [string]$script:Vue.dit) | Add-Content $journal
+    $script:PlageEdit.nom.Text = 'Devoirs'; $script:PlageEdit.debut.Text = '17h30'; $script:PlageEdit.fin.Text = '19:00'
+    [void](Cliquer 'Tout l'); [void](Cliquer 'Sam'); [void](Cliquer 'Dim'); [void](Cliquer 'Jeux')
+    Photo '14c-plage-remplie'
+    [void](Cliquer 'Ajouter la plage')
+    ('plage créée : ' + ((Deposees) -join ' ;; ')) | Add-Content $journal
+    ('retour au planning : ' + [string]$script:Vue.type + ' / ' + [string]$script:Vue.dit) | Add-Content $journal
+    $script:Vue = @{ type = 'temps'; appareil = $propre; retour = $ici }; Rafraichir; Photo '15-temps-limites'
+    [void](Cliquer '+15 min')
+    ('limite +15 : ' + ((Deposees) -join ' ;; ')) | Add-Content $journal
+    $candidats = @(Boutons $Contenu | ForEach-Object { [string]$_.Content })
+    ('applis proposées à limiter : ' + (($candidats | Select-Object -Last 6) -join ' | ')) | Add-Content $journal
+    $pcEnfant = @($enfant.appareils | Where-Object { $null -ne (Prop $_ 'logiciels') })[0]
+    $script:Vue = @{ type = 'logiciels'; appareil = $pcEnfant; retour = $ici }; Rafraichir; Photo '16-logiciels'
+    [void](Cliquer 'Désinstaller'); Photo '16b-logiciels-question'
+    ('après un clic sur Désinstaller : ' + @(Deposees).Count + ' action (attendu 0)') | Add-Content $journal
+    [void](Cliquer 'Désinstaller définitivement')
+    ('désinstaller confirmé : ' + ((Deposees) -join ' ;; ')) | Add-Content $journal
+    [void](Cliquer 'Bloquer')
+    ('bloquer : ' + ((Deposees) -join ' ;; ')) | Add-Content $journal
     'fin sans erreur' | Add-Content $journal
 } catch { ('ERREUR: ' + $_ + ' @ ' + $_.ScriptStackTrace) | Add-Content $journal }
 $script:W.Hide(); $tray.Dispose()

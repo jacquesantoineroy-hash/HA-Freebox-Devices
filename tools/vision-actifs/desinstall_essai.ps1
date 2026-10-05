@@ -185,6 +185,24 @@ try {
     Start-Sleep -Milliseconds 500
     Verifier 'bout : trop long, coupe' ($null -eq (Get-Process -Id $pidLong -ErrorAction SilentlyContinue)) 'True'
 
+    # Un logiciel designe par son nom, depuis la liste des logiciels installes.
+    $script:DesinstallMaxSecondes = 900; $script:DesinstallGraceSecondes = 180
+    Remove-Item -LiteralPath $script:DesinstallJournal -Force -ErrorAction SilentlyContinue
+    Poser 'ParNom' 'Jeu Par Nom' 'Petit Studio' '' "`"$reg`" delete `"HKCU\Software\VisionEssai\Uninstall\ParNom`" /f"
+    $parNom = Consignes @(
+        [pscustomobject]@{ cle = 'logiciel|jeu par nom'; jeton = 'fff666'; genre = 'logiciel'; id = 'jeu par nom'; nom = 'Jeu Par Nom'; exe = ''; chemin = ''; editeur = 'Petit Studio' },
+        [pscustomobject]@{ cle = 'logiciel|inconnu au bataillon'; jeton = 'ggg777'; genre = 'logiciel'; id = 'inconnu au bataillon'; nom = 'Inconnu'; exe = ''; chemin = ''; editeur = '' },
+        [pscustomobject]@{ cle = 'logiciel|carte graphique'; jeton = 'hhh888'; genre = 'logiciel'; id = 'carte graphique'; nom = 'Carte graphique'; exe = ''; chemin = ''; editeur = 'NVIDIA Corporation' })
+    Invoke-Desinstallations $parNom
+    Start-Sleep -Seconds 3
+    Invoke-Desinstallations $parNom
+    Invoke-Desinstallations $parNom
+    $j = Read-JournalDesinstall
+    Verifier 'par nom : fait' $j['fff666'].etat 'fait'
+    Verifier 'par nom : inconnu' $j['ggg777'].etat 'impossible'
+    Verifier 'par nom : pilote refuse' $j['hhh888'].etat 'impossible'
+    Verifier 'par nom : pilote toujours la' (Test-Path -LiteralPath (Join-Path $base 'Pilote')) 'True'
+
     # Journal abime : on repart de rien, sans lever.
     Set-Content -LiteralPath $script:DesinstallJournal -Value '{pas du json'
     Verifier 'bout : journal abime' (Read-JournalDesinstall).Count 0
