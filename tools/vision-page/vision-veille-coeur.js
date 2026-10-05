@@ -1193,6 +1193,9 @@ class VisionVeillePanel extends HTMLElement {
     }
     if (e.genre === "tableau") { this._percer(e._colonnes); for (const t of [700, 2000, 4500]) setTimeout(() => this._percer(e._colonnes), t); }
     if (e.genre === "tableau" && this._anim) { try { this._animer(e); } catch (err) { /* le tableau s'affiche sans animation */ } }
+    // Le navigateur doit avoir vu la scène à zéro avant qu'on la montre, sinon il n'y a pas de fondu : l'horloge,
+    // posée et montrée dans la même image, arrivait d'un coup à la fin du tour, comme une coupure.
+    void scene.offsetWidth;
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
     if (this._fige) return;
