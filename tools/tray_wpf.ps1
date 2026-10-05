@@ -60,7 +60,7 @@ $script:Themes = [ordered]@{
 }
 $script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
 function SvReglages() {
-    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; masques = @(); cartes = @() }
+    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; fondCartes = $true; contourCartes = $false; masques = @(); cartes = @() }
     try {
         if (Test-Path $script:SvFichier) {
             $lu = Get-Content $script:SvFichier -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -68,6 +68,8 @@ function SvReglages() {
             if (Prop $lu 'delai') { $r.delai = [int](Prop $lu 'delai') }
             if ($script:Themes.Contains([string](Prop $lu 'theme'))) { $r.theme = [string](Prop $lu 'theme') }
             if (@('doux', 'neoretro') -contains [string](Prop $lu 'style')) { $r.style = [string](Prop $lu 'style') }
+            if ($null -ne (Prop $lu 'fondCartes')) { $r.fondCartes = [bool](Prop $lu 'fondCartes') }
+            if ($null -ne (Prop $lu 'contourCartes')) { $r.contourCartes = [bool](Prop $lu 'contourCartes') }
             $r.masques = @(@(Prop $lu 'masques' @()) | ForEach-Object { [string]$_ })
             $r.cartes = @(@(Prop $lu 'cartes' @()) | ForEach-Object { [string]$_ })
         }
@@ -78,7 +80,7 @@ function SvEcrire($r) {
     try {
         $d = Split-Path $script:SvFichier -Parent
         if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; masques = @($r.masques); cartes = @($r.cartes) } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
+        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; fondCartes = [bool]$r.fondCartes; contourCartes = [bool]$r.contourCartes; masques = @($r.masques); cartes = @($r.cartes) } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
     } catch { }
 }
 $script:Pal = $script:Themes[(SvReglages).theme]
@@ -1090,9 +1092,9 @@ function SvOuvrirWeb() {
     if (-not $jeton -or -not $base -or -not $edge) { return $false }
     $r = SvReglages; $pal = $script:Pal; $j = 0
     foreach ($ecran in [System.Windows.Forms.Screen]::AllScreens) {
-        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}' -f `
+        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}&cfond={11}&ccontour={12}' -f `
             [uri]::EscapeDataString([string](Prop $acces 'id' '')), $j, $pal.Fond.Substring(3), $pal.Carte.Substring(3), $pal.Texte.Substring(3), $pal.Texte2.Substring(3), $pal.Or.Substring(3), $pal.Ligne.Substring(3), `
-            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style
+            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 })
         $adresse = '{0}/api/pc_parental/veille/entree#t={1}&q={2}' -f $base, $jeton, [uri]::EscapeDataString($q)
         $profilEdge = Join-Path $env:LOCALAPPDATA ('Vision\veille-edge-{0}' -f $j)
         $arguments = @('--kiosk', ('"{0}"' -f $adresse), '--edge-kiosk-type=fullscreen', '--no-first-run', '--no-default-browser-check',
@@ -1244,6 +1246,8 @@ function PageReglages() {
         $styles.Children.Add($bs) | Out-Null
     }
     $carteT.Child.Children.Add($styles) | Out-Null
+    $carteT.Child.Children.Add((Coche 'Un fond sous les cartes' ([bool]$r.fondCartes) { param($s, $e) $rr = SvReglages; $rr.fondCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
+    $carteT.Child.Children.Add((Coche 'Un contour autour des cartes' ([bool]$r.contourCartes) { param($s, $e) $rr = SvReglages; $rr.contourCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
     $Contenu.Children.Add($carteT) | Out-Null
 
     $Contenu.Children.Add((Section 'Écran de veille')) | Out-Null

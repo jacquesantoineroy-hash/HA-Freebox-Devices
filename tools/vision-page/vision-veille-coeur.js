@@ -58,6 +58,18 @@ class VisionVeillePanel extends HTMLElement {
         "--chip-border-radius": "3px", "--chip-border-width": "0px", "--mush-chip-border-radius": "3px",
       });
     }
+    // Chacun décide : un fond sous ses cartes ou non, un contour ou non.
+    const net = this._style === "neoretro";
+    if (this._q.get("cfond") === "0") {
+      Object.assign(vars, { "--ha-card-background": "transparent", "--card-background-color": "transparent", "--chip-background": "transparent", "--mush-chip-background": "transparent" });
+    }
+    const contour = this._q.get("ccontour") === "1";
+    Object.assign(vars, {
+      "--ha-card-border-width": contour ? (net ? "1.5px" : "1px") : "0px",
+      "--ha-card-border-color": contour ? ligne : "transparent",
+      "--chip-border-width": contour ? (net ? "1.5px" : "1px") : "0px", "--chip-border-color": contour ? ligne : "transparent",
+    });
+    this._sombre = [1, 3, 5].map((i) => parseInt(fond.slice(i, i + 2), 16)).reduce((a, b) => a + b, 0) < 384;
     this.setAttribute("data-style", this._style);
     for (const [k, v] of Object.entries(vars)) this.style.setProperty(k, v);
     document.body.style.background = fond;
@@ -125,20 +137,13 @@ class VisionVeillePanel extends HTMLElement {
         :host([data-style="neoretro"]) .horloge::before { content: "VISION"; letter-spacing: .6em; font-size: 2.2vh; color: var(--v-accent); margin-bottom: 4vh; padding-left: .6em; }
         :host([data-style="neoretro"]) .date { text-transform: uppercase; letter-spacing: .3em; font-size: 3vh; margin-top: 3vh; padding-top: 3vh; border-top: 1.5px solid var(--v-accent); min-width: 46vw; text-align: center; }
         :host([data-style="neoretro"]) .ciel { text-transform: uppercase; letter-spacing: .3em; font-size: 2.6vh; }
-        /* L'œil de Vision, en bas à gauche : il cligne de temps en temps. */
-        .oeil { position: absolute; left: 3.5vw; bottom: 2.4vh; width: 5.4vh; height: 5.4vh; z-index: 5; opacity: .92; pointer-events: none; }
-        .oeil .paupiere { transform-box: fill-box; transform-origin: center; animation: clin 7s infinite; }
-        @keyframes clin { 0%, 91%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.06); } 97% { transform: scaleY(1); } }
+        /* La marque, en bas à gauche : l'œil de Vision (le même que sur les télés) et son nom. */
+        .marque { position: absolute; left: 3.5vw; bottom: 1.6vh; height: 7vh; display: flex; align-items: center; z-index: 5; pointer-events: none; }
+        .marque span { margin-left: 1vh; font-size: 2.6vh; font-weight: 700; letter-spacing: .12em; color: var(--v-texte2); opacity: .9; }
+        mushroom-chips-card { margin-bottom: 14px; }
         .vide { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--v-texte2); font-size: 3vh; }
       </style>
-      <svg class="oeil" viewBox="0 0 64 64" aria-hidden="true">
-        <circle cx="32" cy="32" r="29" fill="none" stroke="var(--v-accent)" stroke-width="2.4"/>
-        <g class="paupiere">
-          <path d="M11 32 Q32 13 53 32 Q32 51 11 32 Z" fill="none" stroke="var(--v-accent)" stroke-width="2.4" stroke-linejoin="round"/>
-          <circle cx="32" cy="32" r="7.6" fill="var(--v-accent)"/>
-          <circle cx="32" cy="32" r="3" fill="var(--v-fond)"/>
-        </g>
-      </svg>
+      <div class="marque"><canvas></canvas><span>Vision</span></div>
       <div class="scene vue" id="s0"></div>`;
     let page = null, aides = null;
     try {
@@ -167,7 +172,46 @@ class VisionVeillePanel extends HTMLElement {
     this._ecrans = liste;
     this._indice = (parseInt(this._q.get("dec") || "0", 10) || 0) % liste.length;
     setInterval(() => this._tic(), 1000);
+    this._oeil();
     this._montrer();
+  }
+
+  // L'œil de Vision, dessiné comme sur les télés : une amande claire, l'iris pourpre et or qui regarde
+  // ici et là, la paupière qui cligne vite et se rouvre plus doucement, parfois deux fois de suite.
+  _oeil() {
+    const toile = this.shadowRoot.querySelector(".marque canvas");
+    const g = toile.getContext("2d");
+    const pourpre = this._sombre ? "#C2577B" : "#8C2F4B";
+    const or = this._couleur("accent", "#F2C14E"), encre = this._sombre ? "#1B1418" : this._couleur("texte", "#2A2026");
+    let prochainClin = 0, clinDebut = -9, prochainRegard = 0, cibleX = 0, cibleY = 0, rx = 0, ry = 0;
+    const pas = () => {
+      const t = performance.now() / 1000, H = window.innerHeight, dpr = window.devicePixelRatio || 1;
+      const demiL = H * 0.03, demiH = H * 0.017, L = demiL * 2 + H * 0.012, HH = demiH * 4 + H * 0.012;
+      if (toile.width !== Math.round(L * dpr)) { toile.width = Math.round(L * dpr); toile.height = Math.round(HH * dpr); toile.style.width = `${L}px`; toile.style.height = `${HH}px`; }
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, L, HH);
+      if (t >= prochainClin) { clinDebut = t; prochainClin = t + (Math.random() < 0.18 ? 0.4 : 2.5 + Math.random() * 5); }
+      const tt = t - clinDebut;
+      const fermeture = tt < 0 ? 0 : tt < 0.10 ? tt / 0.10 : tt < 0.26 ? 1 - (tt - 0.10) / 0.16 : 0;
+      if (t >= prochainRegard) { cibleX = (Math.random() - 0.5) * 1.6; cibleY = (Math.random() - 0.5) * 0.9; prochainRegard = t + 1.5 + Math.random() * 4; }
+      rx += (cibleX - rx) * 0.18; ry += (cibleY - ry) * 0.18;
+      const cx = L / 2, cy = HH / 2, ouverture = demiH * (1 - fermeture * 0.96), bas = demiH * 2 * (1 - fermeture * 0.5);
+      const amande = new Path2D();
+      amande.moveTo(cx - demiL, cy); amande.quadraticCurveTo(cx, cy - ouverture * 2, cx + demiL, cy); amande.quadraticCurveTo(cx, cy + bas, cx - demiL, cy); amande.closePath();
+      g.globalAlpha = 1; g.fillStyle = this._sombre ? "#E9E2D6" : "#FFFBF2"; g.fill(amande);
+      g.save(); g.clip(amande);
+      const ix = cx + rx * demiL * 0.45, iy = cy + ry * demiH * 0.5, ri = demiH * 0.95;
+      const disque = (x, y, r, c, a = 1) => { g.globalAlpha = a; g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+      disque(ix, iy, ri, pourpre); disque(ix, iy, ri * 0.62, or); disque(ix, iy, ri * 0.34, encre);
+      disque(ix - ri * 0.28, iy - ri * 0.3, ri * 0.14, "#FFFFFF", 0.78);
+      g.restore();
+      g.lineCap = "round"; g.strokeStyle = pourpre;
+      g.globalAlpha = 1; g.lineWidth = H * 0.004; g.beginPath(); g.moveTo(cx - demiL, cy); g.quadraticCurveTo(cx, cy - ouverture * 2, cx + demiL, cy); g.stroke();
+      g.globalAlpha = 0.59; g.lineWidth = H * 0.002; g.beginPath(); g.moveTo(cx - demiL, cy); g.quadraticCurveTo(cx, cy + bas, cx + demiL, cy); g.stroke();
+      g.globalAlpha = 1;
+      requestAnimationFrame(pas);
+    };
+    pas();
   }
 
   _tic() {
