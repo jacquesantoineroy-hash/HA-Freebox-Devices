@@ -140,13 +140,15 @@ class VisionVeillePanel extends HTMLElement {
     });
     this._sombre = [1, 3, 5].map((i) => parseInt(fond.slice(i, i + 2), 16)).reduce((a, b) => a + b, 0) < 384;
     // La carte du lieu : des teintes calmes, proches du fond, dans les deux modes.
-    this.style.setProperty("--map-filter", this._sombre ? "invert(0.92) hue-rotate(180deg) brightness(0.9) contrast(0.88) saturate(0.35)" : "saturate(0.55) contrast(0.94) sepia(0.12)");
+    this.style.setProperty("--v-plan", this._sombre ? "grayscale(1) invert(0.9) contrast(0.85) brightness(1.15)" : "saturate(0.55) contrast(0.94) sepia(0.12)");
     this._feuille = null;
     // Home Assistant passe lui-même en clair ou en sombre, comme le thème de l'appareil : ses composants
     // (interrupteurs, curseurs, carte du lieu) choisissent alors les bonnes nuances d'eux-mêmes.
     try { this.dispatchEvent(new CustomEvent("settheme", { detail: { dark: this._sombre }, bubbles: true, composed: true })); } catch (e) { /* le thème du compte reste */ }
     this.setAttribute("data-style", this._style);
-    for (const [k, v] of Object.entries(vars)) this.style.setProperty(k, v);
+    // Posées aussi à la racine de la page : les teintes que Home Assistant en déduit là-haut (interrupteurs,
+    // boutons) se recalculent alors avec les couleurs de l'appareil.
+    for (const [k, v] of Object.entries(vars)) { this.style.setProperty(k, v); document.documentElement.style.setProperty(k, v); }
     document.body.style.background = fond;
   }
   _rvb(h) { return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", "); }
@@ -171,6 +173,7 @@ class VisionVeillePanel extends HTMLElement {
       :host(ha-full-calendar) .header { display: none !important; }
       :host(hui-todo-list-card) .addRow { display: none !important; }
       .leaflet-top, .leaflet-control-zoom { display: none !important; }
+      .leaflet-tile-pane { filter: var(--v-plan) !important; }
       :host(hui-media-control-card) .background.off, :host(hui-media-control-card) .background.unavailable { display: none !important; }
       :host(hui-media-control-card) .background.off ~ .player, :host(hui-media-control-card) .background.unavailable ~ .player { color: var(--v-texte) !important; }
       :host(hui-media-control-card) .controls { display: none !important; }
