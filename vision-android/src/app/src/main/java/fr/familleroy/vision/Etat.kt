@@ -162,7 +162,8 @@ object Etat {
         toujoursPermises(ctx)
         if (pkg in permisPaquets) return null
         val p = pkg.lowercase(Locale.ROOT)
-        if (verrouilleEffectif()) return message.ifEmpty { "Accès fermé" }
+        // Appareil fermé : l'accueil reste accessible (on y voit ce qui reste ouvert), seules les applis se ferment.
+        if (verrouilleEffectif()) return if (pkg in Usage.lanceurs(ctx)) null else message.ifEmpty { "Accès fermé" }
         if (p in apps) return "Cette appli est bloquée"
         return null
     }

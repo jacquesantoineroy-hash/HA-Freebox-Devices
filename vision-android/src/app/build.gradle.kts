@@ -21,8 +21,8 @@ android {
         // 33 : évite les contraintes de type de service au premier plan
         // d'Android 14 tout en restant installable partout.
         targetSdk = 36
-        versionCode = 83
-        versionName = "1.35.3"
+        versionCode = 84
+        versionName = "1.36.0"
     }
 
     signingConfigs {

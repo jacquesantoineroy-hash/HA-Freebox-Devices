@@ -55,7 +55,7 @@ class VisionAccessibility : AccessibilityService() {
         if (redirections.size >= 5) return false
         redirections.addLast(now)
         return try {
-            startActivity(Intent(this, LanceurActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_ANIMATION)); true
+            startActivity(Intent(this, LanceurActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION)); true
         } catch (_: Exception) { false }
     }
 

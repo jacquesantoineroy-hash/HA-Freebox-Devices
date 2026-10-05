@@ -117,7 +117,9 @@ class LanceurActivity : Activity() {
         super.onNewIntent(intent)
         // Deux appuis rapprochés sur Accueil : l'écran de veille vient devant, la musique de l'autre appli continue.
         // Sur téléphone, Accueil ramène à l'accueil : le tiroir, un dossier ou le panneau ouverts se referment.
-        if (!tele) { try { tiroir?.dismiss() } catch (_: Exception) {}; try { dossierOuvert?.dismiss() } catch (_: Exception) {}; cacherPanneau(); pageur?.aller(0) }
+        // Sur télé aussi : Accueil ramène toujours à l'accueil de Vision, dossier et tiroir refermés.
+        try { tiroir?.dismiss() } catch (_: Exception) {}; try { dossierOuvert?.dismiss() } catch (_: Exception) {}; cacherPanneau()
+        if (!tele) pageur?.aller(0)
         val now = SystemClock.uptimeMillis()
         if (tele && now - dernierAccueilMs < 1500) { Veille.ouvrir(this); dernierAccueilMs = 0 } else dernierAccueilMs = now
     }
@@ -233,7 +235,16 @@ class LanceurActivity : Activity() {
 
     private fun px(dp: Float) = Ui.dp(this, dp)
     private val dm get() = resources.displayMetrics
-    private fun empreinte(): String = Accueil.masquees(this).sorted().joinToString(",") + "|" + Accueil.ordre(this).joinToString(",") + "|" + theme.nom + theme.fond + "|" + Accueil.dossiers(this).joinToString { it.cle + it.nom + it.pkgs.size } + "|" + profilConnu + "|" + (if (tele) "" else Accueil.disposition(this).joinToString { it.cle + it.col + "," + it.row } + "|" + Accueil.dock(this).joinToString(",") + "|" + Accueil.mode(this))
+    private fun empreinte(): String = Accueil.masquees(this).sorted().joinToString(",") + "|" + Accueil.ordre(this).joinToString(",") + "|" + theme.nom + theme.fond + "|" + Accueil.dossiers(this).joinToString { it.cle + it.nom + it.pkgs.size } + "|" + profilConnu + "|" + Etat.verrouilleEffectif() + Etat.apps.hashCode() + Etat.toujours.hashCode() + "|" + (if (tele) "" else Accueil.disposition(this).joinToString { it.cle + it.col + "," + it.row } + "|" + Accueil.dock(this).joinToString(",") + "|" + Accueil.mode(this))
+
+    /** Ouvre une appli ; fermée par les règles, elle montre pourquoi (et comment demander) au lieu de s'ouvrir. */
+    private fun ouvrir(pkg: String) {
+        val raison = Etat.doitBloquer(this, pkg)
+        if (raison != null) BlockActivity.afficher(this, raison, pkg) else Accueil.lancer(this, pkg)
+    }
+
+    /** Une appli fermée par les règles reste à sa place, en grisé. */
+    private fun <V : View> griser(v: V, pkg: String?): V { if (pkg != null && Etat.doitBloquer(this, pkg) != null) v.alpha = 0.34f; return v }
 
     private fun texte(t: String, taille: Float, couleur: Int, police: Typeface = Polices.texte(this), espacement: Float = 0f): TextView = TextView(this).apply {
         text = t; textSize = taille; setTextColor(couleur); typeface = police; letterSpacing = espacement
@@ -440,7 +451,7 @@ class LanceurActivity : Activity() {
             libelle.setTextColor(if (a) theme.encre else theme.encre2); libelle.typeface = if (a) Polices.gras(this) else Polices.moyen(this)
             v.animate().scaleX(if (a) 1.12f else 1f).scaleY(if (a) 1.12f else 1f).setDuration(140).start()
         }
-        contenu.setOnClickListener { if (deplacement != null) { deplacement = null; construire() } else if (c.dossier != null) ouvrirDossier(c.dossier, cles) else Accueil.lancer(this, c.pkg!!) }
+        contenu.setOnClickListener { if (deplacement != null) { deplacement = null; construire() } else if (c.dossier != null) ouvrirDossier(c.dossier, cles) else ouvrir(c.pkg!!) }
         contenu.setOnLongClickListener { if (deplacement == null) menuTele(c, cles); true }
         return contenu
     }
@@ -494,7 +505,7 @@ class LanceurActivity : Activity() {
     private fun menuTele(c: Accueil.Case, cles: List<String>) {
         val nom = if (c.dossier != null) c.dossier.nom else Accueil.etiquette(this, c.pkg!!)
         val choix = ArrayList<Pair<String, () -> Unit>>()
-        choix.add("Ouvrir" to { if (c.dossier != null) ouvrirDossier(c.dossier, cles) else Accueil.lancer(this, c.pkg!!) })
+        choix.add("Ouvrir" to { if (c.dossier != null) ouvrirDossier(c.dossier, cles) else ouvrir(c.pkg!!) })
         choix.add("Déplacer" to { deplacement = c.cle; construire(); racine.post { trouverParTag(racine, c.cle)?.requestFocus() }; Unit })
         if (c.pkg != null) {
             choix.add("Retirer de l'accueil" to { Accueil.cacher(this, c.pkg, true); construire() })
@@ -615,9 +626,9 @@ class LanceurActivity : Activity() {
         val dock = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(px(8f), px(2f), px(8f), px(6f)); tag = "dock" }
         val pkgs = Accueil.dock(this)
         pkgs.forEachIndexed { k, pkg ->
-            val b = disque(Accueil.icone(this, pkg), 56f).apply {
+            val b = griser(disque(Accueil.icone(this, pkg), 56f), pkg).apply {
                 isClickable = true; isFocusable = true; contentDescription = Accueil.etiquette(this@LanceurActivity, pkg); tag = "dock:$k"
-                setOnClickListener { Accueil.lancer(this@LanceurActivity, pkg) }
+                setOnClickListener { ouvrir(pkg) }
                 setOnLongClickListener { menuDock(k); true }
             }
             dock.addView(b, LinearLayout.LayoutParams(px(56f), px(56f)).apply { leftMargin = px(14f); rightMargin = px(14f) })
@@ -890,12 +901,12 @@ class LanceurActivity : Activity() {
     private fun caseTelephone(c: Accueil.Case): View {
         val taille = 56f
         val contenu = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(px(2f), px(6f), px(2f), px(2f)); clipChildren = false }
-        val d = if (c.dossier != null) disqueDossier(c.dossier, taille) else disque(Accueil.icone(this, c.pkg!!), taille)
+        val d = if (c.dossier != null) disqueDossier(c.dossier, taille) else griser(disque(Accueil.icone(this, c.pkg!!), taille), c.pkg)
         contenu.addView(d, LinearLayout.LayoutParams(px(taille), px(taille)))
         val nom = if (c.dossier != null) c.dossier.nom else Accueil.etiquette(this, c.pkg!!)
         contenu.addView(texte(nom, 11.5f, theme.encre2, Polices.moyen(this)).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; gravity = Gravity.CENTER; setPadding(px(2f), px(5f), px(2f), 0) })
         contenu.isClickable = true; contenu.isFocusable = true
-        contenu.setOnClickListener { if (c.dossier != null) ouvrirDossier(c.dossier, emptyList()) else Accueil.lancer(this, c.pkg!!) }
+        contenu.setOnClickListener { if (c.dossier != null) ouvrirDossier(c.dossier, emptyList()) else ouvrir(c.pkg!!) }
         contenu.setOnLongClickListener { v -> soulever(v, d, c.cle) }
         contenu.setOnDragListener { v, e -> if (e.action == DragEvent.ACTION_DRAG_ENDED && enDrag == c.cle) finDrag(v, e) { menuTelephone(c, null) }; false }
         return contenu
@@ -1001,7 +1012,8 @@ class LanceurActivity : Activity() {
             cell.addView(cadre, LinearLayout.LayoutParams(px(taille + 12f), px(taille + 12f)))
             cell.addView(texte(Accueil.etiquette(this, pkg), if (tele) tv(20f) else 12f, theme.encre2, Polices.moyen(this)).apply { maxLines = 2; gravity = Gravity.CENTER; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, px(5f), 0, 0) })
             cell.setOnFocusChangeListener { _, a -> anneau.visibility = if (a) View.VISIBLE else View.INVISIBLE }
-            cell.setOnClickListener { dlg.dismiss(); Accueil.lancer(this, pkg) }
+            griser(cell, pkg)
+            cell.setOnClickListener { dlg.dismiss(); ouvrir(pkg) }
             cell.setOnLongClickListener {
                 if (tele) AlertDialog.Builder(this).setTitle(Accueil.etiquette(this, pkg)).setItems(arrayOf("Sortir du dossier", "Retirer de l'accueil")) { _, k ->
                     if (k == 0) Accueil.sortirDuDossier(this, cles, d.cle, pkg) else Accueil.cacher(this, pkg, true)
@@ -1049,7 +1061,8 @@ class LanceurActivity : Activity() {
             val cell = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(px(2f), px(8f), px(2f), px(8f)); isClickable = true; isFocusable = true }
             cell.addView(disque(ri.loadIcon(pm), 52f), LinearLayout.LayoutParams(px(52f), px(52f)))
             cell.addView(texte(ri.loadLabel(pm).toString(), 11.5f, theme.encre2, Polices.moyen(this)).apply { maxLines = 2; gravity = Gravity.CENTER; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, px(5f), 0, 0); alpha = if (pkg in surAccueil) 1f else 0.7f })
-            cell.setOnClickListener { dlg.dismiss(); Accueil.lancer(this, pkg) }
+            griser(cell, pkg)
+            cell.setOnClickListener { dlg.dismiss(); ouvrir(pkg) }
             cell.setOnLongClickListener {
                 val deja = pkg in surAccueil
                 AlertDialog.Builder(this).setTitle(ri.loadLabel(pm)).setItems(arrayOf(if (deja) "Déjà sur l'accueil" else "Ajouter à l'accueil", "Infos", "Désinstaller")) { _, k ->
@@ -1388,6 +1401,7 @@ class LanceurActivity : Activity() {
     }
 
     private fun appliquerDonnees() {
+        if (empreinteApps != empreinte() && enDrag == null && enDragNouveau == null && tiroir == null) { construire(); return }
         val d = donnees ?: return
         val m = d.optJSONObject("meteo")
         racine.findViewWithTag<TextView>("temp")?.text = if (m == null || m.isNull("temperature")) "" else String.format(Locale.FRANCE, "%.0f°", m.optDouble("temperature"))
