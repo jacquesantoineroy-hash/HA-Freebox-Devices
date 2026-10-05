@@ -55,6 +55,46 @@ const enBriques = (texte) => {
 const semaine = (d) => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const j = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - j); return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7); };
 const ROMAINS = ["XII", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI"];
 
+// La pluie de signes du thème Code : chaque colonne descend d'un signe à la fois, le dernier tombé est clair,
+// les précédents verts puis s'éteignent. Vingt images par seconde, et plus rien dès que l'horloge quitte l'écran.
+const pluie = (el) => {
+  const toile = el.querySelector("canvas"), g = toile.getContext("2d"), st = getComputedStyle(el);
+  const fond = st.getPropertyValue("--v-fond").trim() || "#030A05", vert = st.getPropertyValue("--v-accent").trim() || "#2BEA6B", clair = st.getPropertyValue("--v-texte").trim() || "#D7FFE0";
+  const signes = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎ0123456789";
+  let cols = [], pas = 0, L = -1, H = -1, dernier = 0;
+  const neuve = (haut) => ({ y: haut ? -Math.floor(Math.random() * 30) : Math.floor(Math.random() * 60) - 20, v: 0.45 + Math.random() * 0.75, s: "" });
+  const mesurer = () => {
+    const dpr = window.devicePixelRatio || 1;
+    L = toile.clientWidth; H = toile.clientHeight; toile.width = Math.round(L * dpr); toile.height = Math.round(H * dpr);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pas = Math.max(14, Math.round(Math.min(H, L * 1.6) * 0.03));
+    cols = Array.from({ length: Math.ceil(L / pas) }, () => neuve(false));
+    g.fillStyle = fond; g.fillRect(0, 0, L, H);
+  };
+  const tour = (t) => {
+    if (!el.isConnected) return;
+    requestAnimationFrame(tour);
+    if (t - dernier < 50) return;
+    dernier = t;
+    if (toile.clientWidth !== L || toile.clientHeight !== H) mesurer();
+    if (!L || !H) return;
+    g.globalAlpha = 0.085; g.fillStyle = fond; g.fillRect(0, 0, L, H); g.globalAlpha = 1;
+    g.font = `${pas}px Consolas, "Roboto Mono", monospace`; g.textAlign = "center"; g.textBaseline = "top";
+    cols.forEach((c, i) => {
+      const avant = Math.floor(c.y); c.y += c.v;
+      const y = Math.floor(c.y);
+      if (y === avant || y < 0) return;
+      const x = i * pas;
+      if (c.s) { g.fillStyle = fond; g.fillRect(x, avant * pas, pas, pas); g.fillStyle = vert; g.fillText(c.s, x + pas / 2, avant * pas); }
+      c.s = signes[Math.floor(Math.random() * signes.length)];
+      g.fillStyle = clair; g.fillText(c.s, x + pas / 2, y * pas);
+      if (y * pas > H && Math.random() > 0.9) cols[i] = neuve(true);
+    });
+  };
+  requestAnimationFrame(tour);
+  return true;
+};
+
 const HORLOGES = {
   // Vision : de grands chiffres fins, la date, le ciel.
   defaut: {
@@ -177,18 +217,10 @@ const HORLOGES = {
       dessiner(".c1", 92, h * 30); dessiner(".c2", 78, m * 6); dessiner(".c3", 64, (s + 1) * 6);
     },
   },
-  // Code : des colonnes de signes qui tombent derrière des chiffres de terminal.
+  // Code : une pluie de signes sur tout l'écran, signe après signe, la tête de chaque colonne plus claire.
   code: {
-    html: (c) => `<div class="pluie">${Array.from({ length: 22 }, () => "<i></i>").join("")}</div><div class="heure"></div><div class="date">&gt; ${c.jourCourt.toUpperCase()} <b class="sec"></b><u>_</u></div>`,
-    tic: (el, d) => {
-      poser(el, ".heure", hm(d)); poser(el, ".sec", `:${p2(d.getSeconds())}`);
-      const signes = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ0123456789";
-      el.querySelectorAll(".pluie i").forEach((x, i) => {
-        if (x.textContent && (i + d.getSeconds()) % 3) { x.style.transform = `translateY(${(parseFloat(x.dataset.y) + 4).toFixed(0)}vh)`; x.dataset.y = String(parseFloat(x.dataset.y) + 4); return; }
-        let t = ""; const n = 6 + Math.floor(Math.random() * 12); for (let k = 0; k < n; k++) t += signes[Math.floor(Math.random() * signes.length)];
-        x.textContent = t; x.dataset.y = String(-20 + Math.random() * 60); x.style.transform = `translateY(${x.dataset.y}vh)`; x.style.opacity = (0.25 + Math.random() * 0.5).toFixed(2);
-      });
-    },
+    html: (c) => `<canvas class="pluie"></canvas><div class="voile"></div><div class="heure"></div><div class="date">&gt; ${c.jourCourt.toUpperCase()} <b class="sec"></b><u>_</u></div>`,
+    tic: (el, d) => { poser(el, ".heure", hm(d)); poser(el, ".sec", `:${p2(d.getSeconds())}`); if (!el._pluie) el._pluie = pluie(el); },
   },
   // Plume : une plume qui flotte au-dessus de l'heure, un banc dessous.
   plume: {
@@ -356,11 +388,12 @@ const CSS_HORLOGES = `
   .h-sous-bois .c2 { stroke: var(--v-texte); stroke-width: 4.5; } .h-sous-bois .c3 { stroke: var(--v-texte2); stroke-width: 3; }
   .h-sous-bois .rond .heure { font-size: min(11vh, 14vw); font-weight: 300; }
   .h-code { position: relative; overflow: hidden; font-family: Consolas, "Roboto Mono", "DejaVu Sans Mono", monospace; }
-  .h-code .pluie { position: absolute; inset: 0; display: flex; justify-content: space-between; padding: 0 2vw; }
-  .h-code .pluie i { font-style: normal; writing-mode: vertical-rl; text-orientation: upright; color: var(--v-accent); font-size: min(2.4vh, 3vw); line-height: 1; transition: transform 1s linear; }
-  .h-code .heure { position: relative; font-size: min(26vh, 28vw); font-weight: 700; color: var(--v-accent); text-shadow: 0 0 3vh var(--v-fond), 0 0 6vh var(--v-fond); }
-  .h-code .date { position: relative; color: var(--v-texte); letter-spacing: .12em; font-size: min(3vh, 4vw); text-shadow: 0 0 2vh var(--v-fond); }
-  .h-code .date b { color: var(--v-accent); font-weight: 400; } .h-code .date u { text-decoration: none; color: var(--v-accent); }
+  .h-code .pluie { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .h-code .voile { position: absolute; inset: 0; background: radial-gradient(ellipse 44% 30% at 50% 50%, var(--v-fond) 30%, transparent 100%); opacity: .9; }
+  .h-code .heure { position: relative; font-size: min(26vh, 28vw); font-weight: 700; color: var(--v-accent); text-shadow: 0 0 2.4vh var(--v-accent); }
+  .h-code .date { position: relative; color: var(--v-texte); letter-spacing: .12em; font-size: min(3vh, 4vw); }
+  .h-code .date b { color: var(--v-accent); font-weight: 400; } .h-code .date u { text-decoration: none; color: var(--v-accent); animation: curseur 1s steps(2) infinite; }
+  @keyframes curseur { 50% { opacity: 0; } }
   .h-plume { font-family: Georgia, "Times New Roman", serif; }
   .h-plume .vol { width: min(16vh, 20vw); margin-bottom: 1vh; animation: plume 11s ease-in-out infinite alternate; }
   .h-plume .vol path { fill: var(--v-texte2); opacity: .55; } .h-plume .vol .tige { fill: none; stroke: var(--v-texte); stroke-width: .8; opacity: .8; }
