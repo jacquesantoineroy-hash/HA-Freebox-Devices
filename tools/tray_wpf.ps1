@@ -614,7 +614,7 @@ function PageMaison() {
         }
         $sp.Children.Add($r) | Out-Null
         $r2 = Rangee; $r2.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
-        foreach ($def in @(@('Catégories', 'categories'), @('Autorisations', 'exceptions'), @('Ce qui est fermé', 'fermes'), @('Planning', 'planning'), @('Un mot…', 'mot'))) {
+        foreach ($def in @(@('Catégories', 'categories'), @('Autorisations', 'exceptions'), @('Ce qui est fermé', 'fermes'), @('Temps', 'temps'), @('Planning', 'planning'), @('Un mot…', 'mot'))) {
             $r2.Children.Add((Bouton $def[0] 'Secondaire' {
                 param($s, $e); $t = $s.Tag
                 if ($t.type -eq 'mot') { EnvoyerMot $t.appareil; return }
@@ -716,6 +716,7 @@ function PageSousVue() {
         'planning' { Retour "Planning de $prenom"; VuePlanning $a }
         'categories' { Retour "Catégories de $prenom"; VueCategories $a }
         'exceptions' { Retour "Autorisations de $prenom"; VueExceptions $a }
+        'temps' { Retour "Temps d'écran de $prenom"; VueTemps $a }
         'mot' { Retour "Un mot pour $prenom"; VueMot $a }
         'demande' { Retour "Demander l'accès"; VueDemande $script:Vue.item }
     }
@@ -900,6 +901,106 @@ function VueExceptions($a) {
     }
     & $script:RemplirExceptions
     $champ.Add_TextChanged({ & $script:RemplirExceptions })
+}
+
+# Le temps d'écran d'une personne, tous ses appareils réunis : aujourd'hui heure par heure, les applis et
+# logiciels du jour, les sept derniers jours, et le cumul depuis le premier relevé.
+function Duree([double]$secondes) {
+    $s = [int]$secondes
+    if ($s -ge 3600) { return ('{0} h {1:00}' -f [int][Math]::Floor($s / 3600), [int][Math]::Floor(($s % 3600) / 60)) }
+    if ($s -lt 60) { return 'moins d''une minute' }
+    return ('{0} min' -f [int][Math]::Round($s / 60))
+}
+function BarreTemps([string]$nom, [string]$sous, [double]$valeur, [double]$maxi) {
+    $g = New-Object System.Windows.Controls.StackPanel; $g.Margin = [System.Windows.Thickness]::new(0, 5, 0, 5)
+    $tete = Deux (Txt $nom 13 'Texte' $true) (Txt (Duree $valeur) 12 'Texte2')
+    $g.Children.Add($tete) | Out-Null
+    if ($sous) { $g.Children.Add((Txt $sous 11 'Texte3')) | Out-Null }
+    $piste = New-Object System.Windows.Controls.Grid; $piste.Height = 6; $piste.Margin = [System.Windows.Thickness]::new(0, 4, 0, 0)
+    $part = 0.0; if ($maxi -gt 0) { $part = [Math]::Max(0.01, [Math]::Min(1.0, $valeur / $maxi)) }
+    $c1 = New-Object System.Windows.Controls.ColumnDefinition; $c1.Width = [System.Windows.GridLength]::new($part, 'Star')
+    $c2 = New-Object System.Windows.Controls.ColumnDefinition; $c2.Width = [System.Windows.GridLength]::new((1.0 - $part), 'Star')
+    $piste.ColumnDefinitions.Add($c1); $piste.ColumnDefinitions.Add($c2)
+    $fond = New-Object System.Windows.Controls.Border; $fond.Background = (Pinceau 'Haute'); $fond.CornerRadius = [System.Windows.CornerRadius]::new(3)
+    [System.Windows.Controls.Grid]::SetColumnSpan($fond, 2)
+    $plein = New-Object System.Windows.Controls.Border; $plein.Background = (Pinceau 'Or'); $plein.CornerRadius = [System.Windows.CornerRadius]::new(3)
+    $piste.Children.Add($fond) | Out-Null; $piste.Children.Add($plein) | Out-Null
+    $g.Children.Add($piste) | Out-Null
+    return $g
+}
+function VueTemps($a) {
+    $maison = Lire 'maison.json'
+    $personne = [string](Prop $a 'personne'); $idPc = [string](Prop $a 'id')
+    $siens = @(@(Prop $maison 'appareils' @()) | Where-Object { [string](Prop $_ 'id') -eq $idPc -or ($personne -and [string](Prop $_ 'personne') -eq $personne) })
+    if ($siens.Count -eq 0) { $siens = @($a) }
+    if ($null -eq (Prop $siens[0] 'temps')) {
+        $Contenu.Children.Add((Txt 'Le temps d''écran détaillé arrive avec la prochaine mise à jour de Home Assistant.' 12 'Texte3')) | Out-Null
+        return
+    }
+    $aujourdhui = (Get-Date).ToString('yyyy-MM-dd')
+    # --- Aujourd'hui : le total, les heures, les applis.
+    $heures = New-Object 'double[]' 24; $applisJour = @{}; $totalJour = 0.0; $parAppareil = @()
+    $jours = [ordered]@{}; $cumul = @{}; $depuis = 0
+    foreach ($x in $siens) {
+        $t = Prop $x 'temps'
+        foreach ($j in @(Prop $t 'jours' @())) {
+            $cle = [string](Prop $j 'jour'); $actif = [double](Prop $j 'actif' 0)
+            if (-not $jours.Contains($cle)) { $jours[$cle] = 0.0 }
+            $jours[$cle] = [double]$jours[$cle] + $actif
+            if ($cle -ne $aujourdhui) { continue }
+            $totalJour += $actif
+            if ($actif -ge 60) { $parAppareil += ('{0} : {1}' -f [string](Prop $x 'nom'), (Duree $actif)) }
+            $h = @(Prop $j 'heures' @()); for ($k = 0; $k -lt 24 -and $k -lt $h.Count; $k++) { $heures[$k] += [double]$h[$k] }
+            foreach ($ap in @(Prop $j 'apps' @())) { $lib = [string](Prop $ap 'libelle'); if (-not $applisJour.ContainsKey($lib)) { $applisJour[$lib] = 0.0 }; $applisJour[$lib] += [double](Prop $ap 'secondes' 0) }
+        }
+        foreach ($ap in @(Prop $t 'total' @())) {
+            $lib = [string](Prop $ap 'libelle'); if (-not $cumul.ContainsKey($lib)) { $cumul[$lib] = 0.0 }; $cumul[$lib] += [double](Prop $ap 'secondes' 0)
+            $d = [long](Prop $ap 'depuis' 0); if ($d -gt 0 -and ($depuis -eq 0 -or $d -lt $depuis)) { $depuis = $d }
+        }
+    }
+    $Contenu.Children.Add((Section 'Aujourd''hui')) | Out-Null
+    $c = Carte; $sp = $c.Child
+    $sp.Children.Add((Txt (Duree $totalJour) 26 'Texte' $true)) | Out-Null
+    $sp.Children.Add((Txt $(if ($parAppareil.Count) { 'd''écran actif   ·   ' + ($parAppareil -join '   ·   ') } else { 'd''écran actif' }) 12 'Texte2' $false '0,0,0,12')) | Out-Null
+    # Les vingt-quatre heures : une case par heure, d'autant plus pleine que l'heure a été utilisée.
+    $bande = New-Object System.Windows.Controls.Primitives.UniformGrid; $bande.Rows = 1; $bande.Columns = 24; $bande.Height = 34
+    for ($k = 0; $k -lt 24; $k++) {
+        $case = New-Object System.Windows.Controls.Grid; $case.Margin = [System.Windows.Thickness]::new(1, 0, 1, 0)
+        $fondCase = New-Object System.Windows.Controls.Border; $fondCase.Background = (Pinceau 'Haute'); $fondCase.CornerRadius = [System.Windows.CornerRadius]::new(3)
+        $pleinCase = New-Object System.Windows.Controls.Border; $pleinCase.Background = (Pinceau 'Or'); $pleinCase.CornerRadius = [System.Windows.CornerRadius]::new(3)
+        $pleinCase.VerticalAlignment = 'Bottom'; $pleinCase.Height = [Math]::Round(34 * [Math]::Min(1.0, $heures[$k] / 3600.0))
+        $case.ToolTip = ('{0} h : {1}' -f $k, (Duree $heures[$k]))
+        $case.Children.Add($fondCase) | Out-Null; if ($heures[$k] -ge 30) { $case.Children.Add($pleinCase) | Out-Null }
+        $bande.Children.Add($case) | Out-Null
+    }
+    $sp.Children.Add($bande) | Out-Null
+    $reperes = New-Object System.Windows.Controls.Primitives.UniformGrid; $reperes.Rows = 1; $reperes.Columns = 4; $reperes.Margin = [System.Windows.Thickness]::new(0, 3, 0, 8)
+    foreach ($lbl in @('0 h', '6 h', '12 h', '18 h')) { $reperes.Children.Add((Txt $lbl 10 'Texte3')) | Out-Null }
+    $sp.Children.Add($reperes) | Out-Null
+    $triJour = @($applisJour.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10)
+    if ($triJour.Count -eq 0) { $sp.Children.Add((Txt 'Le détail par appli se remplit à partir de maintenant : rien encore pour aujourd''hui.' 12 'Texte3')) | Out-Null }
+    else { $maxi = [double]$triJour[0].Value; foreach ($e in $triJour) { $sp.Children.Add((BarreTemps ([string]$e.Key) '' ([double]$e.Value) $maxi)) | Out-Null } }
+    $Contenu.Children.Add($c) | Out-Null
+    # --- Les sept derniers jours.
+    $Contenu.Children.Add((Section 'Sept derniers jours')) | Out-Null
+    $c = Carte; $sp = $c.Child
+    $maxiJ = 1.0; foreach ($v in $jours.Values) { if ([double]$v -gt $maxiJ) { $maxiJ = [double]$v } }
+    $fr = [System.Globalization.CultureInfo]::GetCultureInfo('fr-FR')
+    foreach ($cle in @($jours.Keys | Sort-Object -Descending | Select-Object -First 7)) {
+        $nomJour = $cle; try { $dj = [datetime]::ParseExact($cle, 'yyyy-MM-dd', $null); $nomJour = $dj.ToString('dddd d MMMM', $fr); $nomJour = $nomJour.Substring(0, 1).ToUpper() + $nomJour.Substring(1) } catch { }
+        $sp.Children.Add((BarreTemps $nomJour '' ([double]$jours[$cle]) $maxiJ)) | Out-Null
+    }
+    if ($jours.Count -eq 0) { $sp.Children.Add((Txt 'Aucun relevé ces derniers jours.' 12 'Texte3')) | Out-Null }
+    $Contenu.Children.Add($c) | Out-Null
+    # --- Le cumul.
+    $titreCumul = 'Depuis le début'
+    if ($depuis -gt 0) { try { $titreCumul = 'Depuis le ' + ([DateTimeOffset]::FromUnixTimeSeconds($depuis).LocalDateTime.ToString('d MMMM', $fr)) } catch { } }
+    $Contenu.Children.Add((Section $titreCumul)) | Out-Null
+    $c = Carte; $sp = $c.Child
+    $triCumul = @($cumul.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 15)
+    if ($triCumul.Count -eq 0) { $sp.Children.Add((Txt 'Rien de relevé pour l''instant.' 12 'Texte3')) | Out-Null }
+    else { $maxi = [double]$triCumul[0].Value; foreach ($e in $triCumul) { $sp.Children.Add((BarreTemps ([string]$e.Key) '' ([double]$e.Value) $maxi)) | Out-Null } }
+    $Contenu.Children.Add($c) | Out-Null
 }
 
 function VuePlanning($a) {
