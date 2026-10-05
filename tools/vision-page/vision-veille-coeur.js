@@ -493,6 +493,7 @@ class VisionVeillePanel extends HTMLElement {
   }
 
   _percer(racine) {
+    if (this._sans && this._sans.has("percer")) return;
     if (!this._feuille) { try { this._feuille = new CSSStyleSheet(); this._feuille.replaceSync(this._regles()); } catch (e) { this._feuille = false; } }
     if (!this._feuille) return;
     const voir = (noeud) => {
@@ -880,7 +881,7 @@ class VisionVeillePanel extends HTMLElement {
           bloc.className = "section";
           bloc._span = Math.max(1, Math.min(4, s.span || 1));
           if (s.titre) { const t = document.createElement("div"); t.className = "sec"; t.textContent = s.titre; bloc.appendChild(t); }
-          for (const c of s.cartes) { const el = this._carte(c.config); if (el && !this._sans.has(el.localName)) bloc.appendChild(el); }
+          for (const c of s.cartes) { const el = this._carte(c.config); if (el && !this._sans.has(el.localName) && !this._sans.has("cartes")) bloc.appendChild(el); else if (this._sans.has("cartes")) { const x = document.createElement("div"); x.textContent = "carte"; x.style.cssText = "height:120px;background:var(--v-carte);border-radius:12px"; bloc.appendChild(x); } }
           if (bloc.children.length) blocs.push(bloc);
         }
         // Écran en hauteur (téléphone, tablette debout) : les sections passent les unes sous les autres, comme
@@ -899,6 +900,7 @@ class VisionVeillePanel extends HTMLElement {
       scene.appendChild(tete);
       const cadre = document.createElement("div");
       cadre.className = "cadre";
+      if (this._sans.has("cadre")) cadre.style.overflow = "visible";
       cadre.appendChild(e._colonnes);
       scene.appendChild(cadre);
       tete.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   ${e.page + 1}/${e.pages}` : "");
