@@ -568,6 +568,7 @@ class VisionVeillePanel extends HTMLElement {
         /* Anti-marquage : tout dérive de quelques points au fil des minutes (écrans OLED, vieilles dalles). */
         @keyframes derive { 0% { transform: translate(0, 0); } 25% { transform: translate(.5vw, .35vh); } 50% { transform: translate(0, .7vh); } 75% { transform: translate(-.5vw, .35vh); } 100% { transform: translate(0, 0); } }
         .scene, .marque { animation: derive 420s linear infinite; }
+        :host([data-fixe]) .scene, :host([data-fixe]) .marque { animation: none; }
         .annonce { position: absolute; right: 3.5vw; bottom: 2.6vh; z-index: 6; max-width: 60vw; padding: .9vh 2.2vh; border-radius: 99px; background: var(--v-carte); color: var(--v-texte2);
                    font-size: min(2.4vh, 3.6vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .5s ease; }
         .annonce::before { content: ""; display: inline-block; width: 1.1vh; height: 1.1vh; border-radius: 50%; background: var(--v-accent); margin-right: 1.2vh; }
@@ -817,8 +818,12 @@ class VisionVeillePanel extends HTMLElement {
     if (this._sondeLancee || !this._q || this._q.get("diag") !== "3") return;
     this._sondeLancee = true;
     let avant = performance.now();
-    const pas = (t) => { const d = t - avant; avant = t; if (d > 50) this._note(`image ${Math.round(d)} ms  [${this._etape || "-"}]`); requestAnimationFrame(pas); };
+    // Un bilan toutes les deux secondes, pour que la sonde ne pèse pas elle-même sur l'affichage.
+    let n = 0, lentes = 0, pire = 0, etapes = new Set();
+    const pas = (t) => { const d = t - avant; avant = t; n++; if (d > 34) { lentes++; pire = Math.max(pire, d); etapes.add(this._etape || "-"); } requestAnimationFrame(pas); };
     requestAnimationFrame(pas);
+    setInterval(() => { this._note(`${n} images, ${lentes} lentes, pire ${Math.round(pire)} ms  [${[...etapes].join(" ")}]`); n = 0; lentes = 0; pire = 0; etapes = new Set(); }, 2000);
+    if (this._q.get("derive") === "0") this.setAttribute("data-fixe", "1");
   }
 
   async _montrer(reste) {
@@ -898,7 +903,7 @@ class VisionVeillePanel extends HTMLElement {
         const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
         for (const el of c.querySelectorAll(".section > *")) {
           if (!el._largeurLibre) continue;
-          try { this._note(`${el.localName} : ${el.getGridOptions ? JSON.stringify(el.getGridOptions()) : "sans largeur propre"}`); } catch (err) { this._note(`${el.localName} : ${err}`); }
+          if (this._q.get("diag") === "1") { try { this._note(`${el.localName} : ${el.getGridOptions ? JSON.stringify(el.getGridOptions()) : "sans largeur propre"}`); } catch (err) { this._note(`${el.localName} : ${err}`); } }
           try { const g = el.getGridOptions && el.getGridOptions(); if (g && typeof g.columns === "number") el.style.gridColumn = `span ${Math.max(3, Math.min(12, g.columns))}`; } catch (err) { /* reste pleine largeur */ }
         }
         await pause(120);
