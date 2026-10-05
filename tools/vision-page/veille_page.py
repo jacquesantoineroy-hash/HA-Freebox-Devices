@@ -122,15 +122,19 @@ def _cartes_de(vue: dict[str, Any]) -> list[dict[str, Any]]:
     return sections
 
 
-async def page(hass: HomeAssistant, coord, pc: dict[str, Any] | None, ecran: str) -> dict[str, Any]:
+async def page(hass: HomeAssistant, coord, pc: dict[str, Any] | None, ecran: str, essai: str = "") -> dict[str, Any]:
     from . import veille_tableaux as vt
 
     ecran = ecran if ecran in veille_dash.ECRANS else "tele"
     qui = vt.profil(hass, coord, pc)
     tableaux: list[dict[str, Any]] = []
-    for adresse in list((getattr(coord.store, "veille_dash", None) or {}).keys()):
+    # « essai » : montrer un tableau de bord précis, tel quel, sans qu'il soit rendu disponible (mise au point des styles).
+    adresses = [essai] if essai else list((getattr(coord.store, "veille_dash", None) or {}).keys())
+    for adresse in adresses:
         choix = veille_dash._choix(coord, adresse)
-        if not choix["actif"] or not vt._vise(choix, ecran, qui):
+        if essai:
+            choix = {**choix, "actif": True, "vues": {}, "cartes": {}}
+        elif not choix["actif"] or not vt._vise(choix, ecran, qui):
             continue
         config = await veille_dash._config(hass, adresse)
         vues = [v for v in (config or {}).get("views") or [] if isinstance(v, dict)]
@@ -254,7 +258,7 @@ class PcParentalVeillePageView(HomeAssistantView):
         if coord is None:
             return self.json({"ok": False, "error": "loading"}, status_code=503)
         pc = coord.store.get(str(request.query.get("id") or ""))
-        return self.json(await page(self.hass, coord, pc, str(request.query.get("ecran") or "tele")))
+        return self.json(await page(self.hass, coord, pc, str(request.query.get("ecran") or "tele"), str(request.query.get("essai") or "")[:80]))
 
 
 def _module(hass: HomeAssistant) -> str:

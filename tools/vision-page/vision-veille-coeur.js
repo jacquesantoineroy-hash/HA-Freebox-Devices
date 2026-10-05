@@ -178,7 +178,7 @@ class VisionVeillePanel extends HTMLElement {
     let page = null, aides = null;
     try {
       [page, aides] = await Promise.all([
-        this._hass.callApi("GET", `pc_parental/veille/page?id=${encodeURIComponent(this._q.get("id") || "")}&ecran=${encodeURIComponent(this._q.get("ecran") || "tele")}`).then((r) => { this._note("page : reçue"); return r; }),
+        this._hass.callApi("GET", `pc_parental/veille/page?id=${encodeURIComponent(this._q.get("id") || "")}&ecran=${encodeURIComponent(this._q.get("ecran") || "tele")}&essai=${encodeURIComponent(this._q.get("essai") || "")}`).then((r) => { this._note("page : reçue"); return r; }),
         this._ressources(),
       ]);
     } catch (e) { page = null; this._note("erreur : " + e); }
@@ -198,6 +198,7 @@ class VisionVeillePanel extends HTMLElement {
         // Une section dont il ne reste que le titre (toutes ses cartes sont décochées) disparaît avec lui.
         if (cartes.some((c) => c.config && c.config.type !== "heading")) sections.push({ titre: s.titre, span: s.span || 1, cartes });
       }
+      if (parseInt(this._q.get("duree") || "0", 10) > 0) t.duree = parseInt(this._q.get("duree"), 10);
       if (sections.length) liste.push({ genre: "tableau", duree: t.duree || 25, titre: t.titre, colonnes: t.colonnes || 4, sections, pages: 1, page: 0 });
     }
     if (!liste.length) liste.push({ genre: "horloge", duree: 30 });
