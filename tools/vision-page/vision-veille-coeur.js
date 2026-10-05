@@ -826,7 +826,7 @@ class VisionVeillePanel extends HTMLElement {
     const pas = (t) => { const d = t - avant; avant = t; n++; if (d > 34) { lentes++; pire = Math.max(pire, d); etapes.add(this._etape || "-"); } requestAnimationFrame(pas); };
     requestAnimationFrame(pas);
     const bilan = [];
-    setInterval(() => { bilan.push(`${n}/${lentes}${etapes.has("pose") ? "p" : ""}`); document.title = "VISION " + bilan.join(" "); this._note(`${n} images, ${lentes} lentes, pire ${Math.round(pire)} ms  [${[...etapes].join(" ")}]`); n = 0; lentes = 0; pire = 0; etapes = new Set(); }, 2000);
+    setInterval(() => { bilan.push(`${n}/${lentes}${etapes.has("pose") ? "p" : ""}`); if (!this._sansBilan || this._q.get("anim") !== "1") document.title = "VISION " + bilan.join(" "); this._note(`${n} images, ${lentes} lentes, pire ${Math.round(pire)} ms  [${[...etapes].join(" ")}]`); n = 0; lentes = 0; pire = 0; etapes = new Set(); }, 2000);
     if (this._q.get("derive") === "0") this.setAttribute("data-fixe", "1");
     // D'où vient le temps perdu : script (lequel), calcul des styles et de la mise en page, ou dessin.
     try {
@@ -970,7 +970,11 @@ class VisionVeillePanel extends HTMLElement {
     if (this._q.get("diag") === "3" && e.genre === "tableau") setTimeout(() => {
       try {
         const vus = {};
-        for (const a of document.getAnimations()) { if (a.playState !== "running") continue; const c = a.effect && a.effect.target; const hote = c && c.getRootNode && c.getRootNode().host; const k = `${a.animationName || a.transitionProperty || "?"} sur ${c ? c.localName + (c.className && c.className.baseVal === undefined ? "." + c.className : "") : "?"} dans ${hote ? hote.localName : "page"}`; vus[k] = (vus[k] || 0) + 1; }
+        const toutes = [...document.getAnimations()];
+        const fouiller = (n) => { if (n.shadowRoot) { try { toutes.push(...n.shadowRoot.getAnimations()); } catch (err) { /* rien */ } for (const x of n.shadowRoot.querySelectorAll("*")) fouiller(x); } };
+        for (const x of document.querySelectorAll("*")) fouiller(x);
+        for (const a of new Set(toutes)) { if (a.playState !== "running") continue; const c = a.effect && a.effect.target; const hote = c && c.getRootNode && c.getRootNode().host; const k = `${a.animationName || a.transitionProperty || "?"} sur ${c ? c.localName + (c.className && c.className.baseVal === undefined ? "." + c.className : "") : "?"} dans ${hote ? hote.localName : "page"}`; vus[k] = (vus[k] || 0) + 1; }
+        document.title = "VISION ANIM " + (Object.entries(vus).map(([k, n]) => `${n} x ${k}`).join(" ; ") || "aucune"); this._sansBilan = true;
         this._note("animations : " + (Object.entries(vus).map(([k, n]) => `${n} x ${k}`).join("\n          ") || "aucune"));
       } catch (err) { this._note("animations : " + err); }
     }, 3000);
