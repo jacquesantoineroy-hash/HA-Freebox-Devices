@@ -138,6 +138,9 @@ class VisionVeillePanel extends HTMLElement {
     // La carte du lieu : des teintes calmes, proches du fond, dans les deux modes.
     this.style.setProperty("--map-filter", this._sombre ? "invert(0.92) hue-rotate(180deg) brightness(0.9) contrast(0.88) saturate(0.35)" : "saturate(0.55) contrast(0.94) sepia(0.12)");
     this._feuille = null;
+    // Home Assistant passe lui-même en clair ou en sombre, comme le thème de l'appareil : ses composants
+    // (interrupteurs, curseurs, carte du lieu) choisissent alors les bonnes nuances d'eux-mêmes.
+    try { this.dispatchEvent(new CustomEvent("settheme", { detail: { dark: this._sombre }, bubbles: true, composed: true })); } catch (e) { /* le thème du compte reste */ }
     this.setAttribute("data-style", this._style);
     for (const [k, v] of Object.entries(vars)) this.style.setProperty(k, v);
     document.body.style.background = fond;
@@ -164,11 +167,8 @@ class VisionVeillePanel extends HTMLElement {
       :host(ha-full-calendar) .header { display: none !important; }
       :host(hui-todo-list-card) .addRow { display: none !important; }
       .leaflet-top, .leaflet-control-zoom { display: none !important; }
-      :host(hui-media-control-card) .background { filter: none !important; }
-      :host(hui-media-control-card) .background.off .color-block, :host(hui-media-control-card) .background.no-image .color-block,
-      :host(hui-media-control-card) .background.unavailable .color-block { background-color: var(--v-moyen) !important; }
-      :host(hui-media-control-card) .background.off .color-gradient, :host(hui-media-control-card) .background.no-image .color-gradient { background-image: none !important; }
-      :host(hui-media-control-card) .player { color: var(--v-texte) !important; }
+      :host(hui-media-control-card) .background.off, :host(hui-media-control-card) .background.unavailable { display: none !important; }
+      :host(hui-media-control-card) .background.off ~ .player, :host(hui-media-control-card) .background.unavailable ~ .player { color: var(--v-texte) !important; }
       :host(hui-media-control-card) .controls { display: none !important; }
       ${net ? `
       .card-header { text-transform: uppercase; letter-spacing: .16em; font-size: 15px !important; font-weight: 400 !important; color: var(--v-accent) !important; line-height: 1.4 !important; padding-bottom: 8px !important; }
