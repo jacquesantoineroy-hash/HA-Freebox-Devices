@@ -38,7 +38,8 @@ Champs ajoutés par l'agent Android : `platform: "android"`, `protections{}`,
 gradle :app:assembleRelease -x lintVitalRelease
 ```
 
-La clé de signature est dans `vision-release.jks` (mot de passe : `visionmaison`).
+La clé de signature est `vision-release.jks`. Elle n'est pas dans ce dépôt, et son mot de passe
+non plus : ils se fournissent par `keystore.properties`, ignoré par git.
 Garder la même clé pour que les mises à jour s'installent par-dessus.
 
 ## Installer
