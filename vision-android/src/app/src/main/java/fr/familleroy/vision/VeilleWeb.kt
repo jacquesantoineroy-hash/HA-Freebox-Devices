@@ -187,6 +187,7 @@ object PageVeille {
         val masques = ArrayList<String>()
         val cartes = ArrayList<String>()
         val durees = ArrayList<String>()
+        val figees = ArrayList<String>()
         if (!Local.actif(ctx, "horloge", true)) masques.add("horloge")
         Local.duree(ctx, "horloge", 0).let { if (it > 0) durees.add("horloge:$it") }
         val liste = Local.listeWeb(ctx)
@@ -195,6 +196,7 @@ object PageVeille {
             val cle = Local.cleTableau("dash", id)
             if (!Local.actif(ctx, cle, true)) masques.add(id)
             Local.cartesMasquees(ctx, cle).forEach { cartes.add("$id|$it") }
+            Local.cartesFigees(ctx, cle).forEach { figees.add("$id|$it") }
             Local.duree(ctx, cle, 0).let { if (it > 0) durees.add("$id:$it") }
         }
         fun e(s: String) = URLEncoder.encode(s, "UTF-8")
@@ -202,7 +204,7 @@ object PageVeille {
         val q = "id=${e(cfg.id)}&ecran=$ecran&dec=0" +
             "&fond=${hex(t.fond)}&carte=${hex(carte)}&texte=${hex(t.encre)}&texte2=${hex(t.encre2)}&accent=${hex(accent)}&ligne=${hex(Palette.melanger(carte, t.encre, 0.18f))}" +
             "&masques=${e(masques.joinToString(","))}&cartes=${e(cartes.joinToString(","))}&durees=${e(durees.joinToString(","))}" +
-            "&horloge=${Themes.cle(t.nom)}&style=${Local.styleCartes(ctx)}&cfond=${if (Local.fondCartes(ctx)) 1 else 0}&ccontour=${if (Local.contourCartes(ctx)) 1 else 0}&anim=${if (Local.animerCartes(ctx)) 1 else 0}"
+            "&horloge=${Themes.cle(t.nom)}&style=${Local.styleCartes(ctx)}&cfond=${if (Local.fondCartes(ctx)) 1 else 0}&ccontour=${if (Local.contourCartes(ctx)) 1 else 0}&anim=${if (Local.animerCartes(ctx)) 1 else 0}&figees=${e(figees.joinToString(","))}"
         return "$base/api/pc_parental/veille/entree#t=$jeton&q=${e(q).replace("+", "%20")}"
     }
 }

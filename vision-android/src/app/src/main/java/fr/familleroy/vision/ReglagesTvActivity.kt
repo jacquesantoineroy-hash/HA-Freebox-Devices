@@ -285,6 +285,21 @@ class ReglagesTvActivity : Activity() {
         AlertDialog.Builder(this).setTitle(l.nom.substringBefore("  ·"))
             .setMultiChoiceItems(noms.toTypedArray(), coches) { _, i, c -> coches[i] = c }
             .setPositiveButton("Valider") { _, _ -> Local.poserCartesMasquees(this, l.cle, cles.filterIndexed { i, _ -> !coches[i] }.flatten().distinct()); repeindre() }
+            .setNegativeButton("Annuler", null)
+            .apply { if (Local.veilleWeb(this@ReglagesTvActivity) && Local.animerCartes(this@ReglagesTvActivity)) setNeutralButton("Animations") { _, _ -> choisirAnimations(l) } }
+            .show()
+    }
+
+    /** Carte par carte : animée (elle arrive, compte, se trace) ou fixe (elle est là d'un coup). */
+    private fun choisirAnimations(l: Ligne) {
+        val cartes = l.cartes ?: return
+        val cles = (0 until cartes.length()).map { i -> val o = cartes.getJSONObject(i); val a = o.optJSONArray("cles"); listOf(o.optString("cle")) + (0 until (a?.length() ?: 0)).map { a!!.optString(it) } }
+        val noms = (0 until cartes.length()).map { val o = cartes.getJSONObject(it); val s = o.optString("section"); if (s.isEmpty()) o.optString("nom") else "$s · ${o.optString("nom")}" }
+        val figees = Local.cartesFigees(this, l.cle)
+        val coches = BooleanArray(cles.size) { !masquee(cartes.getJSONObject(it), figees) }
+        AlertDialog.Builder(this).setTitle("Cartes animées · ${l.nom.substringBefore("  ·")}")
+            .setMultiChoiceItems(noms.toTypedArray(), coches) { _, i, c -> coches[i] = c }
+            .setPositiveButton("Valider") { _, _ -> Local.poserCartesFigees(this, l.cle, cles.filterIndexed { i, _ -> !coches[i] }.flatten().distinct()); repeindre() }
             .setNegativeButton("Annuler", null).show()
     }
 

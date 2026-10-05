@@ -83,7 +83,7 @@ $script:Themes = [ordered]@{
 }
 $script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
 function SvReglages() {
-    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; fondCartes = $true; contourCartes = $false; animer = $true; masques = @(); cartes = @(); verrou = $false; codeSel = ''; codeHash = '' }
+    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; fondCartes = $true; contourCartes = $false; animer = $true; masques = @(); cartes = @(); figees = @(); verrou = $false; codeSel = ''; codeHash = '' }
     try {
         if (Test-Path $script:SvFichier) {
             $lu = Get-Content $script:SvFichier -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -98,6 +98,7 @@ function SvReglages() {
             $r.codeSel = [string](Prop $lu 'codeSel' ''); $r.codeHash = [string](Prop $lu 'codeHash' '')
             $r.masques = @(@(Prop $lu 'masques' @()) | ForEach-Object { [string]$_ })
             $r.cartes = @(@(Prop $lu 'cartes' @()) | ForEach-Object { [string]$_ })
+            $r.figees = @(@(Prop $lu 'figees' @()) | ForEach-Object { [string]$_ })
         }
     } catch { }
     return $r
@@ -106,7 +107,7 @@ function SvEcrire($r) {
     try {
         $d = Split-Path $script:SvFichier -Parent
         if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; fondCartes = [bool]$r.fondCartes; contourCartes = [bool]$r.contourCartes; animer = [bool]$r.animer; masques = @($r.masques); cartes = @($r.cartes); verrou = [bool]$r.verrou; codeSel = [string]$r.codeSel; codeHash = [string]$r.codeHash } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
+        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; fondCartes = [bool]$r.fondCartes; contourCartes = [bool]$r.contourCartes; animer = [bool]$r.animer; masques = @($r.masques); cartes = @($r.cartes); figees = @($r.figees); verrou = [bool]$r.verrou; codeSel = [string]$r.codeSel; codeHash = [string]$r.codeHash } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
     } catch { }
 }
 $script:Pal = $script:Themes[(SvReglages).theme]
@@ -1227,9 +1228,9 @@ function SvOuvrirWeb() {
     $tous = @([System.Windows.Forms.Screen]::AllScreens | Sort-Object { -not $_.Primary })
     $depart = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     foreach ($ecran in $tous) {
-        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}&cfond={11}&ccontour={12}&ecrans={13}&t0={14}&horloge={15}&anim={16}' -f `
+        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}&cfond={11}&ccontour={12}&ecrans={13}&t0={14}&horloge={15}&anim={16}&figees={17}' -f `
             [uri]::EscapeDataString([string](Prop $acces 'id' '')), $j, $pal.Fond.Substring(3), $pal.Carte.Substring(3), $pal.Texte.Substring(3), $pal.Texte2.Substring(3), $pal.Or.Substring(3), $pal.Ligne.Substring(3), `
-            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 }), $tous.Count, $depart, [string]$pal.Horloge, $(if ($r.animer) { 1 } else { 0 })
+            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 }), $tous.Count, $depart, [string]$pal.Horloge, $(if ($r.animer) { 1 } else { 0 }), [uri]::EscapeDataString((@($r.figees) -join ','))
         $adresse = '{0}/api/pc_parental/veille/entree#t={1}&q={2}' -f $base, $jeton, [uri]::EscapeDataString($q)
         $profilEdge = Join-Path $env:LOCALAPPDATA ('Vision\veille-edge-{0}' -f $j)
         # Une fenêtre d'application en mode borne par écran, placée sur le sien ; en navigation privée, pour
@@ -1357,6 +1358,19 @@ function Coche([string]$t, [bool]$etat, $action, $tag = $null) {
     return $c
 }
 
+# Une carte dans la liste des tableaux : à gauche « affichée », à droite « animée » (quand les animations sont en service).
+function LigneCarte([string]$nom, [string]$cle, $r) {
+    $montre = Coche $nom (-not ($r.cartes -contains $cle)) { param($s, $e) $rr = SvReglages; $c = [string]$s.Tag; $rr.cartes = @($rr.cartes | Where-Object { $_ -ne $c }); if (-not $s.IsChecked) { $rr.cartes += $c }; SvEcrire $rr } $cle
+    if (-not $r.animer) { return $montre }
+    $rang = New-Object System.Windows.Controls.DockPanel
+    $anime = Coche 'animée' (-not ($r.figees -contains $cle)) { param($s, $e) $rr = SvReglages; $c = [string]$s.Tag; $rr.figees = @($rr.figees | Where-Object { $_ -ne $c }); if (-not $s.IsChecked) { $rr.figees += $c }; SvEcrire $rr } $cle
+    $anime.Opacity = 0.8; $anime.Margin = [System.Windows.Thickness]::new(14, 6, 0, 6)
+    [System.Windows.Controls.DockPanel]::SetDock($anime, [System.Windows.Controls.Dock]::Right)
+    $rang.Children.Add($anime) | Out-Null
+    $rang.Children.Add($montre) | Out-Null
+    return $rang
+}
+
 # Changer de thème : les couleurs sont posées à la création de la fenêtre, on la recrée donc
 # au même endroit et dans le même état, sans que rien ne se ferme.
 function ChangerTheme([string]$nom) {
@@ -1397,7 +1411,7 @@ function PageReglages() {
     $carteT.Child.Children.Add($styles) | Out-Null
     $carteT.Child.Children.Add((Coche 'Un fond sous les cartes' ([bool]$r.fondCartes) { param($s, $e) $rr = SvReglages; $rr.fondCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
     $carteT.Child.Children.Add((Coche 'Un contour autour des cartes' ([bool]$r.contourCartes) { param($s, $e) $rr = SvReglages; $rr.contourCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
-    $carteT.Child.Children.Add((Coche 'Animer les cartes (arrivée, jauges, courbes, nombres)' ([bool]$r.animer) { param($s, $e) $rr = SvReglages; $rr.animer = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
+    $carteT.Child.Children.Add((Coche 'Animer les cartes (arrivée, jauges, courbes, nombres) ; le choix carte par carte est dans la liste plus bas' ([bool]$r.animer) { param($s, $e) $rr = SvReglages; $rr.animer = [bool]$s.IsChecked; SvEcrire $rr; Rafraichir })) | Out-Null
     $Contenu.Children.Add($carteT) | Out-Null
 
     $Contenu.Children.Add((Section 'Accès à Vision')) | Out-Null
@@ -1474,7 +1488,7 @@ function PageReglages() {
                 $sec = [string](Prop $cc 'section' '')
                 if ($sec -ne $sectionVue) { $sectionVue = $sec; if ($sec) { $lot.Children.Add((Txt $sec.ToUpper() 10 'Texte3' $true '0,6,0,2')) | Out-Null } }
                 $cleC = $idTab + '|' + [string](Prop $cc 'cle')
-                $lot.Children.Add((Coche ([string](Prop $cc 'nom' 'Carte')) (-not ($r.cartes -contains $cleC)) { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.cartes = @($rr.cartes | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.cartes += $cle }; SvEcrire $rr } $cleC)) | Out-Null
+                $lot.Children.Add((LigneCarte ([string](Prop $cc 'nom' 'Carte')) $cleC $r)) | Out-Null
             }
             $carteL.Child.Children.Add($lot) | Out-Null
         }
@@ -1508,7 +1522,7 @@ function PageReglages() {
                 foreach ($cc in $vues.Keys) {
                     $nomC = $vues[$cc].nom; if ($vues[$cc].n -gt 1) { $nomC = '{0} (+{1})' -f $nomC, ($vues[$cc].n - 1) }
                     $cleC = $idTab + '|' + $cc
-                    $lot.Children.Add((Coche $nomC (-not ($r.cartes -contains $cleC)) { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.cartes = @($rr.cartes | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.cartes += $cle }; SvEcrire $rr } $cleC)) | Out-Null
+                    $lot.Children.Add((LigneCarte $nomC $cleC $r)) | Out-Null
                 }
             }
             $carteL.Child.Children.Add($lot) | Out-Null

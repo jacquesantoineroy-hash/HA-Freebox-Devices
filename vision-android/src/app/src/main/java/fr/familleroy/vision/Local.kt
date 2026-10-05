@@ -164,6 +164,20 @@ object Local {
         return (0 until a.length()).map { a.optString(it) }.toSet()
     }
 
+    /** Les cartes d'un tableau de bord qui arrivent sans s'animer. */
+    fun cartesFigees(ctx: Context, cle: String): Set<String> {
+        val a = choix(ctx).optJSONObject(cle)?.optJSONArray("figees") ?: return emptySet()
+        return (0 until a.length()).map { a.optString(it) }.toSet()
+    }
+
+    fun poserCartesFigees(ctx: Context, cle: String, figees: Collection<String>) {
+        val c = choix(ctx)
+        val o = c.optJSONObject(cle) ?: JSONObject()
+        o.put("figees", JSONArray(figees.toList()))
+        c.put(cle, o)
+        p(ctx).edit().putString("tableaux", c.toString()).apply(); toucher()
+    }
+
     fun poserCartesMasquees(ctx: Context, cle: String, masquees: Collection<String>) {
         val c = choix(ctx)
         val o = c.optJSONObject(cle) ?: JSONObject()
