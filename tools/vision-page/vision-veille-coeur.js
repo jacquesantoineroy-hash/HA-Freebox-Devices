@@ -508,7 +508,7 @@ class VisionVeillePanel extends HTMLElement {
 
   // Avec « diag=1 » dans l'adresse, les temps de chargement s'écrivent en haut de l'écran.
   _note(texte) {
-    if (!this._q || this._q.get("diag") !== "1") return;
+    if (!this._q || !["1", "3"].includes(this._q.get("diag"))) return;
     let d = this.shadowRoot.querySelector(".diag");
     if (!d) { d = document.createElement("div"); d.className = "diag"; d.style.cssText = "position:absolute;left:1vw;top:1vh;z-index:9;font:14px Consolas,monospace;color:#fff;white-space:pre"; this.shadowRoot.appendChild(d); }
     d.textContent += `${((Date.now() - this._debut) / 1000).toFixed(1)} s  ${texte}\n`;
@@ -812,8 +812,19 @@ class VisionVeillePanel extends HTMLElement {
     return this._fige;
   }
 
+  // Avec « diag=3 », chaque image qui tarde (plus de 50 ms) s'écrit avec l'étape en cours : c'est ce qui se voit comme une secousse.
+  _sonde() {
+    if (this._sondeLancee || !this._q || this._q.get("diag") !== "3") return;
+    this._sondeLancee = true;
+    let avant = performance.now();
+    const pas = (t) => { const d = t - avant; avant = t; if (d > 50) this._note(`image ${Math.round(d)} ms  [${this._etape || "-"}]`); requestAnimationFrame(pas); };
+    requestAnimationFrame(pas);
+  }
+
   async _montrer(reste) {
     if (this._dort) return;
+    this._sonde();
+    this._etape = "cartes";
     const passage = this._passage = (this._passage || 0) + 1;
     let cran = 0;
     if (this._synchro) {
@@ -877,8 +888,10 @@ class VisionVeillePanel extends HTMLElement {
       const c = e._colonnes;
       if (e.page === 0) {
         // Le temps que les cartes se dessinent, puis on compte les écrans nécessaires.
+        this._etape = "attente";
         await pause(900);
         if (passage !== this._passage) { scene.remove(); return; }
+        this._etape = "mesure";
         this._percer(c);
         await pause(300);
         if (passage !== this._passage) { scene.remove(); return; }
@@ -931,6 +944,7 @@ class VisionVeillePanel extends HTMLElement {
       }
     }
     if (e.genre === "tableau") { this._percer(e._colonnes); for (const t of [700, 2000, 4500]) setTimeout(() => this._percer(e._colonnes), t); }
+    this._etape = "fondu"; setTimeout(() => { if (passage === this._passage) this._etape = "pose"; }, 800);
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
     if (this._fige) return;
