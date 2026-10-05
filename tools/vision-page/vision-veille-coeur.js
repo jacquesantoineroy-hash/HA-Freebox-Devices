@@ -509,6 +509,7 @@ class VisionVeillePanel extends HTMLElement {
   // Avec « diag=1 » dans l'adresse, les temps de chargement s'écrivent en haut de l'écran.
   _note(texte) {
     if (!this._q || !["1", "3"].includes(this._q.get("diag"))) return;
+    if (this._q.get("diag") === "3") console.log(`VISION ${((Date.now() - this._debut) / 1000).toFixed(1)} s  ${texte}`);
     let d = this.shadowRoot.querySelector(".diag");
     if (!d) { d = document.createElement("div"); d.className = "diag"; d.style.cssText = "position:absolute;left:1vw;top:1vh;z-index:9;font:14px Consolas,monospace;color:#fff;white-space:pre"; this.shadowRoot.appendChild(d); }
     d.textContent += `${((Date.now() - this._debut) / 1000).toFixed(1)} s  ${texte}\n`;
