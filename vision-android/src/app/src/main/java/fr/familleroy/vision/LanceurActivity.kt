@@ -1247,6 +1247,9 @@ class LanceurActivity : Activity() {
         cadre.addView(c, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         cadre.isClickable = true
         cadre.setOnLongClickListener { v -> soulever(v, c, pl.cle) }
+        // Un widget qui réagit au toucher (caméra, demandes…) garde l'appui pour lui : sans ceci, l'appui long
+        // n'arrivait jamais au cadre et le widget ne pouvait plus être déplacé ni retiré.
+        c.setOnLongClickListener { soulever(cadre, c, pl.cle) }
         cadre.setOnDragListener { v, e -> if (e.action == DragEvent.ACTION_DRAG_ENDED && enDrag == pl.cle) finDrag(v, e) { menuWidget(pl) }; false }
         if (d == null && pl.code != "horloge") c.alpha = 0.6f
         return cadre
@@ -1458,8 +1461,14 @@ class LanceurActivity : Activity() {
         val cam = cams.getJSONObject(0)
         c.addView(texte(cam.optString("nom"), 11.5f, theme.encre2).apply { setPadding(px(4f), px(4f), 0, 0); maxLines = 1 })
         chargerImageCamera(cam.optString("id"), img)
-        c.setOnClickListener { Veille.ouvrir(this) }
+        // Toucher la caméra ouvre sa vue en direct dans Home Assistant (l'appli, sinon le navigateur).
+        c.setOnClickListener { ouvrirDansHA("/lovelace?more-info-entity-id=" + cam.optString("id")) }
         return c
+    }
+
+    private fun ouvrirDansHA(chemin: String) {
+        try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("homeassistant://navigate$chemin")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return } catch (_: Exception) { }
+        try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Config(this).urlActive.trimEnd('/') + chemin)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) { Veille.ouvrir(this) }
     }
 
     private fun widgetBatteries(): View {
