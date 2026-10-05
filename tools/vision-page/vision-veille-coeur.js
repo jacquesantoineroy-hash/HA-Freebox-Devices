@@ -195,7 +195,8 @@ class VisionVeillePanel extends HTMLElement {
       const sections = [];
       for (const s of t.sections || []) {
         const cartes = (s.cartes || []).filter((c) => !cachees.has(`${t.id}|${c.cle}`) && !(c.cles && c.cles.length && c.cles.every((k) => cachees.has(`${t.id}|${k}`))));
-        if (cartes.length) sections.push({ titre: s.titre, span: s.span || 1, cartes });
+        // Une section dont il ne reste que le titre (toutes ses cartes sont décochées) disparaît avec lui.
+        if (cartes.some((c) => c.config && c.config.type !== "heading")) sections.push({ titre: s.titre, span: s.span || 1, cartes });
       }
       if (sections.length) liste.push({ genre: "tableau", duree: t.duree || 25, titre: t.titre, colonnes: t.colonnes || 4, sections, pages: 1, page: 0 });
     }
@@ -273,6 +274,9 @@ class VisionVeillePanel extends HTMLElement {
     else if (typeof v === "number") colonnes = Math.max(3, Math.min(12, v));
     else { try { const g = el.getGridOptions && el.getGridOptions(); if (g && typeof g.columns === "number") colonnes = Math.max(3, Math.min(12, g.columns)); } catch (e) { /* 12 */ } }
     el.style.gridColumn = `span ${colonnes}`;
+    // Sans largeur écrite dans le tableau de bord, c'est la carte qui dit la sienne ; elle ne la connaît
+    // qu'une fois chargée, on la relit donc au moment de mesurer.
+    if (v === undefined) el._largeurLibre = true;
     // Un titre ne reste jamais seul en bas d'une colonne : il suit sa carte.
     // Une page web embarquée (carte météo animée…) est dessinée deux fois plus grande puis réduite de moitié :
     // le site dispose d'une vraie largeur et ses boutons ne se chevauchent plus.
@@ -345,6 +349,11 @@ class VisionVeillePanel extends HTMLElement {
         // Le temps que les cartes se dessinent, puis on compte les écrans nécessaires.
         await pause(1200);
         const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
+        for (const el of c.querySelectorAll(".section > *")) {
+          if (!el._largeurLibre) continue;
+          try { const g = el.getGridOptions && el.getGridOptions(); if (g && typeof g.columns === "number") el.style.gridColumn = `span ${Math.max(3, Math.min(12, g.columns))}`; } catch (err) { /* reste pleine largeur */ }
+        }
+        await pause(120);
         this._uneLigne(c);
         // Une page web embarquée est dessinée en double puis réduite de moitié : sa boîte prend la moitié de sa hauteur.
         for (const b of c.querySelectorAll(".web")) { const h = b.firstElementChild ? b.firstElementChild.offsetHeight : 0; if (h) b.style.height = `${h / 2}px`; }
