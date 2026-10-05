@@ -975,7 +975,13 @@ class VisionVeillePanel extends HTMLElement {
           bloc.className = "section";
           bloc._span = Math.max(1, Math.min(4, s.span || 1));
           if (s.titre) { const t = document.createElement("div"); t.className = "sec"; t.textContent = s.titre; bloc.appendChild(t); }
-          for (const c of s.cartes) { const el = this._carte(c.config); if (el) bloc.appendChild(el); }
+          // Une carte à la fois, en rendant la main entre deux : fabriquées d'un bloc, elles figeaient l'écran
+          // un à trois dixièmes de seconde, et l'horloge ou le tableau en place donnait un à-coup.
+          for (const c of s.cartes) {
+            const el = this._carte(c.config); if (el) bloc.appendChild(el);
+            await pause(0);
+            if (passage !== this._passage) return;
+          }
           if (bloc.children.length) blocs.push(bloc);
         }
         // Écran en hauteur (téléphone, tablette debout) : les sections passent les unes sous les autres, comme
