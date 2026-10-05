@@ -47,6 +47,20 @@ class VisionVeillePanel extends HTMLElement {
       "--rgb-card-background-color": this._rvb(carte), "--rgb-secondary-text-color": this._rvb(texte2),
       "--v-fond": fond, "--v-carte": carte, "--v-texte": texte, "--v-texte2": texte2, "--v-accent": accent,
     };
+    // Le style graphique (formes, bordures, lettres) est distinct des couleurs : chacun choisit les deux.
+    this._style = this._q.get("style") === "neoretro" ? "neoretro" : "doux";
+    if (this._style === "neoretro") {
+      Object.assign(vars, {
+        "--ha-card-border-radius": "3px", "--ha-card-border-width": "1.5px", "--ha-card-border-color": accent,
+        "--ha-card-background": "transparent", "--card-background-color": "transparent",
+        "--ha-font-family-body": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
+        "--primary-font-family": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
+        "--paper-font-common-base_-_font-family": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
+        "--chip-border-radius": "3px", "--chip-background": "transparent", "--chip-border-width": "1.5px", "--chip-border-color": accent,
+        "--mush-chip-border-radius": "3px", "--mush-chip-background": "transparent",
+      });
+    }
+    this.setAttribute("data-style", this._style);
     for (const [k, v] of Object.entries(vars)) this.style.setProperty(k, v);
     document.body.style.background = fond;
   }
@@ -102,6 +116,17 @@ class VisionVeillePanel extends HTMLElement {
         .section.longue > * { margin-bottom: 10px; break-inside: avoid; }
         .section > * { min-width: 0; }
         .sec { grid-column: 1 / -1; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--v-accent); margin: 2px 2px 0; }
+        /* Néo-rétro : filets d'or, angles nets, capitales espacées, chiffres de tableau de bord. */
+        :host([data-style="neoretro"]) { font-family: Bahnschrift, "DIN Alternate", "Roboto Condensed", "Segoe UI", sans-serif; }
+        :host([data-style="neoretro"]) .tete { margin: 0 3.5vw; padding: 3.2vh 0 1.4vh; border-bottom: 1.5px solid var(--v-accent); align-items: flex-end; }
+        :host([data-style="neoretro"]) .titre { text-transform: uppercase; letter-spacing: .22em; font-weight: 400; font-size: 3vh; }
+        :host([data-style="neoretro"]) .titre::before { content: ""; display: inline-block; width: 1.5vh; height: 1.5vh; background: var(--v-accent); margin-right: 1.6vh; }
+        :host([data-style="neoretro"]) .petite { letter-spacing: .12em; font-variant-numeric: tabular-nums; color: var(--v-texte); }
+        :host([data-style="neoretro"]) .sec { letter-spacing: .26em; font-weight: 400; }
+        :host([data-style="neoretro"]) .heure { font-weight: 300; letter-spacing: .04em; font-variant-numeric: tabular-nums; font-size: 30vh; }
+        :host([data-style="neoretro"]) .horloge::before { content: "VISION"; letter-spacing: .6em; font-size: 2.2vh; color: var(--v-accent); margin-bottom: 4vh; padding-left: .6em; }
+        :host([data-style="neoretro"]) .date { text-transform: uppercase; letter-spacing: .3em; font-size: 3vh; margin-top: 3vh; padding-top: 3vh; border-top: 1.5px solid var(--v-accent); min-width: 46vw; text-align: center; }
+        :host([data-style="neoretro"]) .ciel { text-transform: uppercase; letter-spacing: .3em; font-size: 2.6vh; }
         .vide { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--v-texte2); font-size: 3vh; }
       </style>
       <div class="scene vue" id="s0"><div class="vide">Vision</div></div>`;
