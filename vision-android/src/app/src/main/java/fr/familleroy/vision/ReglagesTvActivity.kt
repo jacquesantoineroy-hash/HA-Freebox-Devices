@@ -355,12 +355,14 @@ class ReglagesTvActivity : Activity() {
     /** Les applis que l'écran de veille peut recouvrir sans les couper (leur son continue, la radio de Vision se tait). */
     private fun choisirFond() {
         val pm = packageManager
-        val toutes = Accueil.applicationsInstallees(this)
+        val applis = Accueil.applicationsInstallees(this).map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+        // Le récepteur de cast n'a pas d'icône d'appli : on l'ajoute à la main pour qu'il puisse être décoché.
+        val toutes = applis + Local.fondFlux(this).filter { pk -> applis.none { it.first == pk } }.map { it to (if (it == "com.google.android.apps.mediashell") "Cast (envoyé d'un téléphone)" else Usage.libelle(this, it)) }
         val choisies = Local.fond(this).toMutableSet()
-        val noms = toutes.map { it.loadLabel(pm).toString() }.toTypedArray()
-        val coches = toutes.map { it.activityInfo.packageName in choisies }.toBooleanArray()
+        val noms = toutes.map { it.second }.toTypedArray()
+        val coches = toutes.map { it.first in choisies }.toBooleanArray()
         AlertDialog.Builder(this).setTitle("Pendant la veille, ces applis continuent en fond")
-            .setMultiChoiceItems(noms, coches) { _, k, on -> val p = toutes[k].activityInfo.packageName; if (on) choisies.add(p) else choisies.remove(p) }
+            .setMultiChoiceItems(noms, coches) { _, k, on -> val p = toutes[k].first; if (on) choisies.add(p) else choisies.remove(p) }
             .setPositiveButton("Garder") { _, _ -> Local.poserFond(this, choisies); repeindre() }
             .setNegativeButton("Annuler", null).show()
     }

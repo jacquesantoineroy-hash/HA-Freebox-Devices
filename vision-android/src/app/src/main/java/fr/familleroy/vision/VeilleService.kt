@@ -19,7 +19,10 @@ import android.widget.FrameLayout
 class VeilleService : DreamService() {
     private var vue: VeilleView? = null
     private var appFond: String? = null
-    private val gestes by lazy { GestesVeille(this, { vue }) { finish() } }
+    private var parGeste = false
+    private val gestes by lazy { GestesVeille(this, { vue }) { parGeste = true; finish() } }
+    /** Un flux démarre pendant le rêve : permis en fond, la veille passe en couche pour ne pas le geler ; sinon elle s'efface. */
+    private val guetteur by lazy { Flux.Guetteur(this, { _ -> if (Veille.permise(this)) { appFond = null; parGeste = true; finish(); Veille.ouvrir(this) } }, { parGeste = true; finish() }) }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
@@ -43,19 +46,25 @@ class VeilleService : DreamService() {
         // sinon (Netflix, un jeu…) ce n'est pas le moment, on rend la main tout de suite.
         appFond = try { Local.appEnFond(this) } catch (_: Exception) { null }
         val proteger = try { Local.appAProteger(this) } catch (_: Exception) { false }
-        if (proteger) { finish(); return }
+        if (proteger) { parGeste = true; finish(); return }
         if (appFond != null && Veille.permise(this)) {
             // Le rêve met l'appli en pause (YouTube s'arrête) : la couche, elle, la laisse jouer.
             appFond = null
+            parGeste = true
             finish()
             Veille.ouvrir(this)
             return
         }
         Veille.fermer()
         vue?.demarrer()
+        parGeste = false
+        guetteur.demarrer()
     }
 
     override fun onDreamingStopped() {
+        guetteur.arreter()
+        // Fermé par le système et non par la télécommande : si c'est un cast qui a réveillé la télé, la veille reviendra en couche.
+        if (!parGeste && !Veille.ouverte) Flux.guetterApres(this)
         vue?.arreter()
         // L'appli de fond jouait : on reprend dessus, ou on va à l'accueil ? L'utilisateur choisit.
         val pk = appFond; appFond = null
@@ -68,6 +77,7 @@ class VeilleService : DreamService() {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean = gestes.toucher(event)
 
     override fun onDetachedFromWindow() {
+        guetteur.arreter()
         vue?.arreter()
         vue = null
         super.onDetachedFromWindow()

@@ -60,6 +60,7 @@ class VisionAccessibility : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        Flux.mainHumaine()
         if (event.keyCode != KeyEvent.KEYCODE_HOME || !prendAccueil()) return false
         // Appui long laissé au système (tableau de bord Google TV).
         if (event.action == KeyEvent.ACTION_DOWN) return event.repeatCount == 0

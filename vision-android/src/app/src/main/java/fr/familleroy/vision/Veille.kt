@@ -33,6 +33,10 @@ object Veille {
     private var ouvertA = 0L
     private var appFond: String? = null
     private var recepteur: android.content.BroadcastReceiver? = null
+    private var params: WindowManager.LayoutParams? = null
+    private var guetteur: Flux.Guetteur? = null
+    private var reposes = 0
+    private var enRepose = false
     /** Instant (horloge murale) de la dernière fermeture : l'inactivité repart de là. */
     @Volatile var fermeeA = 0L
 
@@ -51,7 +55,12 @@ object Veille {
             override fun dispatchTouchEvent(e: MotionEvent): Boolean = gestes.toucher(e)
             // Quelque chose est passé devant (le rêve du système, une autre appli) : la couche n'a plus lieu d'être.
             // Sinon elle resterait dessous, musique et caméras comprises, sans que personne puisse l'arrêter.
-            override fun onWindowFocusChanged(a: Boolean) { super.onWindowFocusChanged(a); if (!a && SystemClock.uptimeMillis() - ouvertA > 1500) fermer() }
+            // Un flux qui démarre dessous (cast, YouTube) peut nous prendre la main un instant : on regarde avant de fermer.
+            override fun onWindowFocusChanged(a: Boolean) {
+                super.onWindowFocusChanged(a)
+                main.removeCallbacks(sansFocus)
+                if (!a && !enRepose && SystemClock.uptimeMillis() - ouvertA > 1500) main.postDelayed(sansFocus, 1200)
+            }
         }
         cadre.isFocusable = true; cadre.isFocusableInTouchMode = true
         val v = VeilleView(app)
@@ -69,8 +78,11 @@ object Veille {
         lp.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         try {
             wm.addView(cadre, lp)
-            couche = cadre; vue = v; ouvertA = SystemClock.uptimeMillis()
+            couche = cadre; vue = v; params = lp; reposes = 0; ouvertA = SystemClock.uptimeMillis()
             appFond = try { Local.appEnFond(app) } catch (_: Exception) { null }
+            // Un flux démarre pendant la veille : s'il a le droit de rester en fond, la veille reste devant et il joue derrière ;
+            // sinon (Netflix lancé d'un téléphone…) elle lui laisse l'écran.
+            guetteur = Flux.Guetteur(app, { pk -> appFond = pk; vue?.sonChange() }, { fermer() }).also { it.demarrer(appFond) }
             Bulle.retirer()
             // L'écran de veille du système ou l'extinction de l'écran ferment la couche.
             val r = object : android.content.BroadcastReceiver() { override fun onReceive(c: Context, i: Intent) { fermer() } }
@@ -90,13 +102,36 @@ object Veille {
 
     private val gardien = Runnable { fermer() }
 
+    /** La couche n'a plus la main depuis plus d'une seconde. */
+    private val sansFocus = Runnable {
+        val c = couche ?: return@Runnable
+        if (c.hasWindowFocus()) return@Runnable
+        val app = appCtx
+        val pk = try { app?.let { Local.appEnFond(it) } } catch (_: Exception) { null }
+        // Un flux permis joue dessous : on se repose tout en haut pour garder la télécommande (trois fois au plus, puis on cède).
+        if (app != null && pk != null && reposes < 3) { reposes++; appFond = pk; reposer(app, c) } else fermer()
+    }
+
+    private fun reposer(app: Context, c: View) {
+        val lp = params ?: return fermer()
+        val wm = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        enRepose = true
+        try {
+            wm.removeViewImmediate(c); wm.addView(c, lp)
+            ouvertA = SystemClock.uptimeMillis()
+            main.post { c.requestFocus(); vue?.demarrer(); vue?.sonChange() }
+        } catch (_: Exception) { couche = c; fermer() }
+        main.postDelayed({ enRepose = false }, 600)
+    }
+
     fun fermer(parUtilisateur: Boolean = false) {
         val c = couche ?: return
         couche = null
         fermeeA = System.currentTimeMillis()
         val pk = appFond; appFond = null
         if (parUtilisateur && pk != null) main.postDelayed({ appCtx?.let { RetourActivity.proposer(it, pk) } }, 150)
-        main.removeCallbacks(gardien)
+        main.removeCallbacks(gardien); main.removeCallbacks(sansFocus)
+        guetteur?.arreter(); guetteur = null; params = null
         recepteur?.let { r -> try { appCtx?.unregisterReceiver(r) } catch (_: Exception) {} }
         recepteur = null
         try { vue?.arreter() } catch (_: Exception) {}

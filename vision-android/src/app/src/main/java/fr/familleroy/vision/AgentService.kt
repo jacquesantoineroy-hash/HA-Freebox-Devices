@@ -46,7 +46,7 @@ class AgentService : Service() {
                 if (min > 0 && ReglagesTvActivity.estTele(ctx) && !Veille.ouverte && Usage.ecranAllume(ctx) && Veille.permise(ctx)) {
                     val pk = Local.appEnFond(ctx)
                     val repos = System.currentTimeMillis() - maxOf(Usage.derniereInteraction, Veille.fermeeA)
-                    if (pk != null && repos >= min * 60_000L) Veille.ouvrir(ctx)
+                    if (pk != null && !Local.seRegarde(pk) && repos >= min * 60_000L) Veille.ouvrir(ctx)
                 }
             } catch (_: Exception) {}
             principal.postDelayed(this, 20_000)

@@ -38,7 +38,11 @@ class Musique(private val ctx: Context) {
 
     /** Joue cette adresse (ou change de station) ; vide = silence. */
     fun jouer(url: String) {
-        if (url == adresse && (joueur != null || url.isEmpty())) return
+        if (url == adresse && (joueur != null || url.isEmpty())) {
+            // Même station, mais on avait cédé le son à une autre appli : on reprend.
+            joueur?.let { if (!it.playWhenReady) { it.playWhenReady = true; enCours = true } }
+            return
+        }
         arreter()
         adresse = url
         if (url.isEmpty()) return
@@ -53,6 +57,15 @@ class Musique(private val ctx: Context) {
                 override fun onPlayerError(error: PlaybackException) {
                     // Flux coupé : on laisse souffler, puis on relance la même adresse.
                     main.postDelayed({ if (adresse == url) { adresse = ""; jouer(url) } }, 30_000)
+                }
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    // Une autre appli a pris le son (un cast démarre, YouTube reprend) : ce n'est plus nous qui jouons.
+                    if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) { enCours = false; Flux.signal() }
+                }
+                override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                    val cede = playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS
+                    enCours = !cede && joueur?.playWhenReady == true
+                    if (cede) Flux.signal()
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     // Une radio ne finit jamais : si le flux « se termine », c'est qu'il est tombé.

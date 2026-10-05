@@ -14,7 +14,10 @@ import android.widget.FrameLayout
  */
 class VeilleActivity : Activity() {
     private var vue: VeilleView? = null
-    private val gestes by lazy { GestesVeille(this, { vue }) { finish() } }
+    private var parGeste = false
+    private val gestes by lazy { GestesVeille(this, { vue }) { parGeste = true; finish() } }
+    /** Un flux permis en fond démarre : la veille continue en couche, par-dessus lui. */
+    private val guetteur by lazy { Flux.Guetteur(this, { _ -> if (Veille.permise(this)) { parGeste = true; Veille.ouvrir(applicationContext); finish() } }) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,8 +35,13 @@ class VeilleActivity : Activity() {
         setContentView(cadre)
     }
 
-    override fun onResume() { super.onResume(); Veille.fermer(); vue?.demarrer() }
-    override fun onPause() { vue?.arreter(); super.onPause() }
+    override fun onResume() { super.onResume(); Veille.fermer(); vue?.demarrer(); parGeste = false; guetteur.demarrer() }
+    override fun onPause() {
+        guetteur.arreter()
+        // Recouverte sans qu'on l'ait demandé (un cast ouvre son appli par-dessus) : la veille reviendra en couche si le flux est permis.
+        if (!parGeste && !isFinishing && !Veille.ouverte) Flux.guetterApres(this)
+        vue?.arreter(); super.onPause()
+    }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean = gestes.touche(event)
     override fun onTouchEvent(event: MotionEvent?): Boolean = event?.let { gestes.toucher(it) } ?: true

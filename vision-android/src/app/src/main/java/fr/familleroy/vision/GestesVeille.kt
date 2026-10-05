@@ -16,7 +16,6 @@ import kotlin.math.abs
  *  - tout le reste (Retour, glisser vers le haut…) referme la veille.
  */
 class GestesVeille(private val ctx: Context, private val vue: () -> VeilleView?, private val fermer: () -> Unit) {
-    private val am by lazy { ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     private val detecteur = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean = true
@@ -34,7 +33,7 @@ class GestesVeille(private val ctx: Context, private val vue: () -> VeilleView?,
     /** Toujours consommée ; déclenche la fermeture quand la touche n'a pas de sens ici. */
     fun touche(e: KeyEvent): Boolean {
         if (e.keyCode in MEDIA) {
-            try { am.dispatchMediaKeyEvent(e) } catch (_: Exception) {}
+            Flux.touche(ctx, e)
             vue()?.signaler()
             return true
         }

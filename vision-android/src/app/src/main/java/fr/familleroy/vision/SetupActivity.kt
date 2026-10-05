@@ -49,6 +49,9 @@ class SetupActivity : Activity() {
         l.add(Protection("Affichage par-dessus", "Écran de blocage et messages urgents", { peutRecouvrir() },
             "Sans : pas d'écran de blocage ni de message par-dessus" + (if (tele) ", et l'écran de veille coupe l'appli en cours au lieu de passer devant." else "."),
             { Build.VERSION.SDK_INT < 23 || existe(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkgUri)) }) { demanderOverlay() })
+        if (tele) l.add(Protection("Lecture en cours", "Sait quelle appli joue, même lancée d'un téléphone (cast)", { Flux.droit(this) },
+            "Sans : un cast lancé pendant l'écran de veille n'est reconnu qu'approximativement. Vision ne lit aucune notification.",
+            { existe(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) { ouvrir(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS) })
         l.add(Protection("Filtre des sites", "VPN local : seul le DNS passe par Vision", { DnsVpnService.actif || DnsVpnService.autorise(this) },
             "Sans : aucun site n'est filtré sur cet appareil ; seules les applis le sont.",
             { try { VpnService.prepare(this)?.let { existe(it) } ?: true } catch (_: Exception) { false } }) { demanderVpn() })

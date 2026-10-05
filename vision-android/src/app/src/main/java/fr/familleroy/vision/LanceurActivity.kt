@@ -203,7 +203,7 @@ class LanceurActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) armerVeille()
+        if (event.action == KeyEvent.ACTION_DOWN) { armerVeille(); Flux.mainHumaine() }
         toucheEnfoncee = event.action == KeyEvent.ACTION_DOWN
         if (event.action == KeyEvent.ACTION_UP && reconstructionEnAttente) { reconstructionEnAttente = false; main.postDelayed({ construire() }, 150) }
         return super.dispatchKeyEvent(event)

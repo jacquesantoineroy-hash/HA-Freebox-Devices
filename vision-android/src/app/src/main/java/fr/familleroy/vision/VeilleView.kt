@@ -389,6 +389,9 @@ class VeilleView(ctx: Context) : View(ctx) {
     }
 
     /** Montre l'indicateur sans rien changer (touche sans effet). */
+    /** Un flux vient de démarrer ou de s'arrêter derrière la veille : la radio de Vision se tait ou revient. */
+    fun sonChange() { try { rafraichirTheme() } catch (_: Exception) {} }
+
     fun signaler() { interactionA = SystemClock.uptimeMillis(); invalidate() }
 
     fun arreter() {
@@ -460,7 +463,7 @@ class VeilleView(ctx: Context) : View(ctx) {
         nuitActive = nuit
         appliquerTheme(Local.themeEffectif(context, Palette.APPLI))
         // Une autre appli joue déjà (Spotify, YouTube Music…) : l'écran de veille la laisse, il ne joue pas par-dessus.
-        val autre = try { (context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager).isMusicActive && !Musique.enCours } catch (_: Exception) { false }
+        val autre = try { Flux.paquets(context)?.isNotEmpty() == true || ((context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager).isMusicActive && !Musique.enCours) } catch (_: Exception) { false }
         musique.jouer(if (nuit || donnees == null || autre) "" else Local.musique(context))
         versionReglages = Local.version
     }

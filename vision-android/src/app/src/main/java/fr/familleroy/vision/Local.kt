@@ -79,19 +79,41 @@ object Local {
 
     /** Les applis qui ont le droit de continuer en fond pendant l'écran de veille (Spotify, YouTube Music…). */
     private val FOND_DEFAUT = listOf("spotify", "music", "deezer", "radio", "tunein", "soundcloud", "qobuz", "tidal")
+    /** YouTube et le récepteur de cast : on peut y envoyer un flux depuis un téléphone pendant que la veille est affichée. */
+    val FOND_FLUX = listOf("com.google.android.youtube.tv", "com.google.android.youtube", "com.google.android.apps.mediashell")
+    private fun installe(ctx: Context, pk: String): Boolean = try { ctx.packageManager.getPackageInfo(pk, 0); true } catch (_: Exception) { false }
+    /** Ceux de `FOND_FLUX` présents sur l'appareil (le récepteur de cast n'a pas d'icône : il n'est pas dans la liste des applis). */
+    fun fondFlux(ctx: Context): List<String> = FOND_FLUX.filter { installe(ctx, it) }
     fun fond(ctx: Context): Set<String> {
         val brut = p(ctx).getStringSet("fond", null)
-        if (brut != null) return brut
-        return try { Accueil.applicationsInstallees(ctx).map { it.activityInfo.packageName }.filter { pk -> FOND_DEFAUT.any { pk.contains(it, ignoreCase = true) } }.toSet() } catch (_: Exception) { emptySet() }
+        if (brut == null) {
+            val mots = try { Accueil.applicationsInstallees(ctx).map { it.activityInfo.packageName }.filter { pk -> FOND_DEFAUT.any { pk.contains(it, ignoreCase = true) } } } catch (_: Exception) { emptyList() }
+            return (mots + fondFlux(ctx)).toSet()
+        }
+        // La liste a déjà été réglée ici : YouTube et le cast la rejoignent une seule fois, sans rien retirer du choix ;
+        // les décocher ensuite reste possible, ils ne reviendront pas.
+        if (!p(ctx).getBoolean("fond_flux_ajoute", false)) {
+            val plus = HashSet(brut).apply { addAll(fondFlux(ctx)) }
+            p(ctx).edit().putStringSet("fond", plus).putBoolean("fond_flux_ajoute", true).apply()
+            return plus
+        }
+        return brut
     }
-    fun poserFond(ctx: Context, s: Set<String>) { p(ctx).edit().putStringSet("fond", HashSet(s)).apply(); toucher() }
+    fun poserFond(ctx: Context, s: Set<String>) { p(ctx).edit().putStringSet("fond", HashSet(s)).putBoolean("fond_flux_ajoute", true).apply(); toucher() }
     /** L'appli qui joue en ce moment, si elle a le droit de rester en fond ; null sinon (ou si rien ne joue). */
     fun appEnFond(ctx: Context): String? {
+        val permis = fond(ctx)
+        // D'abord les sessions média : elles disent qui joue même quand personne n'a rien ouvert ici (cast lancé d'un téléphone).
+        val vus = Flux.paquets(ctx)
+        if (vus != null && vus.isNotEmpty()) return vus.firstOrNull { it in permis }
+        // Sinon l'ancien indice : du son qui n'est pas le nôtre, et la dernière appli passée devant.
         val am = ctx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
         if (!am.isMusicActive || Musique.enCours) return null
         val pk = Usage.dernierPaquet
-        return if (pk.isNotEmpty() && pk != ctx.packageName && pk in fond(ctx)) pk else null
+        return if (pk.isNotEmpty() && pk != ctx.packageName && pk in permis) pk else null
     }
+    /** Une appli vidéo (YouTube, cast) regardée au premier plan : la veille ne vient pas la recouvrir d'elle-même. */
+    fun seRegarde(pk: String): Boolean = pk in FOND_FLUX
     /** Vrai si une appli joue et n'a PAS le droit d'être recouverte (Netflix, un jeu…). */
     fun appAProteger(ctx: Context): Boolean {
         val am = ctx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager

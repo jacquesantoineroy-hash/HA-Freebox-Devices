@@ -18,6 +18,8 @@ $A -s $TV shell appops set fr.familleroy.vision REQUEST_INSTALL_PACKAGES allow >
 $A -s $TV shell pm grant fr.familleroy.vision android.permission.POST_NOTIFICATIONS >> $LOG 2>&1
 $A -s $TV shell settings put secure enabled_accessibility_services fr.familleroy.vision/fr.familleroy.vision.VisionAccessibility >> $LOG 2>&1
 $A -s $TV shell settings put secure accessibility_enabled 1 >> $LOG 2>&1
+# Voir ce qui joue (cast lancé d'un téléphone) : les télés n'ont pas toujours l'écran de réglage correspondant.
+$A -s $TV shell cmd notification allow_listener fr.familleroy.vision/fr.familleroy.vision.EcouteFlux >> $LOG 2>&1
 $A -s $TV shell settings put secure screensaver_enabled 1 >> $LOG 2>&1
 $A -s $TV shell settings put secure screensaver_components fr.familleroy.vision/.VeilleService >> $LOG 2>&1
 if [ "$3" = "accueil" ]; then
