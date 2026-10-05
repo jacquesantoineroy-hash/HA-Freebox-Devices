@@ -1,4 +1,4 @@
-param([string]$Dossier)
+param([string]$Dossier, [string]$Depart = '')
 
 # Vision, la fenêtre du PC : WPF, fenêtre sans bordure système, coins arrondis,
 # charte Vision. Tourne dans la session de l'utilisateur, sous Windows
@@ -44,6 +44,46 @@ function Heure([string]$iso) {
 }
 $script:Demandees = @{}
 
+# ------------------------------------------------------------------ Réglages de ce PC
+# Propres à chaque PC et à chaque session : le thème de couleur, l'écran de veille,
+# les tableaux et les cartes montrés. Home Assistant dit seulement ce qui est disponible.
+$script:Themes = [ordered]@{
+    'Vision'      = @{ Fond = '#FF120609'; Carte = '#FF27111A'; Haute = '#FF361724'; Ligne = '#FF4C2231'; Or = '#FFF2C14E'; OrSombre = '#FF1E1605'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFFBF3EE'; Texte2 = '#FFCDA8A6'; Texte3 = '#FF8C666C' }
+    'Sombre'      = @{ Fond = '#FF17121C'; Carte = '#FF251C2D'; Haute = '#FF30253A'; Ligne = '#FF3A2D45'; Or = '#FFE2B24A'; OrSombre = '#FF1E1605'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFF4EDE1'; Texte2 = '#FFBDB1C4'; Texte3 = '#FF8E8396' }
+    'Bleu nuit'   = @{ Fond = '#FF0F1830'; Carte = '#FF1A2647'; Haute = '#FF223158'; Ligne = '#FF2B3A64'; Or = '#FFE2B24A'; OrSombre = '#FF1E1605'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFEAF0FA'; Texte2 = '#FFB6C1D4'; Texte3 = '#FF7F8CA3' }
+    'Beige'       = @{ Fond = '#FFEFE6D6'; Carte = '#FFFBF6EC'; Haute = '#FFE6DBC6'; Ligne = '#FFD9CBB3'; Or = '#FF8F6110'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF2A2026'; Texte2 = '#FF6E5A5E'; Texte3 = '#FF8F7D80' }
+    'Sauge'       = @{ Fond = '#FFDDE5DA'; Carte = '#FFF2F6EF'; Haute = '#FFD0DACB'; Ligne = '#FFC2CEBD'; Or = '#FF7F5C0E'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF1F2A24'; Texte2 = '#FF5E6E64'; Texte3 = '#FF7F8F85' }
+    'Salon'       = @{ Fond = '#FFD9D1C5'; Carte = '#FFF4F1EB'; Haute = '#FFCCC3B5'; Ligne = '#FFBDB3A4'; Or = '#FF8A6433'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF2A2724'; Texte2 = '#FF6B645C'; Texte3 = '#FF8E867D' }
+    'Rose poudré' = @{ Fond = '#FFF0DEDD'; Carte = '#FFFBF1F0'; Haute = '#FFE6D0CF'; Ligne = '#FFD9BFBE'; Or = '#FF875A12'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF2C1F24'; Texte2 = '#FF7A5A60'; Texte3 = '#FF998287' }
+}
+$script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
+function SvReglages() {
+    $r = @{ actif = $true; delai = 10; theme = 'Vision'; masques = @(); cartes = @() }
+    try {
+        if (Test-Path $script:SvFichier) {
+            $lu = Get-Content $script:SvFichier -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($null -ne (Prop $lu 'actif')) { $r.actif = [bool](Prop $lu 'actif') }
+            if (Prop $lu 'delai') { $r.delai = [int](Prop $lu 'delai') }
+            if ($script:Themes.Contains([string](Prop $lu 'theme'))) { $r.theme = [string](Prop $lu 'theme') }
+            $r.masques = @(@(Prop $lu 'masques' @()) | ForEach-Object { [string]$_ })
+            $r.cartes = @(@(Prop $lu 'cartes' @()) | ForEach-Object { [string]$_ })
+        }
+    } catch { }
+    return $r
+}
+function SvEcrire($r) {
+    try {
+        $d = Split-Path $script:SvFichier -Parent
+        if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; masques = @($r.masques); cartes = @($r.cartes) } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
+    } catch { }
+}
+$script:Pal = $script:Themes[(SvReglages).theme]
+function SvPinceau([string]$cle) {
+    $noms = @{ fond = 'Fond'; carte = 'Carte'; encre = 'Texte'; encre2 = 'Texte2'; accent = 'Or'; piste = 'Ligne' }
+    return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($script:Pal[$noms[$cle]])
+}
+
 # ------------------------------------------------------------------ XAML
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -52,17 +92,17 @@ $script:Demandees = @{}
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
         Topmost="True" ShowInTaskbar="True" FontFamily="Segoe UI">
   <Window.Resources>
-    <SolidColorBrush x:Key="Fond" Color="#FF120609"/>
-    <SolidColorBrush x:Key="Carte" Color="#FF27111A"/>
-    <SolidColorBrush x:Key="Haute" Color="#FF361724"/>
-    <SolidColorBrush x:Key="Ligne" Color="#FF4C2231"/>
-    <SolidColorBrush x:Key="Or" Color="#FFF2C14E"/>
-    <SolidColorBrush x:Key="OrSombre" Color="#FF1E1605"/>
-    <SolidColorBrush x:Key="Vert" Color="#FF4CC38A"/>
-    <SolidColorBrush x:Key="Rouge" Color="#FFFF6B6B"/>
-    <SolidColorBrush x:Key="Texte" Color="#FFFBF3EE"/>
-    <SolidColorBrush x:Key="Texte2" Color="#FFCDA8A6"/>
-    <SolidColorBrush x:Key="Texte3" Color="#FF8C666C"/>
+    <SolidColorBrush x:Key="Fond" Color="$($script:Pal.Fond)"/>
+    <SolidColorBrush x:Key="Carte" Color="$($script:Pal.Carte)"/>
+    <SolidColorBrush x:Key="Haute" Color="$($script:Pal.Haute)"/>
+    <SolidColorBrush x:Key="Ligne" Color="$($script:Pal.Ligne)"/>
+    <SolidColorBrush x:Key="Or" Color="$($script:Pal.Or)"/>
+    <SolidColorBrush x:Key="OrSombre" Color="$($script:Pal.OrSombre)"/>
+    <SolidColorBrush x:Key="Vert" Color="$($script:Pal.Vert)"/>
+    <SolidColorBrush x:Key="Rouge" Color="$($script:Pal.Rouge)"/>
+    <SolidColorBrush x:Key="Texte" Color="$($script:Pal.Texte)"/>
+    <SolidColorBrush x:Key="Texte2" Color="$($script:Pal.Texte2)"/>
+    <SolidColorBrush x:Key="Texte3" Color="$($script:Pal.Texte3)"/>
 
     <Style x:Key="Primaire" TargetType="Button">
       <Setter Property="Background" Value="{StaticResource Or}"/>
@@ -305,8 +345,11 @@ function Rafraichir() {
     $parent = Test-Path (Join-Path $script:Dossier 'maison.json')
     if (-not $parent -and $script:Page -eq 'maison') { $script:Page = 'moi' }
     $Onglets.Children.Clear()
-    if ($parent) {
-        foreach ($def in @(@('maison', 'La maison'), @('moi', 'Cet ordinateur'))) {
+    $defsOnglets = @()
+    if ($parent) { $defsOnglets += , @('maison', 'La maison') }
+    $defsOnglets += , @('moi', 'Cet ordinateur'); $defsOnglets += , @('reglages', 'Réglages')
+    if ($true) {
+        foreach ($def in $defsOnglets) {
             $t = New-Object System.Windows.Controls.Primitives.ToggleButton
             $t.Content = $def[1]; $t.Style = $W.Resources['Onglet']; $t.Tag = $def[0]; $t.IsChecked = ($script:Page -eq $def[0])
             $t.Add_Click({ param($s, $e) $script:Page = [string]$s.Tag; $script:Vue = $null; Rafraichir })
@@ -315,7 +358,7 @@ function Rafraichir() {
     }
     $Contenu.Children.Clear()
     if ($script:Vue) { PageSousVue; return }
-    if ($script:Page -eq 'maison') { PageMaison } else { PageMoi $etat $ferme }
+    if ($script:Page -eq 'maison') { PageMaison } elseif ($script:Page -eq 'reglages') { PageReglages } else { PageMoi $etat $ferme }
 }
 
 function Retour([string]$titre) {
@@ -787,7 +830,6 @@ $svNatif = 'using System; using System.Runtime.InteropServices; public static cl
 $script:SvPret = $false
 try { Add-Type -TypeDefinition $svNatif -ErrorAction Stop; $script:SvPret = $true } catch { }
 
-$script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
 $script:SvFenetres = @()
 $script:SvScenes = @()
 $script:SvHeures = @()
@@ -796,34 +838,6 @@ $script:SvIndice = 0
 $script:SvDepuis = [datetime]::MinValue
 $script:SvOuvertA = [datetime]::MinValue
 $script:SvOrigine = $null
-$script:SvPalettes = @{
-    'Sombre' = @{ fond = '#FF0E0A0B'; carte = '#FF1D1517'; encre = '#FFF4EDE4'; encre2 = '#FFB9AAA0'; accent = '#FFE9B949'; piste = '#FF33272A' }
-    'Beige'  = @{ fond = '#FFF1E9DA'; carte = '#FFFBF6EC'; encre = '#FF2A1E16'; encre2 = '#FF7A6A5C'; accent = '#FFA9781F'; piste = '#FFE2D6C0' }
-}
-
-function SvReglages() {
-    $r = @{ actif = $true; delai = 10; theme = 'Sombre' }
-    try {
-        if (Test-Path $script:SvFichier) {
-            $lu = Get-Content $script:SvFichier -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($null -ne (Prop $lu 'actif')) { $r.actif = [bool](Prop $lu 'actif') }
-            if (Prop $lu 'delai') { $r.delai = [int](Prop $lu 'delai') }
-            if ($script:SvPalettes.ContainsKey([string](Prop $lu 'theme'))) { $r.theme = [string](Prop $lu 'theme') }
-        }
-    } catch { }
-    return $r
-}
-function SvEcrire($r) {
-    try {
-        $d = Split-Path $script:SvFichier -Parent
-        if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-        ($r | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
-    } catch { }
-}
-function SvPinceau([string]$cle) {
-    $pal = $script:SvPalettes[(SvReglages).theme]
-    return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($pal[$cle])
-}
 function SvTexte([string]$t, [double]$taille, [string]$couleur = 'encre', [bool]$gras = $false) {
     $b = New-Object System.Windows.Controls.TextBlock
     $b.Text = $t; $b.FontSize = $taille; $b.Foreground = (SvPinceau $couleur); $b.TextTrimming = 'CharacterEllipsis'
@@ -908,8 +922,12 @@ function SvTableaux() {
     $sortie = @()
     $data = Lire 'veille.json'
     $liste = @(Prop (Prop $data 'tableaux') 'liste' @())
+    $regl = SvReglages
     foreach ($def in $liste) {
         $code = [string](Prop $def 'code')
+        # Ce PC choisit ce qu'il montre parmi ce qui est disponible.
+        $idTab = if ($code -eq 'horloge') { 'horloge' } else { [string](Prop $def 'id') }
+        if ($regl.masques -contains $idTab) { continue }
         $duree = [int](Prop $def 'duree' 20); if ($duree -lt 5) { $duree = 5 }
         if ($code -eq 'horloge') { $sortie += @{ genre = 'horloge'; duree = $duree; data = $data }; continue }
         if ($code -ne 'dash') { continue }
@@ -918,6 +936,7 @@ function SvTableaux() {
         foreach ($s in @(Prop $def 'sections' @())) {
             $courant = @(); $unites = 1; $premier = $true
             foreach ($k in @(Prop $s 'cases' @())) {
+                if ($regl.cartes -contains ($idTab + '|' + [string](Prop $k 'carte' ''))) { continue }
                 $hk = SvHauteur $k
                 if ($unites + $hk -gt 10 -and $courant.Count -gt 0) {
                     $blocs += @{ titre = $(if ($premier) { [string](Prop $s 'titre' '') } else { '' }); cases = $courant; unites = $unites }
@@ -1093,35 +1112,101 @@ $script:SvGuet.Add_Tick({
 })
 $script:SvGuet.Start()
 
-# Les réglages, dans le menu de l'icône : propres à ce PC et à cette session.
-$svMenu = New-Object System.Windows.Forms.ToolStripMenuItem('Écran de veille')
-$svActif = New-Object System.Windows.Forms.ToolStripMenuItem('Activé')
-$svActif.Add_Click({ $r = SvReglages; $r.actif = -not $r.actif; SvEcrire $r })
-$svMenu.DropDownItems.Add($svActif) | Out-Null
-$svMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
-$script:SvItemsDelai = @()
-foreach ($minutes in @(2, 5, 10, 20, 30)) {
-    $it = New-Object System.Windows.Forms.ToolStripMenuItem(('Après {0} min' -f $minutes)); $it.Tag = $minutes
-    $it.Add_Click({ param($s, $e) $r = SvReglages; $r.delai = [int]$s.Tag; SvEcrire $r })
-    $svMenu.DropDownItems.Add($it) | Out-Null; $script:SvItemsDelai += $it
+# Les réglages de ce PC, dans la fenêtre (onglet Réglages) : thème, écran de veille, tableaux et cartes.
+function Coche([string]$t, [bool]$etat, $action, $tag = $null) {
+    $c = New-Object System.Windows.Controls.CheckBox
+    $c.Content = $t; $c.IsChecked = $etat; $c.Foreground = (Pinceau 'Texte'); $c.FontSize = 13; $c.Tag = $tag; $c.Cursor = 'Hand'
+    $c.Margin = [System.Windows.Thickness]::new(0, 5, 0, 5); $c.VerticalContentAlignment = 'Center'
+    if ($action) { $c.Add_Click($action) }
+    return $c
 }
-$svMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
-$script:SvItemsTheme = @()
-foreach ($nomTheme in @('Sombre', 'Beige')) {
-    $it = New-Object System.Windows.Forms.ToolStripMenuItem(('Thème {0}' -f $nomTheme)); $it.Tag = $nomTheme
-    $it.Add_Click({ param($s, $e) $r = SvReglages; $r.theme = [string]$s.Tag; SvEcrire $r })
-    $svMenu.DropDownItems.Add($it) | Out-Null; $script:SvItemsTheme += $it
+
+# Changer de thème recharge la fenêtre : ses couleurs sont posées à sa création.
+function Relancer() {
+    try { $tray.Visible = $false } catch { }
+    try { $verrou.ReleaseMutex() } catch { }
+    try {
+        $arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -Dossier "{1}" -Depart reglages' -f $PSCommandPath, $script:Dossier
+        Start-Process -FilePath 'powershell.exe' -ArgumentList $arguments -WindowStyle Hidden
+    } catch { }
+    [System.Windows.Forms.Application]::Exit()
 }
-$svMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
-$svVoir = New-Object System.Windows.Forms.ToolStripMenuItem('Lancer maintenant')
-$svVoir.Add_Click({ SvOuvrir })
-$svMenu.DropDownItems.Add($svVoir) | Out-Null
-$svMenu.Add_DropDownOpening({
+
+function PageReglages() {
     $r = SvReglages
-    $svActif.Checked = [bool]$r.actif
-    foreach ($it in $script:SvItemsDelai) { $it.Checked = ([int]$it.Tag -eq [int]$r.delai) }
-    foreach ($it in $script:SvItemsTheme) { $it.Checked = ([string]$it.Tag -eq [string]$r.theme) }
-})
-$menu.Items.Add($svMenu) | Out-Null
+    $Contenu.Children.Add((Section 'Thème de couleur')) | Out-Null
+    $carteT = Carte; $enveloppe = New-Object System.Windows.Controls.WrapPanel
+    foreach ($nomTheme in $script:Themes.Keys) {
+        $bt = New-Object System.Windows.Controls.Primitives.ToggleButton
+        $bt.Content = $nomTheme; $bt.Style = $W.Resources['Onglet']; $bt.Tag = $nomTheme; $bt.IsChecked = ($r.theme -eq $nomTheme)
+        $bt.Margin = [System.Windows.Thickness]::new(0, 0, 6, 6)
+        $bt.Add_Click({ param($s, $e) $rr = SvReglages; if ($rr.theme -eq [string]$s.Tag) { $s.IsChecked = $true; return }; $rr.theme = [string]$s.Tag; SvEcrire $rr; Relancer })
+        $enveloppe.Children.Add($bt) | Out-Null
+    }
+    $carteT.Child.Children.Add($enveloppe) | Out-Null
+    $carteT.Child.Children.Add((Txt 'Pour la fenêtre Vision et l''écran de veille de cet ordinateur.' 11 'Texte2')) | Out-Null
+    $Contenu.Children.Add($carteT) | Out-Null
+
+    $Contenu.Children.Add((Section 'Écran de veille')) | Out-Null
+    $carteV = Carte
+    $carteV.Child.Children.Add((Coche 'Activer l''écran de veille sur cet ordinateur' ([bool]$r.actif) { param($s, $e) $rr = SvReglages; $rr.actif = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
+    $carteV.Child.Children.Add((Txt 'Démarre quand personne ne touche au clavier ni à la souris depuis :' 12 'Texte2' $false '0,8,0,6')) | Out-Null
+    $delais = New-Object System.Windows.Controls.WrapPanel
+    foreach ($minutes in @(2, 5, 10, 20, 30)) {
+        $bd = New-Object System.Windows.Controls.Primitives.ToggleButton
+        $bd.Content = ('{0} min' -f $minutes); $bd.Style = $W.Resources['Onglet']; $bd.Tag = $minutes; $bd.IsChecked = ([int]$r.delai -eq $minutes)
+        $bd.Margin = [System.Windows.Thickness]::new(0, 0, 6, 6)
+        $bd.Add_Click({ param($s, $e) $rr = SvReglages; $rr.delai = [int]$s.Tag; SvEcrire $rr; Rafraichir })
+        $delais.Children.Add($bd) | Out-Null
+    }
+    $carteV.Child.Children.Add($delais) | Out-Null
+    $carteV.Child.Children.Add((Txt 'Il ne démarre pas pendant un film ou un jeu en plein écran. Avec plusieurs écrans, chacun montre un tableau différent.' 11 'Texte2' $false '0,2,0,8')) | Out-Null
+    $voir = Bouton 'Voir maintenant' 'Secondaire' { $script:W.Hide(); SvOuvrir }; $voir.HorizontalAlignment = 'Left'
+    $carteV.Child.Children.Add($voir) | Out-Null
+    $Contenu.Children.Add($carteV) | Out-Null
+
+    $Contenu.Children.Add((Section 'Tableaux affichés')) | Out-Null
+    $carteL = Carte
+    $data = Lire 'veille.json'
+    $nbDash = 0
+    foreach ($def in @(Prop (Prop $data 'tableaux') 'liste' @())) {
+        $code = [string](Prop $def 'code')
+        if ($code -eq 'horloge') {
+            $carteL.Child.Children.Add((Coche 'Horloge' (-not ($r.masques -contains 'horloge')) { param($s, $e) $rr = SvReglages; $rr.masques = @($rr.masques | Where-Object { $_ -ne 'horloge' }); if (-not $s.IsChecked) { $rr.masques += 'horloge' }; SvEcrire $rr })) | Out-Null
+            continue
+        }
+        if ($code -ne 'dash') { continue }
+        $nbDash++
+        $idTab = [string](Prop $def 'id')
+        $montre = -not ($r.masques -contains $idTab)
+        $ct = Coche ([string](Prop $def 'titre' 'Tableau de bord')) $montre { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.masques = @($rr.masques | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.masques += $cle }; SvEcrire $rr; Rafraichir } $idTab
+        $ct.FontWeight = 'SemiBold'
+        $carteL.Child.Children.Add($ct) | Out-Null
+        if (-not $montre) { continue }
+        # Ses cartes : une ligne par carte du tableau de bord.
+        $lot = New-Object System.Windows.Controls.StackPanel; $lot.Margin = [System.Windows.Thickness]::new(26, 0, 0, 8)
+        foreach ($sec in @(Prop $def 'sections' @())) {
+            $vues = [ordered]@{}
+            foreach ($k in @(Prop $sec 'cases' @())) {
+                $cc = [string](Prop $k 'carte' '')
+                if (-not $vues.Contains($cc)) { $vues[$cc] = @{ nom = [string](Prop $k 'nom' ''); n = 0 } }
+                $vues[$cc].n++
+            }
+            if ($vues.Count -eq 0) { continue }
+            $titreSec = [string](Prop $sec 'titre' '')
+            if ($titreSec) { $lot.Children.Add((Txt $titreSec.ToUpper() 10 'Texte3' $true '0,6,0,2')) | Out-Null }
+            foreach ($cc in $vues.Keys) {
+                $nomC = $vues[$cc].nom; if ($vues[$cc].n -gt 1) { $nomC = '{0} (+{1})' -f $nomC, ($vues[$cc].n - 1) }
+                $cleC = $idTab + '|' + $cc
+                $lot.Children.Add((Coche $nomC (-not ($r.cartes -contains $cleC)) { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.cartes = @($rr.cartes | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.cartes += $cle }; SvEcrire $rr } $cleC)) | Out-Null
+            }
+        }
+        $carteL.Child.Children.Add($lot) | Out-Null
+    }
+    if ($nbDash -eq 0) { $carteL.Child.Children.Add((Txt 'Aucun tableau de bord n''est encore rendu disponible. Cela se choisit dans Home Assistant : Vision, onglet Écran de veille.' 12 'Texte2' $false '0,6,0,0')) | Out-Null }
+    $Contenu.Children.Add($carteL) | Out-Null
+}
+
+if ($Depart) { $script:Page = $Depart; Montrer }
 
 [System.Windows.Forms.Application]::Run()
