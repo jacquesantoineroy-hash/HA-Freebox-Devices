@@ -610,7 +610,7 @@ function PageMaison() {
         }
         $sp.Children.Add($r) | Out-Null
         $r2 = Rangee; $r2.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
-        foreach ($def in @(@('Catégories', 'categories'), @('Ce qui est fermé', 'fermes'), @('Planning', 'planning'), @('Un mot…', 'mot'))) {
+        foreach ($def in @(@('Catégories', 'categories'), @('Exceptions', 'exceptions'), @('Ce qui est fermé', 'fermes'), @('Planning', 'planning'), @('Un mot…', 'mot'))) {
             $r2.Children.Add((Bouton $def[0] 'Secondaire' {
                 param($s, $e); $t = $s.Tag
                 if ($t.type -eq 'mot') { EnvoyerMot $t.appareil; return }
@@ -711,6 +711,7 @@ function PageSousVue() {
         'fermes' { Retour "Ce qui est fermé chez $prenom"; VueFermes $a }
         'planning' { Retour "Planning de $prenom"; VuePlanning $a }
         'categories' { Retour "Catégories de $prenom"; VueCategories $a }
+        'exceptions' { Retour "Exceptions de $prenom"; VueExceptions $a }
         'mot' { Retour "Un mot pour $prenom"; VueMot $a }
         'demande' { Retour "Demander l'accès"; VueDemande $script:Vue.item }
     }
@@ -785,6 +786,91 @@ function VueFermes($a) {
     }
     & $script:RemplirFermes
     $filtre.Add_TextChanged({ & $script:RemplirFermes })
+}
+
+# Les exceptions d'une personne : ce qui est décidé nom par nom, en plus des catégories. On les voit, on les
+# inverse, on les retire, on en ajoute. Elles valent sur tous les appareils de la personne.
+function ExAgir([string]$pc, [string]$genre, [string]$nom, [string]$decision) {
+    Agir @{ action = 'autoriser'; pc = $pc; genre = $genre; nom = $nom; decision = $decision; minutes = 0 }
+}
+function VueExceptions($a) {
+    # La fiche gardée par l'écran date du clic : on relit celle du moment, pour voir l'effet de ses gestes.
+    $maison = Lire 'maison.json'
+    $idPc = [string](Prop $a 'id')
+    foreach ($x in @(Prop $maison 'appareils' @())) { if ([string](Prop $x 'id') -eq $idPc) { $a = $x } }
+    $ex = Prop $a 'exceptions'
+    $Contenu.Children.Add((Txt 'Ce qui est décidé nom par nom pour cette personne, sur tous ses appareils. Une exception passe devant les catégories et l''âge ; le planning et un interdit de toute la maison restent plus forts.' 12 'Texte2' $false '0,0,0,6')) | Out-Null
+    if ($null -eq $ex) {
+        $Contenu.Children.Add((Txt 'Les exceptions arrivent avec la prochaine mise à jour de Home Assistant.' 12 'Texte3')) | Out-Null
+        return
+    }
+    foreach ($def in @(@('autorises', 'Toujours autorisé', 'Rien d''autorisé à part.', 'Fermer', 'bloquer'), @('bloques', 'Toujours fermé', 'Rien de fermé à part.', 'Autoriser', 'toujours'))) {
+        $liste = @(Prop $ex $def[0] @())
+        $Contenu.Children.Add((Section ('{0} ({1})' -f $def[1], $liste.Count))) | Out-Null
+        $c = Carte; $sp = $c.Child
+        if ($liste.Count -eq 0) { $sp.Children.Add((Txt $def[2] 12 'Texte3')) | Out-Null }
+        $k = 0
+        foreach ($e in $liste) {
+            if ($k++ -gt 0) { $sp.Children.Add((Separateur)) | Out-Null }
+            $g = New-Object System.Windows.Controls.StackPanel
+            $lib = [string](Prop $e 'libelle'); $nom = [string](Prop $e 'nom'); $genre = [string](Prop $e 'genre')
+            $g.Children.Add((Txt $lib 14 'Texte' $true)) | Out-Null
+            $sous = $(if ($genre -eq 'apps') { 'Appli' } else { 'Site' }); if ($lib -ne $nom) { $sous = $sous + ' · ' + $nom }
+            if ([bool](Prop $e 'maison' $false)) { $sous = $sous + ' · interdit pour toute la maison' }
+            $g.Children.Add((Txt $sous 11 'Texte2')) | Out-Null
+            $r = Rangee
+            foreach ($b in @(@($def[3], $def[4], 'Secondaire'), @('Retirer', 'oublier', 'Secondaire'))) {
+                $r.Children.Add((Bouton $b[0] $b[2] {
+                    param($s, $e2); $t = $s.Tag
+                    ExAgir $t.pc $t.genre $t.nom $t.decision
+                    $s.Content = '✓'; $s.IsEnabled = $false
+                } @{ pc = $idPc; genre = $genre; nom = $nom; decision = $b[1] })) | Out-Null
+            }
+            $sp.Children.Add((Deux $g $r)) | Out-Null
+        }
+        $Contenu.Children.Add($c) | Out-Null
+    }
+    # Ajouter : on cherche dans tout ce que Vision connaît (applis et sites classés), ou on écrit l'adresse d'un site.
+    $Contenu.Children.Add((Section 'Ajouter une exception')) | Out-Null
+    $c = Carte; $sp = $c.Child
+    $champ = Champ 'Nom d''une appli ou adresse d''un site'
+    $sp.Children.Add($champ) | Out-Null
+    $zone = New-Object System.Windows.Controls.StackPanel
+    $sp.Children.Add($zone) | Out-Null
+    $Contenu.Children.Add($c) | Out-Null
+    $connus = @{}
+    foreach ($cat in @(Prop $maison 'categories' @())) {
+        foreach ($x in @(Prop $cat 'apps' @())) { $n = [string](Prop $x 'nom'); if ($n -and -not $connus.ContainsKey('a:' + $n.ToLowerInvariant())) { $connus['a:' + $n.ToLowerInvariant()] = @{ genre = 'apps'; nom = $n; lib = [string](Prop $x 'libelle') } } }
+        foreach ($x in @(Prop $cat 'sites' @())) { $n = [string]$x; if ($n -and -not $connus.ContainsKey('s:' + $n.ToLowerInvariant())) { $connus['s:' + $n.ToLowerInvariant()] = @{ genre = 'sites'; nom = $n; lib = $n } } }
+    }
+    $script:VE = @{ zone = $zone; champ = $champ; connus = @($connus.Values); pc = $idPc }
+    $script:RemplirExceptions = {
+        $zone = $script:VE.zone; $zone.Children.Clear()
+        $q = (Valeur $script:VE.champ).ToLowerInvariant()
+        if ($q.Length -lt 2) { $zone.Children.Add((Txt 'Deux lettres suffisent pour chercher.' 12 'Texte3')) | Out-Null; return }
+        $trouves = @($script:VE.connus | Where-Object { $_.lib.ToLowerInvariant() -like "*$q*" -or $_.nom.ToLowerInvariant() -like "*$q*" } | Sort-Object { $_.lib.ToLowerInvariant() } | Select-Object -First 8)
+        # Une adresse écrite en entier et que Vision ne connaît pas encore : on la propose telle quelle.
+        if ($q -match '^[a-z0-9-]+(\.[a-z0-9-]+)+$' -and -not @($trouves | Where-Object { $_.nom.ToLowerInvariant() -eq $q }).Count) { $trouves = @(@{ genre = 'sites'; nom = $q; lib = $q }) + $trouves }
+        if ($trouves.Count -eq 0) { $zone.Children.Add((Txt 'Rien de ce nom. Pour un site, écris son adresse (exemple.fr).' 12 'Texte3')) | Out-Null; return }
+        $k = 0
+        foreach ($e in $trouves) {
+            if ($k++ -gt 0) { $zone.Children.Add((Separateur)) | Out-Null }
+            $g = New-Object System.Windows.Controls.StackPanel
+            $g.Children.Add((Txt $e.lib 14 'Texte' $true)) | Out-Null
+            $g.Children.Add((Txt $(if ($e.genre -eq 'apps') { 'Appli' } else { 'Site' }) 11 'Texte2')) | Out-Null
+            $r = Rangee
+            foreach ($b in @(@('Autoriser', 'toujours', 'Primaire'), @('Fermer', 'bloquer', 'Secondaire'))) {
+                $r.Children.Add((Bouton $b[0] $b[2] {
+                    param($s, $e2); $t = $s.Tag
+                    ExAgir $t.pc $t.genre $t.nom $t.decision
+                    $s.Content = '✓'; $s.IsEnabled = $false
+                } @{ pc = $script:VE.pc; genre = $e.genre; nom = $e.nom; decision = $b[1] })) | Out-Null
+            }
+            $zone.Children.Add((Deux $g $r)) | Out-Null
+        }
+    }
+    & $script:RemplirExceptions
+    $champ.Add_TextChanged({ & $script:RemplirExceptions })
 }
 
 function VuePlanning($a) {

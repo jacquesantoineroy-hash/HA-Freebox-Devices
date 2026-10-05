@@ -222,6 +222,13 @@ class ParentsActivity : Activity() {
             startActivity(Intent(this, DetailFermesActivity::class.java))
         }), gauche = 8f))
         c.addView(Ui.marge(this, rB, haut = 8f))
+        // Les exceptions de la personne : ce qui est autorisé ou fermé à part, nom par nom.
+        val ex = a.optJSONObject("exceptions")
+        val nEx = (ex?.optJSONArray("autorises")?.length() ?: 0) + (ex?.optJSONArray("bloques")?.length() ?: 0)
+        c.addView(Ui.marge(this, Ui.boutonSecondaire(this, if (nEx > 0) "Exceptions : $nEx" else "Exceptions") {
+            ExceptionsActivity.fiche = a; ExceptionsActivity.cats = categories
+            startActivity(Intent(this, ExceptionsActivity::class.java))
+        }, haut = 8f))
         c.addView(planning(id, a.optJSONArray("plages")))
 
         // Actions.
