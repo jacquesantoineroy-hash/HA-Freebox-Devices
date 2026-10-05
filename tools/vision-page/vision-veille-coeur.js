@@ -486,6 +486,7 @@ class VisionVeillePanel extends HTMLElement {
       :host(hui-media-control-card) .background.off, :host(hui-media-control-card) .background.unavailable { display: none !important; }
       :host(hui-media-control-card) .background.off ~ .player, :host(hui-media-control-card) .background.unavailable ~ .player { color: var(--v-texte) !important; }
       :host(hui-media-control-card) .controls { display: none !important; }
+      ${this._q.get("diag") === "3" ? (this._q.get("css") || "") : ""}
       ${net ? `
       .card-header { text-transform: uppercase; letter-spacing: .16em; font-size: 15px !important; font-weight: 400 !important; color: var(--v-accent) !important; line-height: 1.4 !important; padding-bottom: 8px !important; }
       :host(ha-card) { border-radius: 3px !important; }
@@ -881,7 +882,7 @@ class VisionVeillePanel extends HTMLElement {
           bloc.className = "section";
           bloc._span = Math.max(1, Math.min(4, s.span || 1));
           if (s.titre) { const t = document.createElement("div"); t.className = "sec"; t.textContent = s.titre; bloc.appendChild(t); }
-          for (const c of s.cartes) { const el = this._carte(c.config); if (el && !this._sans.has(el.localName) && !this._sans.has("cartes")) bloc.appendChild(el); else if (this._sans.has("cartes")) { const x = document.createElement("div"); x.textContent = "carte"; x.style.cssText = "height:120px;background:var(--v-carte);border-radius:12px"; bloc.appendChild(x); } }
+          for (const c of s.cartes) { const el = this._carte(c.config); if (el && !this._sans.has(el.localName) && !this._sans.has("cartes") && (!this._q.get("seul") || this._q.get("seul") === el.localName)) bloc.appendChild(el); else if (this._sans.has("cartes")) { const x = document.createElement("div"); x.textContent = "carte"; x.style.cssText = "height:120px;background:var(--v-carte);border-radius:12px"; bloc.appendChild(x); } }
           if (bloc.children.length) blocs.push(bloc);
         }
         // Écran en hauteur (téléphone, tablette debout) : les sections passent les unes sous les autres, comme
