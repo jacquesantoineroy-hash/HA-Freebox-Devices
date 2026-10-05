@@ -10,6 +10,8 @@ try { $tenu = $verrou.WaitOne(0) } catch [Threading.AbandonedMutexException] { $
 if (-not $tenu) { exit 0 }
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms, System.Drawing
+# Sa propre identité dans la barre des tâches : l'icône de Vision, pas celle de PowerShell.
+try { Add-Type -Namespace VisionShell -Name Identite -MemberDefinition '[DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern int SetCurrentProcessExplicitAppUserModelID(string id);'; [void][VisionShell.Identite]::SetCurrentProcessExplicitAppUserModelID('FamilleRoy.Vision') } catch { }
 
 # ------------------------------------------------------------------ Données
 $script:Dossier = $Dossier
@@ -85,6 +87,7 @@ function SvPinceau([string]$cle) {
 }
 
 # ------------------------------------------------------------------ XAML
+function CreerFenetre() {
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -242,12 +245,13 @@ function SvPinceau([string]$cle) {
           <Border x:Name="ChipEtat" CornerRadius="10" Background="{StaticResource Haute}" Padding="12,5" Margin="0,4,10,0">
             <TextBlock x:Name="ChipEtatTexte" Text="OUVERT" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Vert}"/>
           </Border>
+          <Button x:Name="Plein" Style="{StaticResource Secondaire}" Padding="10,4" Content="⛶" FontSize="12" Margin="0,0,6,0" ToolTip="Plein écran"/>
           <Button x:Name="Fermer" Style="{StaticResource Secondaire}" Padding="10,4" Content="✕" FontSize="12"/>
         </StackPanel>
       </Grid>
       <StackPanel x:Name="Onglets" DockPanel.Dock="Top" Orientation="Horizontal" Margin="24,8,24,10"/>
       <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="12,0,6,16" Padding="12,0,10,0">
-        <StackPanel x:Name="Contenu"/>
+        <StackPanel x:Name="Contenu" MaxWidth="1100"/>
       </ScrollViewer>
     </DockPanel>
   </Border>
@@ -260,18 +264,21 @@ $W.Add_MouseLeftButtonDown({ param($s, $e) if ($e.ButtonState -eq 'Pressed') { t
 $W.FindName('Fermer').Add_Click({ $script:W.Hide() })
 $script:Contenu = $W.FindName('Contenu')
 $script:Onglets = $W.FindName('Onglets')
-$logoPath = Join-Path $Dossier 'vision.png'
-if (Test-Path $logoPath) {
+$script:logoPath = Join-Path $script:Dossier 'vision.png'
+if (Test-Path $script:logoPath) {
     try {
         $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
-        $bmp.BeginInit(); $bmp.UriSource = New-Object Uri($logoPath); $bmp.CacheOption = 'OnLoad'; $bmp.EndInit()
+        $bmp.BeginInit(); $bmp.UriSource = New-Object Uri($script:logoPath); $bmp.CacheOption = 'OnLoad'; $bmp.EndInit()
         $W.FindName('Logo').Source = $bmp
         $W.Icon = $bmp
     } catch { }
 }
-$W.Add_Closing({ param($s, $e) $e.Cancel = $true; $script:W.Hide() })
+$W.Add_Closing({ param($s, $e) if ($s -ne $script:W) { return }; $e.Cancel = $true; $script:W.Hide() })
 # Sans cela, une fenêtre WPF ouverte depuis une boucle Windows Forms ne reçoit pas les frappes : impossible d'écrire un mot.
 try { Add-Type -AssemblyName WindowsFormsIntegration; [System.Windows.Forms.Integration.ElementHost]::EnableModelessKeyboardInterop($W) } catch { }
+$W.FindName('Plein').Add_Click({ $script:W.WindowState = $(if ($script:W.WindowState -eq 'Maximized') { 'Normal' } else { 'Maximized' }) })
+}
+CreerFenetre
 
 function Pinceau([string]$cle) { return $script:W.Resources[$cle] }
 function Txt([string]$t, [double]$taille = 13, [string]$couleur = 'Texte', [bool]$gras = $false, [string]$marge = '0') {
@@ -1043,8 +1050,60 @@ function SvFermer() {
     $script:SvFenetres = @(); $script:SvScenes = @(); $script:SvHeures = @()
 }
 
+# Les vraies cartes de Home Assistant : une page plein écran par écran, dans Edge, aux couleurs de ce PC.
+function SvEdge() {
+    foreach ($c in @((Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'), (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe'))) {
+        if ($c -and (Test-Path $c)) { return $c }
+    }
+    return $null
+}
+function SvOuvrirWeb() {
+    $acces = Prop (Lire 'veille.json') 'acces'
+    $jeton = [string](Prop $acces 'jeton' ''); $base = ([string](Prop $acces 'url' '')).TrimEnd('/')
+    $edge = SvEdge
+    if (-not $jeton -or -not $base -or -not $edge) { return $false }
+    $r = SvReglages; $pal = $script:Pal; $j = 0
+    foreach ($ecran in [System.Windows.Forms.Screen]::AllScreens) {
+        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}' -f `
+            [uri]::EscapeDataString([string](Prop $acces 'id' '')), $j, $pal.Fond.Substring(3), $pal.Carte.Substring(3), $pal.Texte.Substring(3), $pal.Texte2.Substring(3), $pal.Or.Substring(3), $pal.Ligne.Substring(3), `
+            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ','))
+        $adresse = '{0}/api/pc_parental/veille/entree#t={1}&q={2}' -f $base, $jeton, [uri]::EscapeDataString($q)
+        $profilEdge = Join-Path $env:LOCALAPPDATA ('Vision\veille-edge-{0}' -f $j)
+        $arguments = @('--kiosk', ('"{0}"' -f $adresse), '--edge-kiosk-type=fullscreen', '--no-first-run', '--no-default-browser-check',
+            ('--user-data-dir="{0}"' -f $profilEdge), ('--window-position={0},{1}' -f ($ecran.Bounds.Left + 40), ($ecran.Bounds.Top + 40)),
+            '--disable-features=msEdgeSidebarV2,Translate', '--hide-crash-restore-bubble', '--autoplay-policy=no-user-gesture-required')
+        if ([bool](Prop $acces 'insecure' $false)) { $arguments += @('--ignore-certificate-errors', '--test-type') }
+        try { Start-Process -FilePath $edge -ArgumentList $arguments } catch { return $false }
+        $j++
+    }
+    $script:SvWebOuvert = $true; $script:SvOuvertA = Get-Date
+    $script:SvWebTic.Start()
+    return $true
+}
+function SvFermerWeb() {
+    try { $script:SvWebTic.Stop() } catch { }
+    $script:SvWebOuvert = $false
+    try {
+        Get-CimInstance Win32_Process -Filter "Name = 'msedge.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -and $_.CommandLine -like '*Vision\veille-edge-*' } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    } catch { }
+}
+$script:SvWebOuvert = $false
+# Le moindre geste (souris, clavier) referme la page.
+$script:SvWebTic = New-Object System.Windows.Threading.DispatcherTimer
+$script:SvWebTic.Interval = [TimeSpan]::FromMilliseconds(300)
+$script:SvWebTic.Add_Tick({
+    try {
+        if (-not $script:SvWebOuvert) { $script:SvWebTic.Stop(); return }
+        if (((Get-Date) - $script:SvOuvertA).TotalSeconds -lt 3) { return }
+        if ([VisionVeilleNatif]::Inactif() -lt 1) { SvFermerWeb }
+    } catch { }
+})
+
 function SvOuvrir() {
-    if ($script:SvFenetres.Count -gt 0) { return }
+    if ($script:SvFenetres.Count -gt 0 -or $script:SvWebOuvert) { return }
+    if ($script:SvPret -and (SvOuvrirWeb)) { return }
     $script:SvOrigine = $null; $script:SvOuvertA = Get-Date; $script:SvScenes = @(); $script:SvHeures = @()
     $ecrans = [System.Windows.Forms.Screen]::AllScreens
     $echelle = 1.0
@@ -1101,7 +1160,7 @@ $script:SvGuet = New-Object System.Windows.Threading.DispatcherTimer
 $script:SvGuet.Interval = [TimeSpan]::FromSeconds(5)
 $script:SvGuet.Add_Tick({
     try {
-        if (-not $script:SvPret -or $script:SvFenetres.Count -gt 0) { return }
+        if (-not $script:SvPret -or $script:SvFenetres.Count -gt 0 -or $script:SvWebOuvert) { return }
         $r = SvReglages
         if (-not $r.actif) { return }
         if ([VisionVeilleNatif]::Inactif() -lt ($r.delai * 60)) { return }
@@ -1121,15 +1180,18 @@ function Coche([string]$t, [bool]$etat, $action, $tag = $null) {
     return $c
 }
 
-# Changer de thème recharge la fenêtre : ses couleurs sont posées à sa création.
-function Relancer() {
-    try { $tray.Visible = $false } catch { }
-    try { $verrou.ReleaseMutex() } catch { }
-    try {
-        $arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -Dossier "{1}" -Depart reglages' -f $PSCommandPath, $script:Dossier
-        Start-Process -FilePath 'powershell.exe' -ArgumentList $arguments -WindowStyle Hidden
-    } catch { }
-    [System.Windows.Forms.Application]::Exit()
+# Changer de thème : les couleurs sont posées à la création de la fenêtre, on la recrée donc
+# au même endroit et dans le même état, sans que rien ne se ferme.
+function ChangerTheme([string]$nom) {
+    $rr = SvReglages; $rr.theme = $nom; SvEcrire $rr
+    $script:Pal = $script:Themes[$nom]
+    $ancienne = $script:W
+    $gauche = $ancienne.Left; $haut = $ancienne.Top; $etatF = $ancienne.WindowState
+    CreerFenetre
+    $script:W.WindowStartupLocation = 'Manual'; $script:W.Left = $gauche; $script:W.Top = $haut
+    Rafraichir
+    $script:W.Show(); $script:W.WindowState = $etatF; $script:W.Activate() | Out-Null
+    try { $ancienne.Close() } catch { }
 }
 
 function PageReglages() {
@@ -1140,7 +1202,7 @@ function PageReglages() {
         $bt = New-Object System.Windows.Controls.Primitives.ToggleButton
         $bt.Content = $nomTheme; $bt.Style = $W.Resources['Onglet']; $bt.Tag = $nomTheme; $bt.IsChecked = ($r.theme -eq $nomTheme)
         $bt.Margin = [System.Windows.Thickness]::new(0, 0, 6, 6)
-        $bt.Add_Click({ param($s, $e) $rr = SvReglages; if ($rr.theme -eq [string]$s.Tag) { $s.IsChecked = $true; return }; $rr.theme = [string]$s.Tag; SvEcrire $rr; Relancer })
+        $bt.Add_Click({ param($s, $e) if ((SvReglages).theme -eq [string]$s.Tag) { $s.IsChecked = $true; return }; ChangerTheme ([string]$s.Tag) })
         $enveloppe.Children.Add($bt) | Out-Null
     }
     $carteT.Child.Children.Add($enveloppe) | Out-Null
