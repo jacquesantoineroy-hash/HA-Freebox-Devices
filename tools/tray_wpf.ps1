@@ -1204,10 +1204,18 @@ function SvSuivant([int]$pas = 1) {
     SvFondu 1 0 { SvToutDessiner; SvFondu 0 1 $null }
 }
 
+# « Voir maintenant » cache la fenêtre le temps de la veille : elle revient à sa place quand la veille se ferme.
+$script:SvRouvrir = $false
+function SvRetour() {
+    if (-not $script:SvRouvrir) { return }
+    $script:SvRouvrir = $false
+    try { $script:W.Show(); $script:W.Activate() | Out-Null } catch { }
+}
 function SvFermer() {
     try { $script:SvTic.Stop() } catch { }
     foreach ($f in @($script:SvFenetres)) { try { $f.Close() } catch { } }
     $script:SvFenetres = @(); $script:SvScenes = @(); $script:SvHeures = @()
+    SvRetour
 }
 
 # Les vraies cartes de Home Assistant : une page plein écran par écran, dans Edge, aux couleurs de ce PC.
@@ -1255,6 +1263,7 @@ function SvFermerWeb() {
             Where-Object { $_.CommandLine -and $_.CommandLine -like '*Vision\veille-edge-*' } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     } catch { }
+    SvRetour
 }
 $script:SvWebOuvert = $false
 $script:SvDevantA = [datetime]::MinValue
@@ -1454,7 +1463,7 @@ function PageReglages() {
     }
     $carteV.Child.Children.Add($delais) | Out-Null
     $carteV.Child.Children.Add((Txt 'Il ne démarre pas pendant un film ou un jeu en plein écran. Avec plusieurs écrans, chacun montre un tableau différent.' 11 'Texte2' $false '0,2,0,8')) | Out-Null
-    $voir = Bouton 'Voir maintenant' 'Secondaire' { $script:W.Hide(); SvOuvrir }; $voir.HorizontalAlignment = 'Left'
+    $voir = Bouton 'Voir maintenant' 'Secondaire' { $script:SvRouvrir = $true; $script:W.Hide(); SvOuvrir }; $voir.HorizontalAlignment = 'Left'
     $carteV.Child.Children.Add($voir) | Out-Null
     $Contenu.Children.Add($carteV) | Out-Null
 
