@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import fs from "fs";
-const [, , donnees, sortie] = process.argv;
+const [, , donnees, sortie, personne] = process.argv;
 const js = fs.readFileSync(new URL("../www/vision-maison-card.js", import.meta.url), "utf8");
 const maison = fs.readFileSync(donnees, "utf8");
 const nav = await chromium.launch();
@@ -8,13 +8,13 @@ const page = await nav.newPage({ viewport: { width: 900, height: 1400 } });
 await page.setContent(`<html><body style="background:#fafafa;font-family:sans-serif;--divider-color:#ddd;--primary-color:#8C2F4B;--secondary-text-color:#666;--card-background-color:#fff;--secondary-background-color:#f1f1f1"><div id="z" style="max-width:820px"></div></body></html>`);
 await page.addScriptTag({ content: `customElements.define("ha-card", class extends HTMLElement {}); customElements.define("ha-icon", class extends HTMLElement {});` + js });
 const erreurs = []; page.on("pageerror", (e) => erreurs.push(String(e)));
-await page.evaluate((m) => {
+await page.evaluate(([m, personne]) => {
   window.gestes = [];
   const c = document.createElement("vision-maison-card");
-  c.setConfig({ mode: "personne", personne: "person.arthur", chemin: "/vision-maison" });
+  c.setConfig({ mode: "personne", personne: personne, chemin: "/vision-maison" });
   c.hass = { callApi: async (methode, chemin, corps) => { if (corps) window.gestes.push(corps); return JSON.parse(m); } };
   document.getElementById("z").appendChild(c); window.c = c;
-}, maison);
+}, [maison, personne || ""]);
 await page.waitForTimeout(300);
 const ok = (cond, quoi) => { console.log((cond ? "ok   " : "RATE ") + quoi); if (!cond) process.exitCode = 1; };
 const r = () => page.locator("vision-maison-card");

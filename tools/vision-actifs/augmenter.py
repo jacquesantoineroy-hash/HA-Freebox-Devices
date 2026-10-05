@@ -4,7 +4,9 @@ src, dst = sys.argv[1], sys.argv[2]
 d = json.load(open(src, encoding="utf-8-sig"))
 pers = {p["entite"]: p for p in d.get("personnes", [])}
 maison = [{"entite": e, "prenom": p["prenom"]} for e, p in pers.items() if p["prenom"].lower() != "affichage"]
-for nom, ent in (("Laetitia", "person.laetitia"),):
+# Personnes à ajouter pour l'essai, données en arguments : Prénom=person.xxx
+ajoutees = [x.split("=", 1) for x in sys.argv[3:] if "=" in x]
+for nom, ent in ajoutees:
     if ent not in [m["entite"] for m in maison]:
         maison.append({"entite": ent, "prenom": nom})
 tous = [m["entite"] for m in maison]
@@ -16,7 +18,7 @@ for a in d["appareils"]:
         a["partage_tous"] = True
         a["proprietaires"] = base + [e for e in sorted(tous) if e not in base]
     elif "parents" in a["nom"].lower():
-        a["proprietaires"] = base + ["person.laetitia"]
+        a["proprietaires"] = base + [ent for _, ent in ajoutees]
     else:
         a["proprietaires"] = base
 personnes = []

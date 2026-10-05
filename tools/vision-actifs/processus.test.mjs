@@ -13,7 +13,7 @@ const fiche = (cle, nom, extra = {}) => ({
   cle, genre: cle.split("|")[0], nom, exe: nom.toLowerCase(), chemin: "C:\\Program Files\\" + nom + "\\" + nom + ".exe",
   commande: "", signataire: "Éditeur", statut: "Valid", editeur: "Éditeur", description: "", ou: "Program Files",
   protege: false, etat: "decides", proposition: null, decision: null, non_desinstallable: "",
-  pcs: [{ pc: "PC-ARTHUR", actif: true, ram_mo: 120, applique: false }], ...extra,
+  pcs: [{ pc: "PC-SALON", actif: true, ram_mo: 120, applique: false }], ...extra,
 });
 const donnees = (permis) => ({
   desinstallation: permis,
@@ -22,8 +22,8 @@ const donnees = (permis) => ({
     fiche("processus|nortonui", "NortonUI", { decision: { verdict: "nuisible" } }),
     fiche("processus|vgc", "Vanguard", { decision: { verdict: "garder" }, non_desinstallable: "est l'anti-triche d'un jeu" }),
     fiche("service|vieux", "VieuxLogiciel", { decision: { verdict: "desinstaller" },
-      pcs: [{ pc: "PC-ARTHUR", actif: true, ram_mo: 0, applique: false, desinstall: { etat: "fait", detail: "" } },
-            { pc: "PC-JULES", actif: true, ram_mo: 0, applique: false, desinstall: { etat: "impossible", detail: "pas de désinstallation silencieuse connue : à retirer à la main" } },
+      pcs: [{ pc: "PC-SALON", actif: true, ram_mo: 0, applique: false, desinstall: { etat: "fait", detail: "" } },
+            { pc: "PC-BUREAU", actif: true, ram_mo: 0, applique: false, desinstall: { etat: "impossible", detail: "pas de désinstallation silencieuse connue : à retirer à la main" } },
             { pc: "msi", actif: true, ram_mo: 0, applique: false }] }),
     fiche("processus|svchost", "svchost", { protege: true, decision: { verdict: "garder" } }),
   ],
@@ -65,7 +65,7 @@ verifier("« demandée » là où l'agent n'a pas répondu", await page.evaluate
 await page.evaluate(() => window.carte.shadowRoot.querySelector('button[data-a="desinstaller"]').click());
 verifier("un clic ne désinstalle pas", await page.evaluate(() => window.appels.length === 0));
 verifier("la question s'ouvre", (await q(".confirmer")) === 1);
-verifier("la question nomme l'appareil", await page.evaluate(() => window.carte.shadowRoot.querySelector(".confirmer").textContent.includes("PC-ARTHUR")));
+verifier("la question nomme l'appareil", await page.evaluate(() => window.carte.shadowRoot.querySelector(".confirmer").textContent.includes("PC-SALON")));
 await page.screenshot({ path: sortie });
 await page.evaluate(() => window.carte.shadowRoot.querySelector("[data-non]").click());
 verifier("Annuler referme sans rien envoyer", (await q(".confirmer")) === 0 && await page.evaluate(() => window.appels.length === 0));
