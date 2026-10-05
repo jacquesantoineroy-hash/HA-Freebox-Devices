@@ -140,7 +140,7 @@ class VisionVeillePanel extends HTMLElement {
     });
     this._sombre = [1, 3, 5].map((i) => parseInt(fond.slice(i, i + 2), 16)).reduce((a, b) => a + b, 0) < 384;
     // La carte du lieu : des teintes calmes, proches du fond, dans les deux modes.
-    this.style.setProperty("--v-plan", this._sombre ? "grayscale(1) invert(0.9) contrast(0.85) brightness(1.15)" : "saturate(0.55) contrast(0.94) sepia(0.12)");
+    this.style.setProperty("--v-plan", this._sombre ? "grayscale(1) contrast(0.9)" : "saturate(0.55) contrast(0.94) sepia(0.12)");
     this._feuille = null;
     // Home Assistant passe lui-même en clair ou en sombre, comme le thème de l'appareil : ses composants
     // (interrupteurs, curseurs, carte du lieu) choisissent alors les bonnes nuances d'eux-mêmes.
@@ -195,6 +195,19 @@ class VisionVeillePanel extends HTMLElement {
       for (const x of noeud.children) voir(x);
     };
     try { voir(racine); } catch (e) { /* sans gravité */ }
+    if (this._q.get("diag") === "2" && !this._diagVu) {
+      const trouver = (n, nom) => { if (n.localName === nom) return n; for (const x of [...(n.shadowRoot ? n.shadowRoot.children : []), ...n.children]) { const r = trouver(x, nom); if (r) return r; } return null; };
+      const sw = trouver(racine, "ha-switch");
+      if (sw && sw.shadowRoot) {
+        this._diagVu = true;
+        const noms = new Set();
+        for (const f of sw.shadowRoot.adoptedStyleSheets) for (const r of f.cssRules) for (const m of (r.cssText.match(/--[\w-]+/g) || [])) noms.add(m);
+        const d = document.createElement("div");
+        d.style.cssText = "position:absolute;left:1vw;top:12vh;width:60vw;z-index:9;font:22px Consolas,monospace;color:#fff;background:#000;white-space:normal;word-break:break-all";
+        d.textContent = [...sw.shadowRoot.querySelectorAll("*")].map((x) => `${x.localName}.${x.className}=${getComputedStyle(x).backgroundColor}`).join(" | ") + " ## " + [...noms].filter((x) => !/font|space|size|radius|duration|easing|shadow/.test(x)).join(" ");
+        this.shadowRoot.appendChild(d);
+      }
+    }
   }
 
   // Avec « diag=1 » dans l'adresse, les temps de chargement s'écrivent en haut de l'écran.
