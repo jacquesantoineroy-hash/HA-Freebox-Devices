@@ -208,6 +208,16 @@ class PcParentalVeillePageView(HomeAssistantView):
         return self.json(await page(self.hass, coord, pc, str(request.query.get("ecran") or "tele")))
 
 
+def _module(hass: HomeAssistant) -> str:
+    """L'adresse du panneau change à chaque nouvelle version du fichier : les navigateurs ne gardent pas l'ancienne."""
+    import os
+
+    try:
+        return "/local/vision-veille-panel.js?v={}".format(int(os.path.getmtime(hass.config.path("www", "vision-veille-panel.js"))))
+    except OSError:
+        return MODULE
+
+
 def installer(hass: HomeAssistant) -> None:
     hass.http.register_view(PcParentalVeilleAccesView(hass))
     hass.http.register_view(PcParentalVeilleEntreeView())
@@ -220,7 +230,7 @@ def installer(hass: HomeAssistant) -> None:
                 hass,
                 component_name="custom",
                 frontend_url_path=PANNEAU,
-                config={"_panel_custom": {"name": "vision-veille-panel", "module_url": MODULE, "embed_iframe": False, "trust_external": False}},
+                config={"_panel_custom": {"name": "vision-veille-panel", "module_url": _module(hass), "embed_iframe": False, "trust_external": False}},
                 require_admin=False,
             )
     except Exception:  # noqa: BLE001

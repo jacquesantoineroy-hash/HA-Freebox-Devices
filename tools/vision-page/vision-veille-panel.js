@@ -210,21 +210,29 @@ class VisionVeillePanel extends HTMLElement {
         const visibles = Math.max(1, Math.floor((L + 24) / 424));
         for (const s of sections) if (s.offsetHeight > H || sections.length < visibles) s.classList.add("longue");
         await pause(250);
-        // Un tableau qui n'occupe qu'un coin de l'écran est agrandi jusqu'à le remplir (deux fois au plus).
-        const occupe = () => {
-          const o = c.getBoundingClientRect(); let d = 0, b = 0;
-          for (const el of c.querySelectorAll(".section > *")) { const r = el.getBoundingClientRect(); if (r.width) { d = Math.max(d, r.right - o.left); b = Math.max(b, r.bottom - o.top); } }
-          return [d, b];
-        };
+        // Tout tient sur un écran : on cherche le nombre de colonnes qui permet le plus grand agrandissement
+        // (2,2 fois au plus), puis on centre. Un petit tableau de bord remplit ainsi l'écran au lieu d'un coin.
         if (c.scrollWidth <= c.clientWidth + 4) {
-          const [d, b] = occupe();
-          let z = d && b ? Math.min(L / d, H / b, 2) * 0.97 : 1;
-          for (let essai = 0; essai < 5 && z > 1.08; essai++) {
-            c.style.width = `${L / z}px`; c.style.height = `${H / z}px`; c.style.transform = `scale(${z})`;
-            await pause(120);
-            if (c.scrollWidth <= c.clientWidth + 4) break;
-            z *= 0.86;
-            if (z <= 1.08) { c.style.width = ""; c.style.height = ""; c.style.transform = ""; }
+          const elements = c.querySelectorAll(".section > *").length;
+          if (sections.length < 3) for (const s of sections) s.classList.add("longue");
+          const blocs = sections.length < 3 ? elements : sections.length;
+          let mieux = null;
+          c.style.height = "auto"; c.style.columnWidth = "auto"; c.style.columnFill = "balance";
+          for (let k = 1; k <= Math.min(blocs, 6); k++) {
+            const lk = k * 420 + (k - 1) * 24;
+            c.style.width = `${lk}px`; c.style.columnCount = String(k);
+            await pause(70);
+            const hk = c.scrollHeight || 1;
+            const z = Math.min(L / lk, H / hk, 2.2);
+            if (!mieux || z > mieux.z + 0.01) mieux = { k, lk, hk, z };
+          }
+          if (mieux) {
+            const z = mieux.z * 0.98;
+            c.style.width = `${mieux.lk}px`; c.style.columnCount = String(mieux.k);
+            c.style.transform = `scale(${z})`;
+            c.style.left = `${Math.max(0, (L - mieux.lk * z) / 2)}px`;
+            c.style.top = `${Math.max(0, Math.min((H - mieux.hk * z) / 2, H * 0.12))}px`;
+            c.style.overflow = "visible";
           }
         }
         e.pas = c.clientWidth + 24;
