@@ -861,7 +861,7 @@ $horloge.Start()
 # Le PC a le même écran de veille que les télés : l'horloge, puis les tableaux de
 # bord que Home Assistant rend disponibles (l'agent dépose veille.json). Chaque
 # PC garde ses propres réglages (activé, délai, thème) dans le profil de l'utilisateur.
-$svNatif = 'using System; using System.Runtime.InteropServices; public static class VisionVeilleNatif { [StructLayout(LayoutKind.Sequential)] struct LII { public uint cb; public uint t; } [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LII p); [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; } [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] static extern IntPtr GetDesktopWindow(); [DllImport("user32.dll")] static extern IntPtr GetShellWindow(); public static uint Inactif() { LII l = new LII(); l.cb = (uint)Marshal.SizeOf(l); if (!GetLastInputInfo(ref l)) return 0; return ((uint)Environment.TickCount - l.t) / 1000; } public static bool PleinEcran(int w, int h) { IntPtr f = GetForegroundWindow(); if (f == IntPtr.Zero || f == GetDesktopWindow() || f == GetShellWindow()) return false; RECT r; if (!GetWindowRect(f, out r)) return false; return (r.R - r.L) >= w && (r.B - r.T) >= h; } }'
+$svNatif = 'using System; using System.Runtime.InteropServices; public static class VisionVeilleNatif { [StructLayout(LayoutKind.Sequential)] struct LII { public uint cb; public uint t; } [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LII p); [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; } [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] static extern IntPtr GetDesktopWindow(); [DllImport("user32.dll")] static extern IntPtr GetShellWindow(); public static uint Inactif() { LII l = new LII(); l.cb = (uint)Marshal.SizeOf(l); if (!GetLastInputInfo(ref l)) return 0; return ((uint)Environment.TickCount - l.t) / 1000; } public static bool PleinEcran(int w, int h) { IntPtr f = GetForegroundWindow(); if (f == IntPtr.Zero || f == GetDesktopWindow() || f == GetShellWindow()) return false; RECT r; if (!GetWindowRect(f, out r)) return false; return (r.R - r.L) >= w && (r.B - r.T) >= h; } delegate bool Enum(IntPtr h, IntPtr l); [DllImport("user32.dll")] static extern bool EnumWindows(Enum f, IntPtr l); [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid); [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr apres, int x, int y, int cx, int cy, uint drapeaux); public static int Devant(int[] pids) { System.Collections.Generic.List<uint> s = new System.Collections.Generic.List<uint>(); foreach (int p in pids) s.Add((uint)p); int n = 0; EnumWindows(delegate(IntPtr h, IntPtr l) { uint pid; GetWindowThreadProcessId(h, out pid); if (s.Contains(pid) && IsWindowVisible(h)) { SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040); n++; } return true; }, IntPtr.Zero); return n; } }'
 $script:SvPret = $false
 try { Add-Type -TypeDefinition $svNatif -ErrorAction Stop; $script:SvPret = $true } catch { }
 
@@ -1121,13 +1121,24 @@ function SvFermerWeb() {
     } catch { }
 }
 $script:SvWebOuvert = $false
+$script:SvDevantA = [datetime]::MinValue
 # Le moindre geste (souris, clavier) referme la page.
 $script:SvWebTic = New-Object System.Windows.Threading.DispatcherTimer
 $script:SvWebTic.Interval = [TimeSpan]::FromMilliseconds(300)
 $script:SvWebTic.Add_Tick({
     try {
         if (-not $script:SvWebOuvert) { $script:SvWebTic.Stop(); return }
-        if (((Get-Date) - $script:SvOuvertA).TotalSeconds -lt 3) { return }
+        # Les fenêtres de la veille passent devant tout le reste, même devant une fenêtre restée au premier plan.
+        # Edge met quelques secondes à les ouvrir : on y revient pendant les vingt-cinq premières secondes.
+        $depuis = ((Get-Date) - $script:SvOuvertA).TotalSeconds
+        if ($depuis -lt 25 -and ((Get-Date) - $script:SvDevantA).TotalSeconds -ge 1.5) {
+            $script:SvDevantA = Get-Date
+            try {
+                $pids = @(Get-CimInstance Win32_Process -Filter "Name = 'msedge.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine -like '*Vision\veille-edge-*' } | ForEach-Object { [int]$_.ProcessId })
+                if ($pids.Count -gt 0) { [void][VisionVeilleNatif]::Devant([int[]]$pids) }
+            } catch { }
+        }
+        if ($depuis -lt 3) { return }
         if ([VisionVeilleNatif]::Inactif() -lt 1) { SvFermerWeb }
     } catch { }
 })
