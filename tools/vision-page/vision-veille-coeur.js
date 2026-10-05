@@ -76,6 +76,14 @@ class VisionVeillePanel extends HTMLElement {
   }
   _rvb(h) { return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", "); }
 
+  // Avec « diag=1 » dans l'adresse, les temps de chargement s'écrivent en haut de l'écran.
+  _note(texte) {
+    if (!this._q || this._q.get("diag") !== "1") return;
+    let d = this.shadowRoot.querySelector(".diag");
+    if (!d) { d = document.createElement("div"); d.className = "diag"; d.style.cssText = "position:absolute;left:1vw;top:1vh;z-index:9;font:14px Consolas,monospace;color:#fff;white-space:pre"; this.shadowRoot.appendChild(d); }
+    d.textContent += `${((Date.now() - this._debut) / 1000).toFixed(1)} s  ${texte}\n`;
+  }
+
   async _ressources() {
     // Les cartes de Home Assistant et celles de la communauté (HACS) se chargent avec le moteur des tableaux de bord.
     try {
@@ -84,11 +92,14 @@ class VisionVeillePanel extends HTMLElement {
         const r = document.createElement("partial-panel-resolver");
         r.hass = { panels: [{ url_path: "tmp", component_name: "lovelace" }] };
         r._updateRoutes();
+        this._note("moteur : demandé");
         await r.routerOptions.routes.tmp.load();
+        this._note("moteur : chargé");
       }
     } catch (e) { /* on tente quand même */ }
     try {
       const res = await this._hass.callWS({ type: "lovelace/resources" });
+      this._note(`ressources : ${(res || []).length} à charger`);
       // Les cartes de la communauté se chargent en même temps ; on ne les attend pas plus de cinq secondes.
       await Promise.race([pause(5000), Promise.all((res || []).map((x) => {
         if (x.type === "module") return import(x.url).catch(() => null);
@@ -97,7 +108,9 @@ class VisionVeillePanel extends HTMLElement {
         return null;
       }))]);
     } catch (e) { /* sans ressources, les cartes d'origine suffisent */ }
+    this._note("ressources : finies, aides " + (window.loadCardHelpers ? "présentes" : "absentes"));
     for (let i = 0; i < 24 && !window.loadCardHelpers; i++) await pause(250);
+    this._note("aides : " + (window.loadCardHelpers ? "ok" : "jamais venues"));
     return window.loadCardHelpers ? window.loadCardHelpers() : null;
   }
 
@@ -152,10 +165,11 @@ class VisionVeillePanel extends HTMLElement {
     let page = null, aides = null;
     try {
       [page, aides] = await Promise.all([
-        this._hass.callApi("GET", `pc_parental/veille/page?id=${encodeURIComponent(this._q.get("id") || "")}&ecran=${encodeURIComponent(this._q.get("ecran") || "tele")}`),
+        this._hass.callApi("GET", `pc_parental/veille/page?id=${encodeURIComponent(this._q.get("id") || "")}&ecran=${encodeURIComponent(this._q.get("ecran") || "tele")}`).then((r) => { this._note("page : reçue"); return r; }),
         this._ressources(),
       ]);
-    } catch (e) { page = null; }
+    } catch (e) { page = null; this._note("erreur : " + e); }
+    this._note("page et aides : prêtes");
     this._page = page || { horloge: { actif: true, duree: 30 }, tableaux: [] };
     this._aides = aides;
     const masques = new Set((this._q.get("masques") || "").split(",").filter(Boolean));
