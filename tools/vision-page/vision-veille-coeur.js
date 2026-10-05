@@ -824,7 +824,8 @@ class VisionVeillePanel extends HTMLElement {
     let n = 0, lentes = 0, pire = 0, etapes = new Set();
     const pas = (t) => { const d = t - avant; avant = t; n++; if (d > 34) { lentes++; pire = Math.max(pire, d); etapes.add(this._etape || "-"); } requestAnimationFrame(pas); };
     requestAnimationFrame(pas);
-    setInterval(() => { this._note(`${n} images, ${lentes} lentes, pire ${Math.round(pire)} ms  [${[...etapes].join(" ")}]`); n = 0; lentes = 0; pire = 0; etapes = new Set(); }, 2000);
+    const bilan = [];
+    setInterval(() => { bilan.push(`${n}/${lentes}${etapes.has("pose") ? "p" : ""}`); document.title = "VISION " + bilan.join(" "); this._note(`${n} images, ${lentes} lentes, pire ${Math.round(pire)} ms  [${[...etapes].join(" ")}]`); n = 0; lentes = 0; pire = 0; etapes = new Set(); }, 2000);
     if (this._q.get("derive") === "0") this.setAttribute("data-fixe", "1");
     // D'où vient le temps perdu : script (lequel), calcul des styles et de la mise en page, ou dessin.
     try {
