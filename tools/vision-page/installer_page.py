@@ -12,6 +12,7 @@ shutil.copy2(os.path.join(ICI, "veille_page.py"), BASE + "veille_page.py")
 py_compile.compile(BASE + "veille_page.py", doraise=True)
 os.makedirs("/homeassistant/www", exist_ok=True)
 shutil.copy2(os.path.join(ICI, "vision-veille-panel.js"), "/homeassistant/www/vision-veille-panel.js")
+shutil.copy2(os.path.join(ICI, "vision-veille-coeur.js"), "/homeassistant/www/vision-veille-coeur.js")
 
 p = BASE + "http.py"
 t = open(p, encoding="utf-8").read()
