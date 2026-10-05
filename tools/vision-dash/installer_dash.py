@@ -13,7 +13,7 @@ BASE = "/homeassistant/custom_components/pc_parental/"
 
 def patch(nom, remplacements, bak=".bakdash", depuis=None):
     p = BASE + nom
-    source = depuis if depuis and os.path.exists(p + depuis) else (p + bak if os.path.exists(p + bak) else p)
+    source = p + depuis if depuis and os.path.exists(p + depuis) else (p + bak if os.path.exists(p + bak) else p)
     t = open(source, encoding="utf-8").read()
     if not os.path.exists(p + bak):
         shutil.copy2(p, p + bak)
