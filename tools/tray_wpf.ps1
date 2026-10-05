@@ -1531,13 +1531,13 @@ function PageReglages() {
     $lt.Children.Add((Txt '▾' 13 'Texte2' $false '10,0,0,0')) | Out-Null
     $tete.Content = $lt
     $carteT.Child.Children.Add($tete) | Out-Null
-    $script:ListeThemes = New-Object System.Windows.Controls.StackPanel
+    $script:ListeThemes = New-Object System.Windows.Controls.WrapPanel
     $script:ListeThemes.Visibility = 'Collapsed'; $script:ListeThemes.Margin = [System.Windows.Thickness]::new(0, 0, 0, 8)
     $tete.Add_Click({ if ($script:ListeThemes.Visibility -eq 'Visible') { $script:ListeThemes.Visibility = 'Collapsed' } else { $script:ListeThemes.Visibility = 'Visible' } })
     foreach ($nomTheme in $script:Themes.Keys) {
         $bt = New-Object System.Windows.Controls.Button
-        $bt.Style = $W.Resources['Secondaire']; $bt.Tag = $nomTheme; $bt.HorizontalAlignment = 'Stretch'; $bt.HorizontalContentAlignment = 'Left'
-        $bt.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4)
+        $bt.Style = $W.Resources['Secondaire']; $bt.Tag = $nomTheme
+        $bt.Margin = [System.Windows.Thickness]::new(0, 0, 6, 6)
         $li = Rangee
         $li.Children.Add((& $pastille ([string]$nomTheme))) | Out-Null
         $li.Children.Add((Txt ([string]$nomTheme) 13 'Texte' ($r.theme -eq $nomTheme))) | Out-Null
