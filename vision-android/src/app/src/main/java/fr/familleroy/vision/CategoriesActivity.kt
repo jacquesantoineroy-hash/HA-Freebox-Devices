@@ -49,7 +49,7 @@ class CategoriesActivity : Activity() {
         col.addView(Ui.sousTitre(this, "Ce que $prenom peut utiliser, sur tous ses appareils"))
         r.addView(Ui.marge(this, col, gauche = 2f))
         racine.addView(Ui.marge(this, r, bas = 14f))
-        racine.addView(Ui.texte(this, "Interrupteur à droite : coupé. Touche le nom pour voir ce qu'il y a dedans. Le planning et la règle de moyenne s'ajoutent par-dessus.", 13f, Ui.TEXTE_2))
+        racine.addView(Ui.texte(this, "Interrupteur à droite : coupé. Touche le nom pour voir ce qu'il y a dedans. Le planning et les automatisations s'ajoutent par-dessus.", 13f, Ui.TEXTE_2))
         liste = Ui.colonne(this)
         racine.addView(Ui.marge(this, liste, haut = 10f))
         remplir()

@@ -121,12 +121,12 @@ class ParentsActivity : Activity() {
                 val pc = d.optString("pc"); val id = d.optString("id")
                 fun choix(t: String, principal: Boolean, action: () -> Unit) = if (principal) Ui.boutonPrimaire(this, t, action) else Ui.boutonSecondaire(this, t, action)
                 r.addView(Ui.poids(choix("1 h", duree == "1h" || duree.isEmpty()) { repondreAcces(pc, id, "temporaire", 60) }))
-                r.addView(Ui.marge(this, Ui.poids(choix("Toujours", duree == "toujours" || duree.isEmpty()) { repondreAcces(pc, id, "toujours") }), gauche = 8f))
+                r.addView(Ui.marge(this, Ui.poids(choix("Exception", duree == "toujours" || duree.isEmpty()) { repondreAcces(pc, id, "toujours") }), gauche = 8f))
                 r.addView(Ui.marge(this, Ui.poids(Ui.boutonDanger(this, "Non") { repondreAcces(pc, id, "non") }), gauche = 8f))
                 c.addView(Ui.marge(this, r, haut = 14f))
                 if (etiquettes.isNotEmpty()) c.addView(Ui.marge(this, choix("Toute la catégorie : ${etiquettes.joinToString(", ")}", duree == "categorie") { repondreAcces(pc, id, "categorie") }, haut = 8f))
-                if (d.optString("genre") == "apps") c.addView(Ui.marge(this, Ui.boutonSecondaire(this, "Exception : même pendant les coupures") { repondreAcces(pc, id, "exception") }, haut = 8f))
-                c.addView(Ui.marge(this, Ui.texte(this, "Toujours : ouvert en dehors des plages de coupure.", 12f, Ui.TEXTE_3), haut = 6f))
+                if (d.optString("genre") == "apps") c.addView(Ui.marge(this, Ui.boutonSecondaire(this, "Toujours disponible, même pendant les coupures") { repondreAcces(pc, id, "exception") }, haut = 8f))
+                c.addView(Ui.marge(this, Ui.texte(this, "Exception : autorisé même si sa catégorie est fermée, coupé pendant les plages de coupure.", 12f, Ui.TEXTE_3), haut = 6f))
                 c.addView(Ui.marge(this, Ui.boutonSecondaire(this, "Autre durée…") {
                     AlertDialog.Builder(this).setTitle("Ouvrir ${d.optString("libelle")} pour…")
                         .setItems(arrayOf("15 minutes", "30 minutes", "2 heures", "Jusqu'à ce soir (6 h)")) { _, k ->

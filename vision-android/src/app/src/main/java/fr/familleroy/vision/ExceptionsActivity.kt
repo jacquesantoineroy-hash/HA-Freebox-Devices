@@ -66,7 +66,7 @@ class ExceptionsActivity : Activity() {
         col.addView(Ui.titre(this, "Autorisations"))
         col.addView(Ui.sousTitre(this, "Ce qui est décidé à part pour $prenom, sur tous ses appareils"))
         racine.addView(Ui.marge(this, col, bas = 14f))
-        racine.addView(Ui.texte(this, "Toujours autorisé : ouvert en dehors des plages de coupure. Exception : disponible même pendant les coupures. Touche une ligne pour la changer.", 13f, Ui.TEXTE_2))
+        racine.addView(Ui.texte(this, "Exception : autorisé même si sa catégorie est fermée, mais coupé pendant les plages de coupure. Toujours disponible : ouvert même pendant les coupures. Touche une ligne pour la changer.", 13f, Ui.TEXTE_2))
         if (ex == null) racine.addView(Ui.marge(this, Ui.texte(this, "Les exceptions arrivent avec la prochaine mise à jour de Home Assistant.", 13f, Ui.OR), haut = 10f))
         liste = Ui.colonne(this)
         racine.addView(Ui.marge(this, liste, haut = 6f))
@@ -98,7 +98,7 @@ class ExceptionsActivity : Activity() {
     private fun remplir() {
         liste.removeAllViews()
         // Toujours disponibles : ce qui reste ouvert quand le planning ferme l'appareil.
-        liste.addView(Ui.section(this, "Exceptions : même pendant les coupures (${disponibles.size})"))
+        liste.addView(Ui.section(this, "Toujours disponibles, même pendant les coupures (${disponibles.size})"))
         val cd = Ui.carte(this)
         if (disponibles.isEmpty()) cd.addView(Ui.texte(this, "Rien de plus que le téléphone, les messages, le réveil et Pronote.", 14f, Ui.TEXTE_3))
         disponibles.sortedBy { it.libelle.lowercase() }.forEachIndexed { k, e ->
@@ -110,7 +110,7 @@ class ExceptionsActivity : Activity() {
         }
         liste.addView(cd)
         for ((titre, vide, elements, autorise) in listOf(
-            Quatre("Toujours autorisé, hors coupures", "Rien d'autorisé à part.", autorises, true),
+            Quatre("Exceptions", "Aucune exception.", autorises, true),
             Quatre("Toujours fermé", "Rien de fermé à part.", bloques, false),
         )) {
             liste.addView(Ui.section(this, "$titre (${elements.size})"))
@@ -156,7 +156,7 @@ class ExceptionsActivity : Activity() {
         trouves.forEachIndexed { k, e ->
             if (k > 0) resultats.addView(Ui.separateur(this))
             resultats.addView(ligne(e, "") {
-                val choix = if (e.genre == "apps") arrayOf("Toujours autoriser (hors coupures)", "Toujours fermer", "Exception : même pendant les coupures") else arrayOf("Toujours autoriser (hors coupures)", "Toujours fermer")
+                val choix = if (e.genre == "apps") arrayOf("Exception : autorisé malgré sa catégorie", "Toujours fermer", "Toujours disponible, même pendant les coupures") else arrayOf("Exception : autorisé malgré sa catégorie", "Toujours fermer")
                 AlertDialog.Builder(this).setTitle(e.libelle)
                     .setItems(choix) { _, i -> decider(e, when (i) { 0 -> "toujours"; 1 -> "bloquer"; else -> "disponible" }) }
                     .setNegativeButton("Annuler", null).show()

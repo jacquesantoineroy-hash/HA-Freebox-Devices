@@ -119,7 +119,7 @@ object Messages {
         }
         if (acces != null) {
             var k = 0
-            for ((decision, lbl) in listOf("temporaire" to "1 h", "toujours" to "Toujours", "non" to "Non")) {
+            for ((decision, lbl) in listOf("temporaire" to "1 h", "toujours" to "Exception", "non" to "Non")) {
                 val rep = Intent(ctx, ReponseReceiver::class.java).setAction(ReponseReceiver.ACTION)
                     .putExtra(ReponseReceiver.EXTRA_PC, acces.optString("pc"))
                     .putExtra(ReponseReceiver.EXTRA_DEMANDE, acces.optString("id"))

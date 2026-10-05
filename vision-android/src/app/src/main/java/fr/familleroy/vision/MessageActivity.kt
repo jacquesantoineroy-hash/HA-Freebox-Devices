@@ -59,7 +59,7 @@ class MessageActivity : Activity() {
             if (motif.isNotEmpty()) carte.addView(Ui.marge(this, Ui.texte(this, "« $motif »", 13f, Ui.TEXTE_2), haut = 4f))
             acces.optString("raison").takeIf { it.isNotEmpty() }?.let { carte.addView(Ui.marge(this, Ui.texte(this, "Fermé car : $it", 13f, Ui.TEXTE_3), haut = 6f)) }
             val r = Ui.rangee(this)
-            listOf("temporaire" to "1 h", "toujours" to "Toujours", "non" to "Non").forEachIndexed { k, (dec, lbl) ->
+            listOf("temporaire" to "1 h", "toujours" to "Exception", "non" to "Non").forEachIndexed { k, (dec, lbl) ->
                 val btn = if (dec != "non") Ui.boutonPrimaire(this, lbl) { Acces.repondre(this, acces.optString("pc"), acces.optString("id"), dec); finish() }
                           else Ui.boutonDanger(this, lbl) { Acces.repondre(this, acces.optString("pc"), acces.optString("id"), dec); finish() }
                 r.addView(Ui.marge(this, Ui.poids(btn), gauche = if (k == 0) 0f else 8f))
