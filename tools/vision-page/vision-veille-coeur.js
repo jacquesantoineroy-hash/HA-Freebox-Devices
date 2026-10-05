@@ -102,6 +102,7 @@ class VisionVeillePanel extends HTMLElement {
   }
 
   async _demarrer() {
+    this._debut = Date.now();
     this._q = new URLSearchParams(location.search);
     this._theme();
     this.shadowRoot.innerHTML = `
@@ -176,7 +177,14 @@ class VisionVeillePanel extends HTMLElement {
     this._indice = (parseInt(this._q.get("dec") || "0", 10) || 0) % liste.length;
     setInterval(() => this._tic(), 1000);
     this._oeil();
-    this._montrer();
+    // L'heure est déjà à l'écran depuis l'ouverture : ce temps compte pour le tableau de l'horloge,
+    // et les cartes arrivent donc dès qu'elles sont prêtes au lieu d'attendre un tour complet.
+    const premier = liste[this._indice];
+    if (premier.genre === "horloge" && liste.length > 1) {
+      const reste = premier.duree * 1000 - (Date.now() - this._debut);
+      if (reste < 3000) { this._indice = (this._indice + 1) % liste.length; this._montrer(); }
+      else this._montrer(reste);
+    } else this._montrer();
   }
 
   // L'œil de Vision, dessiné comme sur les télés : une amande claire, l'iris pourpre et or qui regarde
@@ -240,12 +248,19 @@ class VisionVeillePanel extends HTMLElement {
     // Un titre ne reste jamais seul en bas d'une colonne : il suit sa carte.
     // Une page web embarquée (carte météo animée…) est dessinée deux fois plus grande puis réduite de moitié :
     // le site dispose d'une vraie largeur et ses boutons ne se chevauchent plus.
-    if (config.type === "iframe") { el.style.display = "block"; el.style.width = "200%"; el.style.zoom = "0.5"; }
+    if (config.type === "iframe") {
+      el.style.display = "block"; el.style.width = "200%"; el.style.zoom = "0.5";
+      const boite = document.createElement("div");
+      boite.style.cssText = "overflow:hidden;width:100%;border-radius:var(--ha-card-border-radius,18px);break-inside:avoid;";
+      boite.style.gridColumn = `span ${colonnes}`;
+      boite.appendChild(el);
+      return boite;
+    }
     if (config.type === "heading") { el.style.breakAfter = "avoid"; el.style.display = "block"; }
     return el;
   }
 
-  async _montrer() {
+  async _montrer(reste) {
     const e = this._ecrans[this._indice];
     const ancienne = this.shadowRoot.querySelector(".scene.vue");
     const scene = document.createElement("div");
@@ -331,7 +346,7 @@ class VisionVeillePanel extends HTMLElement {
     }
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
-    this._minuteur = setTimeout(() => this._suivant(), Math.max(5, e.duree) * 1000);
+    this._minuteur = setTimeout(() => this._suivant(), reste || Math.max(5, e.duree) * 1000);
   }
 
   // Une rangée de pastilles reste sur une ligne : si elle est trop large, elle rétrécit au lieu de passer dessous.
