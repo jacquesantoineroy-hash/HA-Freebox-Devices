@@ -938,6 +938,18 @@ class VisionVeillePanel extends HTMLElement {
     }, 2000);
   }
 
+  // L'en-tête et le cadre d'un tableau, avec sa grille de sections dedans.
+  _garnir(scene, e, colonnes) {
+    const tete = document.createElement("div");
+    tete.className = "tete";
+    tete.innerHTML = `<div class="titre"></div><div class="petite"></div>`;
+    scene.appendChild(tete);
+    const cadre = document.createElement("div");
+    cadre.className = "cadre";
+    cadre.appendChild(colonnes);
+    scene.appendChild(cadre);
+  }
+
   async _montrer(reste) {
     if (this._dort) return;
     this._sonde();
@@ -971,18 +983,13 @@ class VisionVeillePanel extends HTMLElement {
         colonnes.className = "grille";
         const blocs = [];
         for (const s of e.sections) {
+          if (!s.titre && !(s.cartes || []).length) continue;
           const bloc = document.createElement("div");
           bloc.className = "section";
           bloc._span = Math.max(1, Math.min(4, s.span || 1));
+          bloc._cartes = s.cartes || [];
           if (s.titre) { const t = document.createElement("div"); t.className = "sec"; t.textContent = s.titre; bloc.appendChild(t); }
-          // Une carte à la fois, en rendant la main entre deux : fabriquées d'un bloc, elles figeaient l'écran
-          // un à trois dixièmes de seconde, et l'horloge ou le tableau en place donnait un à-coup.
-          for (const c of s.cartes) {
-            const el = this._carte(c.config); if (el) bloc.appendChild(el);
-            await pause(0);
-            if (passage !== this._passage) return;
-          }
-          if (bloc.children.length) blocs.push(bloc);
+          blocs.push(bloc);
         }
         // Écran en hauteur (téléphone, tablette debout) : les sections passent les unes sous les autres, comme
         // Home Assistant le fait lui-même sur un téléphone ; l'ordre reste celui du tableau de bord.
@@ -992,25 +999,33 @@ class VisionVeillePanel extends HTMLElement {
         colonnes.style.gridTemplateColumns = `repeat(${n}, 460px)`;
         colonnes.style.width = `${n * 460 + (n - 1) * 44}px`;
         for (const bloc of blocs) { bloc.style.gridColumn = `span ${Math.min(n, bloc._span)}`; colonnes.appendChild(bloc); }
+        // Le tableau est posé tout de suite, encore invisible, et ses cartes y arrivent une à une en rendant la
+        // main entre deux : fabriquées et dessinées d'un bloc, elles figeaient l'écran deux dixièmes de seconde,
+        // et l'horloge ou le tableau en place donnait un à-coup.
+        this._garnir(scene, e, colonnes);
+        this.shadowRoot.appendChild(scene);
+        for (const bloc of blocs) {
+          for (const c of bloc._cartes) {
+            const el = this._carte(c.config); if (el) bloc.appendChild(el);
+            await Promise.race([new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))), pause(80)]);
+            if (passage !== this._passage) { scene.remove(); return; }
+          }
+          if (!bloc.children.length) bloc.remove();
+        }
         e._colonnes = colonnes;
       }
-      if (ancienne && ancienne.contains(e._colonnes)) {
-        // La suite du même tableau reprend les mêmes cartes : l'écran s'efface, puis revient sur la suite.
-        ancienne.classList.remove("vue");
-        await pause(620);
-        if (passage !== this._passage) return;
+      if (!scene.firstChild) {
+        if (ancienne && ancienne.contains(e._colonnes)) {
+          // La suite du même tableau reprend les mêmes cartes : l'écran s'efface, puis revient sur la suite.
+          ancienne.classList.remove("vue");
+          await pause(620);
+          if (passage !== this._passage) return;
+        }
+        this._garnir(scene, e, e._colonnes);
       }
-      const tete = document.createElement("div");
-      tete.className = "tete";
-      tete.innerHTML = `<div class="titre"></div><div class="petite"></div>`;
-      scene.appendChild(tete);
-      const cadre = document.createElement("div");
-      cadre.className = "cadre";
-      cadre.appendChild(e._colonnes);
-      scene.appendChild(cadre);
-      tete.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   ${e.page + 1}/${e.pages}` : "");
+      scene.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   ${e.page + 1}/${e.pages}` : "");
     }
-    this.shadowRoot.appendChild(scene);
+    if (!scene.isConnected) this.shadowRoot.appendChild(scene);
     this._tic();
     if (e.genre === "tableau") {
       const c = e._colonnes;
