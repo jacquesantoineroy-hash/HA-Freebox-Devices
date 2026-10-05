@@ -949,6 +949,13 @@ class VisionVeillePanel extends HTMLElement {
       }
     }
     if (e.genre === "tableau") { this._percer(e._colonnes); for (const t of [700, 2000, 4500]) setTimeout(() => this._percer(e._colonnes), t); }
+    if (this._q.get("diag") === "3" && e.genre === "tableau") setTimeout(() => {
+      try {
+        const vus = {};
+        for (const a of document.getAnimations()) { if (a.playState !== "running") continue; const c = a.effect && a.effect.target; const hote = c && c.getRootNode && c.getRootNode().host; const k = `${a.animationName || a.transitionProperty || "?"} sur ${c ? c.localName + (c.className && c.className.baseVal === undefined ? "." + c.className : "") : "?"} dans ${hote ? hote.localName : "page"}`; vus[k] = (vus[k] || 0) + 1; }
+        this._note("animations : " + (Object.entries(vus).map(([k, n]) => `${n} x ${k}`).join("\n          ") || "aucune"));
+      } catch (err) { this._note("animations : " + err); }
+    }, 3000);
     this._etape = "fondu"; setTimeout(() => { if (passage === this._passage) this._etape = "pose"; }, 800);
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
