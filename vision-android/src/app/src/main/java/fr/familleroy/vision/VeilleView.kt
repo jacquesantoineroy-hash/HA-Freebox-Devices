@@ -342,6 +342,8 @@ class VeilleView(ctx: Context) : View(ctx) {
         if (actif) return
         actif = true
         changeA = SystemClock.uptimeMillis()
+        // Les couleurs du thème dès la première image : pas d'éclair d'une autre teinte avant la page.
+        try { rafraichirTheme() } catch (_: Exception) {}
         fil = Thread {
             val cfg = Config(context)
             while (actif) {
@@ -561,6 +563,9 @@ class VeilleView(ctx: Context) : View(ctx) {
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0 || h <= 0) return
         val t = (maintenant - depart) / 1000f
+        // La page de veille arrive (ou est déjà là) : un fond uni, de sa couleur, et rien d'autre.
+        // Deux horloges l'une sur l'autre, l'ancienne et la nouvelle, ne doivent jamais se voir.
+        if (couverte || web?.enAttente == true || web?.montree == true) { c.drawColor(fond or 0xFF000000.toInt()); return }
         dessinerFond(c, w, h, t)
 
         var ecoule = maintenant - changeA

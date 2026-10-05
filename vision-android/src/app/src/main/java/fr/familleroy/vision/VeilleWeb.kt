@@ -41,36 +41,44 @@ class VeilleWeb(private val cadre: FrameLayout, private val native: VeilleView) 
     private var chargee = ""
     private var versionVue = -1
     @Volatile private var actif = false
-    private var abandonnee = false
+    @Volatile private var abandonnee = false
     private var annonce = ""
 
+    /**
+     * Vrai tant que la page est attendue : le dessin de l'appli se tait alors (un fond uni, rien d'autre),
+     * pour que jamais deux horloges ne se voient l'une sur l'autre. Si la page ne vient pas, il reprend.
+     */
+    val enAttente: Boolean get() = actif && !abandonnee && !montree
+
     /** Vrai quand la page est à l'écran : les gestes vont alors à elle. */
-    var montree = false
+    @Volatile var montree = false
         private set
 
     fun demarrer() {
         if (actif || abandonnee) return
         if (!Local.veilleWeb(ctx)) return
         actif = true
+        // Passé ce délai sans page à l'écran, le dessin de l'appli reprend pour de bon : on ne laisse pas un écran vide.
+        main.postDelayed(tropLong, 20_000)
         Thread {
             try {
                 val cfg = Config(ctx)
-                if (!cfg.inscrit) return@Thread
+                if (!cfg.inscrit) { abandonnee = true; return@Thread }
                 val r = Net.post(ctx, cfg, "/api/pc_parental/veille/acces",
                     JSONObject().put("id", cfg.id).put("secret", cfg.secret).put("ecran", ecran()), 15_000)
                 val j = r.optString("jeton")
-                if (j.isEmpty() || cfg.urlActive.isEmpty()) return@Thread
+                if (j.isEmpty() || cfg.urlActive.isEmpty()) { abandonnee = true; return@Thread }
                 Local.retenirListeWeb(ctx, r.optJSONArray("tableaux"))
                 jeton = j; base = cfg.urlActive
                 main.post { if (actif) ouvrir() }
-            } catch (_: Exception) { /* le dessin de l'appli continue */ }
+            } catch (_: Exception) { abandonnee = true /* le dessin de l'appli reprend */ }
         }.also { it.isDaemon = true }.start()
     }
 
     fun arreter() {
         actif = false
         main.removeCallbacks(veilleur)
-        main.removeCallbacks(tropLong)
+        main.removeCallbacks(tropLong); main.removeCallbacks(fonduFini)
         retirer()
     }
 
@@ -117,13 +125,13 @@ class VeilleWeb(private val cadre: FrameLayout, private val native: VeilleView) 
             chargee = adresse()
             versionVue = Local.version
             w.loadUrl(chargee)
-            main.postDelayed(tropLong, 60_000)
             main.postDelayed(veilleur, 20_000)
         } catch (_: Throwable) { web = w; abandonner() }
     }
 
-    /** La page n'a rien dit en une minute : elle ne viendra pas. */
+    /** La page n'est pas là après vingt secondes : elle ne viendra pas cette fois. */
     private val tropLong = Runnable { if (!montree) abandonner() }
+    private val fonduFini = Runnable { if (montree) native.couverte = true }
 
     /** Le thème a changé (la nuit tombe, un réglage) : la page se recharge avec les nouvelles couleurs. */
     private val veilleur = object : Runnable {
@@ -137,7 +145,7 @@ class VeilleWeb(private val cadre: FrameLayout, private val native: VeilleView) 
 
     private fun abandonner() {
         abandonnee = true
-        main.removeCallbacks(veilleur); main.removeCallbacks(tropLong)
+        main.removeCallbacks(veilleur); main.removeCallbacks(tropLong); main.removeCallbacks(fonduFini)
         retirer()
     }
 
@@ -158,8 +166,9 @@ class VeilleWeb(private val cadre: FrameLayout, private val native: VeilleView) 
                 if (!montree) {
                     montree = true
                     main.removeCallbacks(tropLong)
-                    native.couverte = true
-                    w.animate().alpha(1f).setDuration(700).start()
+                    // Le dessin de l'appli est déjà muet (fond uni) : la page apparaît seule, sans rien dessous.
+                    w.animate().alpha(1f).setDuration(500).start()
+                    main.postDelayed(fonduFini, 600)
                 }
                 if (annonce.isNotEmpty()) main.postDelayed({ annoncer(annonce) }, 1500)
             }

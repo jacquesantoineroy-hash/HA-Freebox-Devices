@@ -24,6 +24,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewConfiguration
 import android.view.Window
 import android.widget.CheckBox
 import android.widget.EditText
@@ -74,7 +75,6 @@ class LanceurActivity : Activity() {
     private val dateFmt = SimpleDateFormat("EEEE d MMMM", Locale.FRANCE)
     private var versionLocale = -1
     private var dossierOuvert: Dialog? = null
-    private var tiroir: Dialog? = null
     private var toucheEnfoncee = false
     private var reconstructionEnAttente = false
     private var profilConnu = ""
@@ -118,7 +118,7 @@ class LanceurActivity : Activity() {
         // Deux appuis rapprochés sur Accueil : l'écran de veille vient devant, la musique de l'autre appli continue.
         // Sur téléphone, Accueil ramène à l'accueil : le tiroir, un dossier ou le panneau ouverts se referment.
         // Sur télé aussi : Accueil ramène toujours à l'accueil de Vision, dossier et tiroir refermés.
-        try { tiroir?.dismiss() } catch (_: Exception) {}; try { dossierOuvert?.dismiss() } catch (_: Exception) {}; cacherPanneau()
+        tirerTiroir(0f); try { dossierOuvert?.dismiss() } catch (_: Exception) {}; cacherPanneau()
         if (!tele) pageur?.aller(0)
         val now = SystemClock.uptimeMillis()
         if (tele && now - dernierAccueilMs < 1500) { Veille.ouvrir(this); dernierAccueilMs = 0 } else dernierAccueilMs = now
@@ -211,7 +211,7 @@ class LanceurActivity : Activity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    override fun onBackPressed() { dossierOuvert?.dismiss(); cacherPanneau() }
+    override fun onBackPressed() { if (tiroirOuvert) { animerTiroir(0f); return }; dossierOuvert?.dismiss(); cacherPanneau() }
 
     // ------------------------------------------------------------------ thème
 
@@ -352,7 +352,7 @@ class LanceurActivity : Activity() {
         racine.removeAllViews()
         racine.setBackgroundColor(theme.fond)
         racine.addView(FondAnime(this) { theme }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        if (tele) construireTele() else construireTelephone()
+        if (tele) construireTele() else { construireTelephone(); poserTiroir() }
         Ui.laisserDeborder(racine)
         appliquerDonnees()
         if (focusAvant != null) racine.post { trouverParTag(racine, focusAvant)?.requestFocus() }
@@ -542,14 +542,9 @@ class LanceurActivity : Activity() {
         racine.addView(defile, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply { bottomMargin = hauteurBas })
         // Tout le bas de l'écran ouvre le tiroir d'un glissement vers le haut, même en partant d'une icône du dock.
         val bas = object : LinearLayout(this) {
-            private var y0 = 0f; private var x0 = 0f
-            override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
-                when (e.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> { y0 = e.rawY; x0 = e.rawX }
-                    MotionEvent.ACTION_MOVE -> if (y0 - e.rawY > px(22f) && Math.abs(y0 - e.rawY) > Math.abs(x0 - e.rawX) * 1.3f && enDrag == null && enDragNouveau == null) { tiroirApplis(); return true }
-                }
-                return false
-            }
+            private val geste = GesteTiroir(ouvre = true)
+            override fun onInterceptTouchEvent(e: MotionEvent): Boolean = geste.suivre(e, this)
+            override fun onTouchEvent(e: MotionEvent): Boolean { geste.suivre(e, this); return true }
         }.apply { orientation = LinearLayout.VERTICAL; setPadding(px(16f), 0, px(16f), px(8f)) }
         racine.addView(bas, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, hauteurBas, Gravity.BOTTOM))
 
@@ -1039,35 +1034,122 @@ class LanceurActivity : Activity() {
         dlg.show()
     }
 
-    /** Le tiroir : toutes les applications, par ordre alphabétique ; un appui long propose de les ajouter à l'accueil. */
-    private fun tiroirApplis() {
-        if (tiroir?.isShowing == true) return
-        val dlg = Dialog(this)
-        tiroir = dlg
-        dlg.setOnDismissListener { if (tiroir === dlg) tiroir = null }
-        dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        val defile = ScrollView(this).apply { background = fondCarte(30f) }
-        val boite = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(18f), px(20f), px(18f), px(16f)) }
+    // ---------------------------------------------------------------- tiroir
+
+    /*
+     * Le tiroir des applications est une feuille posée dans l'accueil, prête d'avance : elle suit le doigt dès
+     * qu'il commence à monter, se pose ou se range selon l'élan au lâcher, et se referme en la tirant vers le bas,
+     * en touchant au-dessus ou avec Retour. Les icônes sont lues à part, pour que rien ne bloque le geste.
+     */
+    private var tiroirCouche: FrameLayout? = null
+    private var tiroirFeuille: FrameLayout? = null
+    private var tiroirVoile: View? = null
+    private var tiroirContenu: ScrollView? = null
+    private var tiroirCle = ""
+    private var tiroirP = 0f
+    private var tiroirAnim: android.animation.ValueAnimator? = null
+    private val tiroirOuvert get() = tiroirP > 0.01f
+    private val iconesTiroir = java.util.concurrent.ConcurrentHashMap<String, Drawable>()
+    private val nomsTiroir = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    private fun courseTiroir(): Float = (tiroirFeuille?.height?.takeIf { it > 0 } ?: (dm.heightPixels * 0.86f).toInt()).toFloat()
+
+    /** Suit un doigt : vers le haut depuis le bas de l'écran pour ouvrir, vers le bas depuis la feuille pour fermer. */
+    private inner class GesteTiroir(private val ouvre: Boolean) {
+        private var y0 = 0f; private var x0 = 0f; private var tire = false
+        private var yAvant = 0f; private var tAvant = 0L; private var vitesse = 0f
+        private val seuil by lazy { ViewConfiguration.get(this@LanceurActivity).scaledTouchSlop * 0.6f }
+
+        fun suivre(e: MotionEvent, v: View): Boolean {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { y0 = e.rawY; x0 = e.rawX; tire = false; yAvant = e.rawY; tAvant = e.eventTime; vitesse = 0f }
+                MotionEvent.ACTION_MOVE -> {
+                    val dt = (e.eventTime - tAvant).coerceAtLeast(1)
+                    vitesse = vitesse * 0.4f + ((e.rawY - yAvant) / dt * 1000f) * 0.6f
+                    yAvant = e.rawY; tAvant = e.eventTime
+                    val dy = e.rawY - y0; val dx = e.rawX - x0
+                    val sens = if (ouvre) -dy else dy
+                    if (!tire && sens > seuil && Math.abs(dy) > Math.abs(dx) && enDrag == null && enDragNouveau == null && panneau == null
+                        && (ouvre || (tiroirContenu?.scrollY ?: 0) <= 0)) {
+                        tire = true; y0 = e.rawY
+                        tiroirAnim?.cancel()
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                    if (tire) { val part = (e.rawY - y0) / courseTiroir(); tirerTiroir(if (ouvre) -part else 1f - part) }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (tire) {
+                    tire = false
+                    // L'élan décide ; sans élan, c'est la position.
+                    val monte = if (Math.abs(vitesse) > 450f) vitesse < 0f else tiroirP > (if (ouvre) 0.3f else 0.7f)
+                    animerTiroir(if (monte) 1f else 0f, vitesse)
+                }
+            }
+            return tire
+        }
+    }
+
+    /** Pose la feuille (fermée) par-dessus l'accueil et la remplit sans attendre le premier geste. */
+    private fun poserTiroir() {
+        tiroirAnim?.cancel()
+        val couche = FrameLayout(this).apply { visibility = View.GONE }
+        val voile = View(this).apply { setBackgroundColor(0xFF000000.toInt()); alpha = 0f; setOnClickListener { animerTiroir(0f) } }
+        couche.addView(voile, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        val feuille = object : FrameLayout(this) {
+            private val geste = GesteTiroir(ouvre = false)
+            override fun onInterceptTouchEvent(e: MotionEvent): Boolean = geste.suivre(e, this)
+            override fun onTouchEvent(e: MotionEvent): Boolean { geste.suivre(e, this); return true }
+        }
+        feuille.background = fondCarte(30f)
+        couche.addView(feuille, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (dm.heightPixels * 0.86f).toInt(), Gravity.BOTTOM))
+        racine.addView(couche, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        tiroirCouche = couche; tiroirFeuille = feuille; tiroirVoile = voile; tiroirP = 0f
+        feuille.translationY = dm.heightPixels * 0.86f
+        remplirTiroir()
+    }
+
+    private fun remplirTiroir() {
+        val feuille = tiroirFeuille ?: return
+        val cle = empreinte() + "|" + theme.carte + "|" + theme.encre
+        val deja = tiroirContenu
+        if (deja != null && tiroirCle == cle) { (deja.parent as? ViewGroup)?.removeView(deja); feuille.addView(deja); deja.scrollTo(0, 0); return }
+        val toutes = Accueil.applicationsInstallees(this)
+        val pm = packageManager
+        Thread {
+            toutes.forEach { ri ->
+                val p = ri.activityInfo.packageName
+                if (!iconesTiroir.containsKey(p)) try { iconesTiroir[p] = ri.loadIcon(pm) } catch (_: Exception) {}
+                if (!nomsTiroir.containsKey(p)) try { nomsTiroir[p] = ri.loadLabel(pm).toString() } catch (_: Exception) {}
+            }
+            main.post { if (tiroirFeuille === feuille && !isFinishing) construireTiroir(feuille, toutes, cle) }
+        }.also { it.isDaemon = true }.start()
+    }
+
+    private fun construireTiroir(feuille: FrameLayout, toutes: List<android.content.pm.ResolveInfo>, cle: String) {
+        val defile = ScrollView(this).apply { isVerticalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
+        val boite = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(18f), px(10f), px(18f), px(16f)) }
         defile.addView(boite)
+        val prise = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, 0, 0, px(10f)) }
+        prise.addView(View(this).apply { background = GradientDrawable().apply { cornerRadius = px(3f).toFloat(); setColor(theme.encre3) } }, LinearLayout.LayoutParams(px(44f), px(5f)))
+        boite.addView(prise)
         boite.addView(texte("Applications", 22f, theme.encre, Polices.gras(this)))
         boite.addView(texte("Appui long : ajouter à l'accueil, infos, désinstaller.", 12f, theme.encre2).apply { setPadding(0, px(2f), 0, px(8f)) })
         val pm = packageManager
-        val toutes = Accueil.applicationsInstallees(this)
         val surAccueil = Accueil.disposition(this).map { it.cle }.toSet() + Accueil.dossiers(this).flatMap { it.pkgs }
         var ligne: LinearLayout? = null
         toutes.forEachIndexed { i, ri ->
             val pkg = ri.activityInfo.packageName
+            val nom = nomsTiroir[pkg] ?: ri.loadLabel(pm).toString()
             if (i % 4 == 0) { ligne = LinearLayout(this); boite.addView(ligne) }
             val cell = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(px(2f), px(8f), px(2f), px(8f)); isClickable = true; isFocusable = true }
-            cell.addView(disque(ri.loadIcon(pm), 52f), LinearLayout.LayoutParams(px(52f), px(52f)))
-            cell.addView(texte(ri.loadLabel(pm).toString(), 11.5f, theme.encre2, Polices.moyen(this)).apply { maxLines = 2; gravity = Gravity.CENTER; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, px(5f), 0, 0); alpha = if (pkg in surAccueil) 1f else 0.7f })
+            cell.addView(disque(iconesTiroir[pkg] ?: ri.loadIcon(pm), 52f), LinearLayout.LayoutParams(px(52f), px(52f)))
+            cell.addView(texte(nom, 11.5f, theme.encre2, Polices.moyen(this)).apply { maxLines = 2; gravity = Gravity.CENTER; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, px(5f), 0, 0); alpha = if (pkg in surAccueil) 1f else 0.7f })
             griser(cell, pkg)
-            cell.setOnClickListener { dlg.dismiss(); ouvrir(pkg) }
+            cell.setOnClickListener { tirerTiroir(0f); ouvrir(pkg) }
             cell.setOnLongClickListener {
                 val deja = pkg in surAccueil
-                AlertDialog.Builder(this).setTitle(ri.loadLabel(pm)).setItems(arrayOf(if (deja) "Déjà sur l'accueil" else "Ajouter à l'accueil", "Infos", "Désinstaller")) { _, k ->
+                AlertDialog.Builder(this).setTitle(nom).setItems(arrayOf(if (deja) "Déjà sur l'accueil" else "Ajouter à l'accueil", "Infos", "Désinstaller")) { _, k ->
                     when (k) {
-                        0 -> if (!deja) { Accueil.ajouterALaGrille(this, pkg); dlg.dismiss(); construire() }
+                        0 -> if (!deja) { Accueil.ajouterALaGrille(this, pkg); tirerTiroir(0f); construire() }
                         1 -> try { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))) } catch (_: Exception) {}
                         2 -> try { startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkg"))) } catch (_: Exception) {}
                     }
@@ -1077,14 +1159,49 @@ class LanceurActivity : Activity() {
         }
         val reste = toutes.size % 4
         if (reste != 0) repeat(4 - reste) { ligne!!.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)) }
-        dlg.setContentView(defile)
-        dlg.window?.let { w -> w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0)); w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (dm.heightPixels * 0.82f).toInt()); w.setGravity(Gravity.BOTTOM); w.setDimAmount(0.5f); w.setWindowAnimations(0) }
-        // Le tiroir monte du bas et se pose en douceur, comme tiré par le doigt.
-        val course = dm.heightPixels * 0.82f
-        defile.translationY = course; defile.alpha = 0.6f
-        dlg.show()
-        defile.animate().translationY(0f).alpha(1f).setDuration(300).setInterpolator(android.view.animation.DecelerateInterpolator(2.2f)).start()
+        feuille.removeAllViews()
+        feuille.addView(defile, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        tiroirContenu = defile; tiroirCle = cle
     }
+
+    /** Place la feuille : 0 = rangée, 1 = ouverte. Le voile fonce à mesure qu'elle monte. */
+    private fun tirerTiroir(p: Float) {
+        val couche = tiroirCouche ?: return
+        val feuille = tiroirFeuille ?: return
+        val avant = tiroirP
+        tiroirP = p.coerceIn(0f, 1f)
+        if (tiroirP <= 0f) {
+            if (avant > 0f) tiroirAnim?.cancel()
+            couche.visibility = View.GONE; feuille.setLayerType(View.LAYER_TYPE_NONE, null); feuille.translationY = courseTiroir()
+            return
+        }
+        if (couche.visibility != View.VISIBLE) {
+            couche.visibility = View.VISIBLE; couche.bringToFront()
+            tiroirContenu?.scrollTo(0, 0)
+        }
+        // Pendant le mouvement, la feuille est une image que la carte graphique déplace : pas une saccade.
+        if (tiroirP < 1f && feuille.layerType != View.LAYER_TYPE_HARDWARE) feuille.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        if (tiroirP >= 1f && feuille.layerType != View.LAYER_TYPE_NONE) feuille.setLayerType(View.LAYER_TYPE_NONE, null)
+        feuille.translationY = courseTiroir() * (1f - tiroirP)
+        tiroirVoile?.alpha = 0.5f * tiroirP
+    }
+
+    /** Amène la feuille à sa place en douceur, à l'allure du geste qui l'a lancée. */
+    private fun animerTiroir(cible: Float, vitesse: Float = 0f) {
+        tiroirAnim?.cancel()
+        val depart = tiroirP
+        val distance = Math.abs(cible - depart)
+        if (distance < 0.002f) { tirerTiroir(cible); return }
+        val duree = if (Math.abs(vitesse) > 450f) (distance * courseTiroir() / Math.abs(vitesse) * 1000f * 1.8f).toLong().coerceIn(150L, 360L) else (200 + 180 * distance).toLong()
+        tiroirAnim = android.animation.ValueAnimator.ofFloat(depart, cible).apply {
+            duration = duree
+            interpolator = android.view.animation.DecelerateInterpolator(1.9f)
+            addUpdateListener { tirerTiroir(it.animatedValue as Float) }
+            start()
+        }
+    }
+
+    private fun tiroirApplis() { animerTiroir(1f) }
 
     // ---------------------------------------------------------------- widgets
 
@@ -1401,7 +1518,7 @@ class LanceurActivity : Activity() {
     }
 
     private fun appliquerDonnees() {
-        if (empreinteApps != empreinte() && enDrag == null && enDragNouveau == null && tiroir == null) { construire(); return }
+        if (empreinteApps != empreinte() && enDrag == null && enDragNouveau == null && !tiroirOuvert) { construire(); return }
         val d = donnees ?: return
         val m = d.optJSONObject("meteo")
         racine.findViewWithTag<TextView>("temp")?.text = if (m == null || m.isNull("temperature")) "" else String.format(Locale.FRANCE, "%.0f°", m.optDouble("temperature"))
