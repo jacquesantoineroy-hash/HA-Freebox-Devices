@@ -320,10 +320,11 @@ class SetupActivity : Activity() {
 
     private fun ligneInfo(cle: String, valeur: String): View {
         val r = Ui.rangee(this)
-        r.addView(Ui.poids(Ui.texte(this, cle, 14f, Ui.TEXTE_2)))
+        // Le libellé garde sa largeur (jamais coupé en deux lignes) ; la valeur prend le reste.
+        r.addView(Ui.texte(this, cle, 14f, Ui.TEXTE_2).apply { maxLines = 1; setPadding(0, 0, Ui.dp(this@SetupActivity, 12f), 0) })
         r.addView(Ui.texte(this, valeur, 14f, Ui.TEXTE, gras = true).apply {
             gravity = Gravity.END
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.6f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         return Ui.marge(this, r, haut = 4f, bas = 4f)
     }

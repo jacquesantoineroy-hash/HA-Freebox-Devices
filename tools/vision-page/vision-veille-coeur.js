@@ -757,6 +757,34 @@ class VisionVeillePanel extends HTMLElement {
     return el;
   }
 
+  // L'appli garde cette page chargée entre deux veilles, pour qu'elle apparaisse tout de suite. Entre-temps
+  // elle dort : plus de défilement, plus de cartes à tenir à jour, seule l'horloge reste prête.
+  dormir() {
+    this._dort = true; this._fige = false;
+    this._passage = (this._passage || 0) + 1;
+    clearTimeout(this._minuteur);
+    this._cartes = [];
+    for (const e of this._ecrans) { if (e.genre === "tableau") { e.page = 0; e._colonnes = null; } }
+    this.shadowRoot.querySelectorAll(".scene").forEach((x) => x.remove());
+    const scene = document.createElement("div");
+    scene.className = "scene vue";
+    scene.innerHTML = this._horloge("");
+    this.shadowRoot.appendChild(scene);
+    const f = this.shadowRoot.querySelector(".fige"); if (f) f.classList.remove("vu");
+    this._tic();
+  }
+  // La veille s'ouvre : on repart du début (l'horloge si elle est montrée), avec des cartes fraîches.
+  reprendre() {
+    const dormait = this._dort;
+    this._dort = false; this._fige = false;
+    if (!this._ecrans.length) return;
+    if (!dormait && this.shadowRoot.querySelector(".scene .grille")) return;
+    this._indice = this._rang % this._ecrans.length;
+    for (const e of this._ecrans) { if (e.genre === "tableau") e.page = 0; }
+    this._tic();
+    this._montrer();
+  }
+
   // Les gestes de l'appareil (télécommande, doigt) : précédent, suivant, figer.
   aller(delta) {
     if (!this._ecrans.length) return;
@@ -785,6 +813,7 @@ class VisionVeillePanel extends HTMLElement {
   }
 
   async _montrer(reste) {
+    if (this._dort) return;
     const passage = this._passage = (this._passage || 0) + 1;
     let cran = 0;
     if (this._synchro) {
@@ -805,7 +834,8 @@ class VisionVeillePanel extends HTMLElement {
       if (m && CIEL[m.state]) morceaux.push(CIEL[m.state]);
       scene.innerHTML = this._horloge(morceaux.join("  ·  "));
     } else {
-      if (e.page === 0) {
+      if (e.page === 0 || !e._colonnes) {
+        e.page = 0;
         // Les cartes sont créées une fois par passage, pour des valeurs à jour.
         this._cartes = [];
         // La disposition du tableau de bord est gardée telle quelle : ses sections côte à côte, dans le même
@@ -927,6 +957,7 @@ class VisionVeillePanel extends HTMLElement {
   }
 
   _suivant(force) {
+    if (this._dort) return;
     const e = this._ecrans[this._indice];
     if (e.genre === "tableau" && e.page + 1 < e.pages) e.page += 1;
     else { if (e.genre === "tableau") e.page = 0; this._indice = (this._indice + 1) % this._ecrans.length; }

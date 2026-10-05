@@ -128,70 +128,50 @@ class ReglagesTvActivity : Activity() {
             colonnes.addView(droite, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         } else { colonnes.addView(gauche); colonnes.addView(droite) }
 
-        // --- Les tableaux ---------------------------------------------------------------
-        gauche.addView(section("Tableaux de l'écran de veille"))
+        // --- Écran de veille : ce qu'il montre, comment, quand -------------------------------
+        gauche.addView(section("Écran de veille"))
         if (liste.isEmpty()) gauche.addView(texte("Chargement…", t(20f), theme.encre3))
         liste.forEach { gauche.addView(rangTableau(it), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(8f) }) }
+        gauche.addView(texte("Les tableaux de bord rendus disponibles dans Home Assistant. Ici, cet appareil choisit ceux qu'il montre, leur durée et, en appuyant sur un nom, leurs cartes.", t(17f), theme.encre3).apply { setPadding(px(4f), px(2f), 0, px(10f)) })
         val releve = Local.listeWebA(this)
         gauche.addView(ligne("Actualiser les tableaux", if (enCharge) "Relevé en cours…" else if (releve > 0) "Relevé à " + java.text.SimpleDateFormat("HH:mm", Locale.FRANCE).format(java.util.Date(releve)) else "maintenant", "actualiser") { charger() })
-        gauche.addView(texte("L'horloge, puis les tableaux de bord Home Assistant choisis dans Vision → Écran de veille. Ici, chaque appareil choisit ceux qu'il montre, leur durée et, en appuyant sur un nom, les cartes affichées.", t(17f), theme.encre3).apply { setPadding(px(4f), px(8f), 0, 0) })
+        val web = Local.veilleWeb(this)
+        gauche.addView(ligne("Cartes affichées", if (web) "Celles de Home Assistant" else "Dessin simplifié", "veille_web") { Local.poserVeilleWeb(this, !web); repeindre() })
+        if (web) {
+            val styles = Local.STYLES
+            val style = Local.styleCartes(this)
+            gauche.addView(ligne("Style des cartes", styles.first { it.first == style }.second, "style") { Local.poserStyleCartes(this, styles[(styles.indexOfFirst { it.first == style } + 1) % styles.size].first); repeindre() })
+            gauche.addView(ligne("Fond sous les cartes", if (Local.fondCartes(this)) "Oui" else "Non", "fond_cartes") { Local.poserFondCartes(this, !Local.fondCartes(this)); repeindre() })
+            gauche.addView(ligne("Contour des cartes", if (Local.contourCartes(this)) "Oui" else "Non", "contour_cartes") { Local.poserContourCartes(this, !Local.contourCartes(this)); repeindre() })
+        }
+        if (tele) {
+            val delai = Local.delaiVeille(this)
+            val libelle = if (delai == 0) "Réglage de la télé" else "$delai min sans télécommande" + (if (Local.peutEcrireSysteme(this)) "" else " (accueil Vision seulement)")
+            gauche.addView(ligne("Démarre après", libelle, "delai") {
+                val l = Local.DELAIS_VEILLE
+                Local.poserDelaiVeille(this, l[(l.indexOf(delai) + 1) % l.size]); repeindre()
+            })
+        }
+        gauche.addView(ligne("Applis qui continuent en fond", "${Local.fond(this).size} choisie${if (Local.fond(this).size > 1) "s" else ""}", "fond") { choisirFond() })
+        gauche.addView(ligne("Voir l'écran de veille", "maintenant", "veille") { Veille.ouvrir(this) })
 
-        // --- La source du son ----------------------------------------------------------
-        droite.addView(section("Source du son"))
+        // --- Apparence : les couleurs de tout l'appareil ---------------------------------------
+        droite.addView(section("Apparence"))
+        droite.addView(ligne("Thème de couleurs", Local.theme(this), "theme") { choisirTheme() })
+        droite.addView(ligne("Couleurs à la carte", if (Palette.personnalisee(this, Palette.LANCEUR) || Palette.personnalisee(this, Palette.APPLI)) "Personnalisées" else "Celles du thème", "couleurs") { startActivity(Intent(this, CouleursActivity::class.java)) })
+        val nuit = Local.nuit(this)
+        droite.addView(ligne("Mode nuit", if (nuit.isEmpty()) "Jamais" else "Sombre et sans son de ${nuit.replace("-", " à ")}", "nuit") { Local.poserNuit(this, Local.PLAGES_NUIT[(Local.PLAGES_NUIT.indexOf(nuit) + 1) % Local.PLAGES_NUIT.size]); repeindre() })
+
+        // --- Son de la veille -----------------------------------------------------------------
+        droite.addView(section("Son pendant la veille"))
         val musique = Local.musique(this)
         val radioCourante = Local.RADIOS.firstOrNull { it.second == musique }
         val perso = getSharedPreferences("local", MODE_PRIVATE).getString("flux_perso", "") ?: ""
         if (musique.isNotEmpty() && radioCourante == null && musique != perso) getSharedPreferences("local", MODE_PRIVATE).edit().putString("flux_perso", musique).apply()
-        val sourceChoisie = when { musique.isEmpty() -> "aucun"; radioCourante != null -> "radio"; else -> "perso" }
-        val sources = listOf(
-            Triple("radio", "Radio", radioCourante?.first ?: "${Local.RADIOS.size} stations sans publicité"),
-            Triple("perso", "Flux personnalisé", if (perso.isEmpty()) "Une adresse à saisir" else perso.take(44)),
-            Triple("aucun", "Silence", "Aucun son pendant l'écran de veille"),
-        )
-        sources.forEach { (code, nom, detail) ->
-            val on = sourceChoisie == code
-            val b = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(18f), px(12f), px(18f), px(12f)) }
-            val point = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(if (on) 7f else 2f), if (on) theme.or else theme.encre2) } }
-            b.addView(point, LinearLayout.LayoutParams(px(22f), px(22f)).apply { rightMargin = px(16f) })
-            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            col.addView(texte(nom, t(24f), theme.encre, Polices.demiGras(this)))
-            col.addView(texte(detail, t(18f), theme.encre2).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-            b.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            focusable(b, "son_$code", 22f)
-            if (on) b.background = fondCarte(22f, bord = theme.or, epaisseurDp = 1.5f)
-            b.setOnClickListener {
-                when (code) {
-                    "radio" -> { val k = Local.RADIOS.indexOfFirst { it.second == musique }; Local.poserMusique(this, Local.RADIOS[(k + 1 + Local.RADIOS.size) % Local.RADIOS.size].second); repeindre() }
-                    "perso" -> {
-                        val champ = EditText(this).apply { setText(perso); hint = "https://…" }
-                        AlertDialog.Builder(this).setTitle("Adresse du flux").setView(champ)
-                            .setPositiveButton("Jouer") { _, _ -> val u = champ.text.toString().trim(); if (u.startsWith("http")) { getSharedPreferences("local", MODE_PRIVATE).edit().putString("flux_perso", u).apply(); Local.poserMusique(this, u); repeindre() } }
-                            .setNegativeButton("Annuler", null).show()
-                    }
-                    else -> { Local.poserMusique(this, ""); repeindre() }
-                }
-            }
-            droite.addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(8f) })
-        }
-        droite.addView(texte("OK sur « Radio » passe à la station suivante. Si une autre appli joue déjà (Spotify, YouTube Music…), l'écran de veille la laisse.", t(17f), theme.encre3).apply { setPadding(px(4f), 0, 0, px(6f)) })
+        droite.addView(ligne("Source du son", when { musique.isEmpty() -> "Silence"; radioCourante != null -> radioCourante.first.substringBefore(" ·"); else -> "Flux personnalisé" }, "son") { choisirSon() })
+        droite.addView(texte("Si une autre appli joue déjà (Spotify, YouTube Music…), l'écran de veille la laisse.", t(17f), theme.encre3).apply { setPadding(px(4f), 0, 0, px(6f)) })
 
-        // --- Ambiance et accueil ---------------------------------------------------------
-        droite.addView(section("Ambiance"))
-        val nuit = Local.nuit(this)
-        droite.addView(ligne("Mode nuit", if (nuit.isEmpty()) "Jamais" else "Sombre et sans son de ${nuit.replace("-", " à ")}", "nuit") { Local.poserNuit(this, Local.PLAGES_NUIT[(Local.PLAGES_NUIT.indexOf(nuit) + 1) % Local.PLAGES_NUIT.size]); repeindre() })
-        val themes = Themes.liste.map { it.nom }
-        droite.addView(ligne("Thème de couleurs", Local.theme(this), "theme") { Local.poserTheme(this, themes[(themes.indexOf(Local.theme(this)) + 1) % themes.size]); appliquerTheme(); repeindre() })
-        val web = Local.veilleWeb(this)
-        droite.addView(ligne("Cartes de l'écran de veille", if (web) "Celles de Home Assistant" else "Dessin simplifié", "veille_web") { Local.poserVeilleWeb(this, !web); repeindre() })
-        if (web) {
-            val styles = Local.STYLES
-            val style = Local.styleCartes(this)
-            droite.addView(ligne("Style des cartes", styles.first { it.first == style }.second, "style") { Local.poserStyleCartes(this, styles[(styles.indexOfFirst { it.first == style } + 1) % styles.size].first); repeindre() })
-            droite.addView(ligne("Fond sous les cartes", if (Local.fondCartes(this)) "Oui" else "Non", "fond_cartes") { Local.poserFondCartes(this, !Local.fondCartes(this)); repeindre() })
-            droite.addView(ligne("Contour des cartes", if (Local.contourCartes(this)) "Oui" else "Non", "contour_cartes") { Local.poserContourCartes(this, !Local.contourCartes(this)); repeindre() })
-        }
-        droite.addView(ligne("Couleurs à la carte", if (Palette.personnalisee(this, Palette.LANCEUR) || Palette.personnalisee(this, Palette.APPLI)) "Personnalisées" else "Celles du thème", "couleurs") { startActivity(Intent(this, CouleursActivity::class.java)) })
-
+        // --- Accueil -------------------------------------------------------------------------
         droite.addView(section("Accueil"))
         val toutes = Accueil.applicationsInstallees(this).size
         droite.addView(ligne("Applications visibles", "${toutes - Accueil.masquees(this).size} sur $toutes", "applis") { choisirApplis() })
@@ -200,29 +180,24 @@ class ReglagesTvActivity : Activity() {
             else { Bulle.poser(this, !Bulle.activee(this)); repeindre() }
         })
         if (tele) {
-            val delai = Local.delaiVeille(this)
-            val libelle = if (delai == 0) "Réglage de la télé" else "$delai min sans télécommande" + (if (Local.peutEcrireSysteme(this)) "" else " (accueil Vision seulement)")
-            droite.addView(ligne("Écran de veille après", libelle, "delai") {
-                val l = Local.DELAIS_VEILLE
-                Local.poserDelaiVeille(this, l[(l.indexOf(delai) + 1) % l.size]); repeindre()
-            })
             droite.addView(ligne("Vision à la place de l'accueil", if (Local.accueilForce(this)) "Oui (touche Accueil)" else "Non, accueil de la télé", "accueil_force") {
                 Local.poserAccueilForce(this, !Local.accueilForce(this)); repeindre()
             })
         } else {
             val pages = Accueil.mode(this) == Accueil.MODE_PAGES
-            droite.addView(ligne("Accueil", if (pages) "Des pages à feuilleter" else "Une grille qui défile", "mode") { Accueil.poserMode(this, if (pages) Accueil.MODE_DEFILEMENT else Accueil.MODE_PAGES); repeindre() })
+            droite.addView(ligne("Disposition", if (pages) "Des pages à feuilleter" else "Une grille qui défile", "mode") { Accueil.poserMode(this, if (pages) Accueil.MODE_DEFILEMENT else Accueil.MODE_PAGES); repeindre() })
             droite.addView(ligne("Écran de verrouillage Vision", if (Local.verrou(this)) "Au réveil de l'écran" else "Désactivé", "verrou") {
                 Local.poserVerrou(this, !Local.verrou(this)); AgentService.demarrer(this); repeindre()
             })
             droite.addView(ligne("Voir l'écran de verrouillage", "maintenant", "verrou_voir") { VerrouActivity.montrer(this) })
         }
-        droite.addView(ligne("Applis qui continuent en fond", "${Local.fond(this).size} choisie${if (Local.fond(this).size > 1) "s" else ""}", "fond") { choisirFond() })
-        droite.addView(ligne("Lancer l'écran de veille", "maintenant", "veille") { Veille.ouvrir(this) })
-        droite.addView(ligne("Application Vision", "connexion, personne, parents", "appli") { startActivity(Intent(this, SetupActivity::class.java)) })
+
+        // --- Vision : le compte, la connexion, l'appareil ---------------------------------------
+        droite.addView(section("Vision"))
+        droite.addView(ligne("Connexion, personne, parents", "ouvrir", "appli") { startActivity(Intent(this, SetupActivity::class.java)) })
         if (tele) droite.addView(ligne("Accueil d'origine de la télé", "ouvrir", "origine") { Accueil.accueilSysteme(this)?.let { try { startActivity(it) } catch (_: Exception) {} } })
 
-        contenu.addView(texte(if (tele) "OK : afficher ou masquer, − et + : durée · Retour : fermer · Deux appuis sur Accueil : l'écran de veille par-dessus la musique" else "Appui long sur un tableau composé ici : modifier ou supprimer.", t(18f), theme.encre3).apply { setPadding(0, px(18f), 0, 0) })
+        contenu.addView(texte(if (tele) "OK : afficher ou masquer, − et + : durée · Retour : fermer · Deux appuis sur Accueil : l'écran de veille par-dessus la musique" else "", t(18f), theme.encre3).apply { setPadding(0, px(18f), 0, 0) })
             Ui.laisserDeborder(racine)
 }
 
@@ -289,7 +264,7 @@ class ReglagesTvActivity : Activity() {
         fun pas(signe: String, tag: String, action: () -> Unit): View = texte(signe, t(28f), theme.encre, Polices.outfit(this)).apply {
             gravity = Gravity.CENTER
             focusable(this, tag, 24f); background = fondCarte(24f, couleur = 0)
-            setOnFocusChangeListener { x, a -> x.background = fondCarte(24f, couleur = if (a) theme.carte else 0, bord = if (a) theme.or else theme.carteBord, epaisseurDp = if (a) 3f else 1f); if (a) focusTag = tag }
+            setOnFocusChangeListener { x, a -> x.background = fondCarte(24f, couleur = if (a) theme.carte else 0, bord = if (a) theme.or else theme.carteBord, epaisseurDp = if (a) 1.5f else 1f); if (a) focusTag = tag }
             setOnClickListener { action() }
         }
         rang.addView(pas("−", "m_" + l.cle) { Local.poserTableau(this, l.cle, duree = l.duree - 5); repeindre() }, LinearLayout.LayoutParams(px(40f), px(40f)))
@@ -328,6 +303,37 @@ class ReglagesTvActivity : Activity() {
         r.setOnClickListener { action() }
         r.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(8f) }
         return r
+    }
+
+    /** Le thème de couleurs : une liste où l'on choisit, plutôt qu'un bouton à presser dix-neuf fois. */
+    private fun choisirTheme() {
+        val noms = Themes.liste.map { it.nom }
+        AlertDialog.Builder(this).setTitle("Thème de couleurs")
+            .setSingleChoiceItems(noms.toTypedArray(), noms.indexOf(Local.theme(this)).coerceAtLeast(0)) { d, k -> Local.poserTheme(this, noms[k]); appliquerTheme(); d.dismiss(); repeindre() }
+            .setNegativeButton("Annuler", null).show()
+    }
+
+    /** Le son de la veille : une radio, un flux à soi, ou le silence. */
+    private fun choisirSon() {
+        val musique = Local.musique(this)
+        val perso = getSharedPreferences("local", MODE_PRIVATE).getString("flux_perso", "") ?: ""
+        val noms = listOf("Silence") + Local.RADIOS.map { it.first } + listOf(if (perso.isEmpty()) "Flux personnalisé…" else "Flux personnalisé : ${perso.take(40)}")
+        val courant = when { musique.isEmpty() -> 0; else -> Local.RADIOS.indexOfFirst { it.second == musique }.let { if (it >= 0) it + 1 else noms.size - 1 } }
+        AlertDialog.Builder(this).setTitle("Son pendant la veille")
+            .setSingleChoiceItems(noms.toTypedArray(), courant) { d, k ->
+                d.dismiss()
+                when {
+                    k == 0 -> { Local.poserMusique(this, ""); repeindre() }
+                    k <= Local.RADIOS.size -> { Local.poserMusique(this, Local.RADIOS[k - 1].second); repeindre() }
+                    else -> {
+                        val champ = EditText(this).apply { setText(perso); hint = "https://…" }
+                        AlertDialog.Builder(this).setTitle("Adresse du flux").setView(champ)
+                            .setPositiveButton("Jouer") { _, _ -> val u = champ.text.toString().trim(); if (u.startsWith("http")) { getSharedPreferences("local", MODE_PRIVATE).edit().putString("flux_perso", u).apply(); Local.poserMusique(this, u); repeindre() } }
+                            .setNegativeButton("Annuler", null).show()
+                    }
+                }
+            }
+            .setNegativeButton("Annuler", null).show()
     }
 
     /** Les applis que l'écran de veille peut recouvrir sans les couper (leur son continue, la radio de Vision se tait). */

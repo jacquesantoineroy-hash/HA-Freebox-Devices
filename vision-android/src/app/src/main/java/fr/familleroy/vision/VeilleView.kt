@@ -563,9 +563,11 @@ class VeilleView(ctx: Context) : View(ctx) {
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0 || h <= 0) return
         val t = (maintenant - depart) / 1000f
-        // La page de veille arrive (ou est déjà là) : un fond uni, de sa couleur, et rien d'autre.
-        // Deux horloges l'une sur l'autre, l'ancienne et la nouvelle, ne doivent jamais se voir.
-        if (couverte || web?.enAttente == true || web?.montree == true) { c.drawColor(fond or 0xFF000000.toInt()); return }
+        // La page de veille est là : un fond uni, de sa couleur, et rien d'autre dessous.
+        if (couverte || web?.montree == true) { c.drawColor(fond or 0xFF000000.toInt()); return }
+        // Elle arrive : l'heure reste à l'écran en l'attendant, seule sur le même fond uni. Elle s'efface
+        // d'un coup quand la page se montre ; deux horloges l'une sur l'autre ne doivent jamais se voir.
+        if (web?.enAttente == true) { c.drawColor(fond or 0xFF000000.toInt()); dessinerHorloge(c, w, h, 1f, maintenant - changeA); return }
         dessinerFond(c, w, h, t)
 
         var ecoule = maintenant - changeA

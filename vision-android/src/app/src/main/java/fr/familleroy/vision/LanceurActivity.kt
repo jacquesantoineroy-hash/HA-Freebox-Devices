@@ -119,7 +119,7 @@ class LanceurActivity : Activity() {
         // Sur téléphone, Accueil ramène à l'accueil : le tiroir, un dossier ou le panneau ouverts se referment.
         // Sur télé aussi : Accueil ramène toujours à l'accueil de Vision, dossier et tiroir refermés.
         tirerTiroir(0f); try { dossierOuvert?.dismiss() } catch (_: Exception) {}; cacherPanneau()
-        if (!tele) pageur?.aller(0)
+        if (!tele) pageur?.aller(0) else selectionnerPremiere()
         val now = SystemClock.uptimeMillis()
         if (tele && now - dernierAccueilMs < 1500) { Veille.ouvrir(this); dernierAccueilMs = 0 } else dernierAccueilMs = now
     }
@@ -138,12 +138,14 @@ class LanceurActivity : Activity() {
         if (empreinteApps != empreinte()) construire()
         armerVeille()
         retourDAppli()
+        // La page de veille se charge en coulisse : elle sera là, tout de suite, à la première veille.
+        PageVeille.prechauffer(this)
     }
 
     /** On revient d'une appli : la sélection se remet sur elle, et si elle joue encore du son sans en avoir le droit, on l'arrête. */
     private fun retourDAppli() {
         val pkg = Accueil.dernierLance.ifEmpty { Usage.paquetQuitte }
-        if (pkg.isEmpty() || pkg == packageName) return
+        if (pkg.isEmpty() || pkg == packageName) { selectionnerPremiere(); return }
         Accueil.dernierLance = ""; Usage.paquetQuitte = ""
         if (tele && deplacement == null) racine.post {
             val cle = if (trouverParTag(racine, pkg) != null) pkg
@@ -151,6 +153,17 @@ class LanceurActivity : Activity() {
             if (cle != null) trouverParTag(racine, cle)?.let { v -> v.requestFocus(); v.parent?.requestChildFocus(v, v) }
         }
         main.postDelayed({ faireTaire(pkg) }, 1200)
+    }
+
+    /** Télé : de retour à l'accueil sans appli ouverte, la sélection se pose sur la première application. */
+    private fun selectionnerPremiere() {
+        if (!tele || deplacement != null) return
+        racine.post {
+            try {
+                val premiere = Accueil.cases(this).firstOrNull()?.cle ?: return@post
+                trouverParTag(racine, premiere)?.let { v -> v.requestFocus(); v.parent?.requestChildFocus(v, v) }
+            } catch (_: Exception) {}
+        }
     }
 
     /** Free TV et d'autres continuent leur son une fois quittées : pause, puis arrêt de l'appli si elle insiste. */
@@ -434,7 +447,7 @@ class LanceurActivity : Activity() {
         val taille = tv(124f)
         val contenu = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(px(8f), px(10f), px(8f), px(8f)); tag = c.cle }
         val enDeplacement = deplacement == c.cle
-        val anneau = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(4f), if (enDeplacement) theme.pourpre else theme.or) }; visibility = if (enDeplacement) View.VISIBLE else View.INVISIBLE }
+        val anneau = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(2f), if (enDeplacement) theme.pourpre else theme.or) }; visibility = if (enDeplacement) View.VISIBLE else View.INVISIBLE }
         val cadre = FrameLayout(this)
         val d = if (c.dossier != null) disqueDossier(c.dossier, taille) else disque(Accueil.icone(this, c.pkg!!), taille)
         cadre.addView(d, FrameLayout.LayoutParams(px(taille), px(taille), Gravity.CENTER))
@@ -460,14 +473,14 @@ class LanceurActivity : Activity() {
     private fun casePlusTele(): View {
         val taille = tv(124f)
         val contenu = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(px(8f), px(10f), px(8f), px(8f)); tag = "plus" }
-        val rond = FrameLayout(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(3f), theme.encre2, px(10f).toFloat(), px(8f).toFloat()) } }
+        val rond = FrameLayout(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(px(1.5f), theme.encre2, px(10f).toFloat(), px(8f).toFloat()) } }
         rond.addView(icone(R.drawable.ic_plus, taille * 0.4f, theme.encre2), FrameLayout.LayoutParams(px(taille * 0.4f), px(taille * 0.4f), Gravity.CENTER))
         val cadre = FrameLayout(this)
         cadre.addView(rond, FrameLayout.LayoutParams(px(taille), px(taille), Gravity.CENTER))
         contenu.addView(cadre, LinearLayout.LayoutParams(px(taille + 16f), px(taille + 16f)))
         contenu.addView(texte("Ajouter", tv(22f), theme.encre2, Polices.moyen(this)).apply { gravity = Gravity.CENTER; setPadding(0, px(8f), 0, 0) })
         contenu.isFocusable = true; contenu.isClickable = true
-        contenu.setOnFocusChangeListener { v, a -> rond.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (a) theme.carte else 0); setStroke(px(3f), if (a) theme.or else theme.encre2, px(10f).toFloat(), px(8f).toFloat()) }; v.animate().scaleX(if (a) 1.12f else 1f).scaleY(if (a) 1.12f else 1f).setDuration(140).start() }
+        contenu.setOnFocusChangeListener { v, a -> rond.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (a) theme.carte else 0); setStroke(px(if (a) 2f else 1.5f), if (a) theme.or else theme.encre2, px(10f).toFloat(), px(8f).toFloat()) }; v.animate().scaleX(if (a) 1.12f else 1f).scaleY(if (a) 1.12f else 1f).setDuration(140).start() }
         contenu.setOnClickListener { choisirApplis() }
         return contenu
     }
