@@ -32,10 +32,25 @@ class VisionVeillePanel extends HTMLElement {
     }
     window.__visionVeille = this;
     this._hass = hass;
-    for (const c of this._cartes) { try { c.hass = hass; } catch (e) { /* une carte en panne ne bloque pas les autres */ } }
+    for (const c of this._cartes) { try { c.hass = this._pourCartes(); } catch (e) { /* une carte en panne ne bloque pas les autres */ } }
     if (!this._pret) { this._pret = true; this._demarrer(); }
   }
   set narrow(v) {} set route(v) {} set panel(v) {}
+
+  // Les cartes reçoivent Home Assistant avec le mode clair ou sombre du thème de l'appareil : la carte du lieu,
+  // les graphiques et les cartes de la communauté s'y fient pour choisir leurs propres teintes.
+  _pourCartes() {
+    const h = this._hass;
+    if (!h || this._sombre === undefined) return h;
+    if (this._hassVu !== h) { this._hassVu = h; this._hassCartes = { ...h, themes: { ...(h.themes || {}), darkMode: this._sombre } }; }
+    return this._hassCartes;
+  }
+
+  // Un mélange de deux couleurs : « part » de la seconde dans la première.
+  _melange(a, b, part) {
+    const x = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16)), y = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+    return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * part).toString(16).padStart(2, "0")).join("");
+  }
 
   _couleur(nom, defaut) {
     const v = this._q.get(nom);
@@ -57,6 +72,41 @@ class VisionVeillePanel extends HTMLElement {
       "--rgb-card-background-color": this._rvb(carte), "--rgb-secondary-text-color": this._rvb(texte2),
       "--v-fond": fond, "--v-carte": carte, "--v-texte": texte, "--v-texte2": texte2, "--v-accent": accent,
     };
+    // Tout ce que Home Assistant colore de lui-même d'après son propre mode (champs, listes, interrupteurs,
+    // curseurs, états éteints, graphiques) est ramené aux couleurs de l'appareil : sinon un thème clair
+    // garde des champs noirs, et un thème sombre des aplats gris.
+    const doux = this._melange(carte, texte, 0.07), moyen = this._melange(carte, texte, 0.14), fort = this._melange(carte, texte, 0.28);
+    const accentDoux = this._melange(carte, accent, 0.22), eteint = this._melange(carte, texte2, 0.55);
+    Object.assign(vars, {
+      "--input-fill-color": doux, "--input-ink-color": texte, "--input-label-ink-color": texte2, "--input-idle-line-color": ligne,
+      "--input-hover-line-color": texte2, "--input-disabled-fill-color": doux, "--input-disabled-ink-color": texte2, "--input-dropdown-icon-color": texte2,
+      "--mdc-text-field-fill-color": doux, "--mdc-text-field-ink-color": texte, "--mdc-text-field-label-ink-color": texte2,
+      "--mdc-text-field-idle-line-color": ligne, "--mdc-select-fill-color": doux, "--mdc-select-ink-color": texte,
+      "--mdc-select-label-ink-color": texte2, "--mdc-select-dropdown-icon-color": texte2, "--mdc-select-idle-line-color": ligne,
+      "--mdc-theme-text-primary-on-background": texte, "--mdc-theme-text-secondary-on-background": texte2, "--mdc-theme-on-primary": fond,
+      "--ha-color-form-background": doux, "--clear-background-color": fond, "--primary-background-color-rgb": this._rvb(fond),
+      "--state-inactive-color": eteint, "--state-unavailable-color": fort, "--disabled-color": fort, "--state-off-color": eteint,
+      "--switch-checked-button-color": accent, "--switch-checked-track-color": accent, "--switch-unchecked-button-color": eteint,
+      "--switch-unchecked-track-color": fort, "--switch-checked-color": accent, "--slider-track-color": moyen, "--slider-color": accent,
+      "--md-sys-color-primary": accent, "--md-sys-color-on-primary": fond, "--md-sys-color-surface": carte, "--md-sys-color-on-surface": texte,
+      "--md-sys-color-on-surface-variant": texte2, "--md-sys-color-surface-variant": moyen, "--md-sys-color-outline": ligne,
+      "--md-sys-color-surface-container": doux, "--md-sys-color-surface-container-high": doux, "--md-sys-color-surface-container-highest": moyen,
+      "--md-sys-color-secondary-container": accentDoux, "--md-sys-color-on-secondary-container": texte,
+      "--control-select-background": moyen, "--control-slider-background": accent, "--control-number-buttons-background-color": texte,
+      "--info-color": accent, "--scrollbar-thumb-color": "transparent", "--rgb-disabled": this._rvb(fort), "--rgb-state-inactive-color": this._rvb(eteint),
+      "--graph-color-1": accent, "--graph-color-2": "#5B8FD9", "--graph-color-3": "#4FAE8C", "--graph-color-4": "#D9705F", "--graph-color-5": "#9C7AD1", "--graph-color-6": "#49A9C2",
+      "--v-ligne": ligne, "--v-doux": doux, "--v-moyen": moyen,
+    });
+    for (const fam of ["neutral", "primary"]) {
+      const base = fam === "primary" ? accent : texte;
+      const fills = { quiet: this._melange(carte, base, 0.08), normal: this._melange(carte, base, 0.16), loud: fam === "primary" ? accent : this._melange(carte, base, 0.6) };
+      for (const [force, c] of Object.entries(fills)) {
+        for (const etat of ["resting", "hover", "active"]) vars[`--ha-color-fill-${fam}-${force}-${etat}`] = c;
+        vars[`--ha-color-on-${fam}-${force}`] = force === "loud" ? fond : (fam === "primary" ? accent : texte);
+        vars[`--ha-color-border-${fam}-${force}`] = force === "quiet" ? ligne : this._melange(carte, base, 0.4);
+      }
+    }
+    for (const n of ["default", "low", "lower", "lowest", "raised"]) vars[`--ha-color-surface-${n}`] = carte;
     // Le style graphique (formes, bordures, lettres) est distinct des couleurs : chacun choisit les deux.
     this._style = this._q.get("style") === "neoretro" ? "neoretro" : "doux";
     if (this._style === "neoretro") {
@@ -66,6 +116,11 @@ class VisionVeillePanel extends HTMLElement {
         "--primary-font-family": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
         "--paper-font-common-base_-_font-family": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
         "--chip-border-radius": "3px", "--chip-border-width": "0px", "--mush-chip-border-radius": "3px",
+        "--ha-card-header-font-family": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
+        "--ha-font-family-heading": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
+        "--mush-control-border-radius": "3px", "--mush-icon-border-radius": "3px", "--ha-border-radius-md": "3px", "--ha-border-radius-lg": "3px",
+        "--ha-border-radius-sm": "2px", "--ha-border-radius-xl": "3px", "--ha-border-radius-pill": "3px", "--control-button-border-radius": "3px",
+        "--feature-border-radius": "3px", "--tile-icon-border-radius": "3px", "--ha-tile-icon-border-radius": "3px",
       });
     }
     // Chacun décide : un fond sous ses cartes ou non, un contour ou non.
@@ -80,11 +135,60 @@ class VisionVeillePanel extends HTMLElement {
       "--chip-border-width": contour ? (net ? "1.5px" : "1px") : "0px", "--chip-border-color": contour ? ligne : "transparent",
     });
     this._sombre = [1, 3, 5].map((i) => parseInt(fond.slice(i, i + 2), 16)).reduce((a, b) => a + b, 0) < 384;
+    // La carte du lieu : des teintes calmes, proches du fond, dans les deux modes.
+    this.style.setProperty("--map-filter", this._sombre ? "invert(0.92) hue-rotate(180deg) brightness(0.9) contrast(0.88) saturate(0.35)" : "saturate(0.55) contrast(0.94) sepia(0.12)");
+    this._feuille = null;
     this.setAttribute("data-style", this._style);
     for (const [k, v] of Object.entries(vars)) this.style.setProperty(k, v);
     document.body.style.background = fond;
   }
   _rvb(h) { return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", "); }
+
+  // Une veille se regarde, elle ne se touche pas : les boutons, menus, flèches et champs de saisie des cartes
+  // n'ont rien à y faire. Cette feuille de style est posée dans chaque carte, jusque dans ses éléments internes.
+  _regles() {
+    const net = this._style === "neoretro";
+    return `
+      ::-webkit-scrollbar { display: none !important; }
+      * { scrollbar-width: none !important; }
+      ha-icon-button, ha-button-menu, ha-icon-next, ha-icon-button-next, ha-icon-button-prev, mwc-icon-button, .more-info { display: none !important; }
+      hui-target-temperature-card-feature, hui-numeric-input-card-feature, hui-select-options-card-feature, hui-counter-actions-card-feature,
+      hui-update-actions-card-feature, hui-cover-open-close-card-feature, hui-valve-open-close-card-feature, hui-button-card-feature,
+      hui-climate-hvac-modes-card-feature, hui-climate-preset-modes-card-feature, hui-climate-fan-modes-card-feature,
+      hui-water-heater-operation-modes-card-feature, hui-alarm-modes-card-feature, hui-vacuum-commands-card-feature,
+      hui-lawn-mower-commands-card-feature, hui-lock-commands-card-feature, hui-media-player-playback-card-feature { display: none !important; }
+      mushroom-number-value-control, mushroom-select-option-control, mushroom-climate-temperature-control, mushroom-climate-hvac-modes-control,
+      mushroom-media-player-media-control, mushroom-media-player-volume-control, mushroom-cover-buttons-control, mushroom-fan-percentage-control { display: none !important; }
+      :host(mushroom-number-card) .actions, :host(mushroom-select-card) .actions, :host(mushroom-climate-card) .actions,
+      :host(mushroom-media-player-card) .actions, :host(mushroom-cover-card) .actions, :host(mushroom-fan-card) .actions { display: none !important; }
+      :host(ha-full-calendar) .header { display: none !important; }
+      :host(hui-todo-list-card) .addRow { display: none !important; }
+      .leaflet-top, .leaflet-control-zoom { display: none !important; }
+      :host(hui-media-control-card) .background { filter: none !important; }
+      :host(hui-media-control-card) .background.off .color-block, :host(hui-media-control-card) .background.no-image .color-block,
+      :host(hui-media-control-card) .background.unavailable .color-block { background-color: var(--v-moyen) !important; }
+      :host(hui-media-control-card) .background.off .color-gradient, :host(hui-media-control-card) .background.no-image .color-gradient { background-image: none !important; }
+      :host(hui-media-control-card) .player { color: var(--v-texte) !important; }
+      :host(hui-media-control-card) .controls { display: none !important; }
+      ${net ? `
+      .card-header { text-transform: uppercase; letter-spacing: .16em; font-size: 15px !important; font-weight: 400 !important; color: var(--v-accent) !important; line-height: 1.4 !important; padding-bottom: 8px !important; }
+      :host(ha-card) { border-radius: 3px !important; }
+      ` : ""}`;
+  }
+
+  _percer(racine) {
+    if (!this._feuille) { try { this._feuille = new CSSStyleSheet(); this._feuille.replaceSync(this._regles()); } catch (e) { this._feuille = false; } }
+    if (!this._feuille) return;
+    const voir = (noeud) => {
+      const r = noeud.shadowRoot;
+      if (r) {
+        try { if (!r.adoptedStyleSheets.includes(this._feuille)) r.adoptedStyleSheets = [...r.adoptedStyleSheets, this._feuille]; } catch (e) { /* cette carte garde son allure */ }
+        for (const x of r.children) voir(x);
+      }
+      for (const x of noeud.children) voir(x);
+    };
+    try { voir(racine); } catch (e) { /* sans gravité */ }
+  }
 
   // Avec « diag=1 » dans l'adresse, les temps de chargement s'écrivent en haut de l'écran.
   _note(texte) {
@@ -265,7 +369,7 @@ class VisionVeillePanel extends HTMLElement {
     let el;
     try { el = this._aides ? this._aides.createCardElement(config) : null; } catch (e) { el = null; }
     if (!el) return null;
-    try { el.hass = this._hass; } catch (e) { /* idem */ }
+    try { el.hass = this._pourCartes(); } catch (e) { /* idem */ }
     this._cartes.push(el);
     // La largeur voulue dans Home Assistant (sur 12), reprise telle quelle.
     let colonnes = 12;
@@ -348,7 +452,9 @@ class VisionVeillePanel extends HTMLElement {
       const c = e._colonnes;
       if (e.page === 0) {
         // Le temps que les cartes se dessinent, puis on compte les écrans nécessaires.
-        await pause(1200);
+        await pause(900);
+        this._percer(c);
+        await pause(300);
         const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
         for (const el of c.querySelectorAll(".section > *")) {
           if (!el._largeurLibre) continue;
@@ -395,6 +501,7 @@ class VisionVeillePanel extends HTMLElement {
         c.style.transform = `translate(${dx}px, ${dy - pg.haut * z}px) scale(${z})`;
       }
     }
+    if (e.genre === "tableau") { this._percer(e._colonnes); for (const t of [700, 2000, 4500]) setTimeout(() => this._percer(e._colonnes), t); }
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
     this._minuteur = setTimeout(() => this._suivant(), reste || Math.max(5, e.duree) * 1000);
