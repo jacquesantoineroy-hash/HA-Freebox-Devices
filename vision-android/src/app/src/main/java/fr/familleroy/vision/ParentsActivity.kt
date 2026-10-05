@@ -125,6 +125,8 @@ class ParentsActivity : Activity() {
                 r.addView(Ui.marge(this, Ui.poids(Ui.boutonDanger(this, "Non") { repondreAcces(pc, id, "non") }), gauche = 8f))
                 c.addView(Ui.marge(this, r, haut = 14f))
                 if (etiquettes.isNotEmpty()) c.addView(Ui.marge(this, choix("Toute la catégorie : ${etiquettes.joinToString(", ")}", duree == "categorie") { repondreAcces(pc, id, "categorie") }, haut = 8f))
+                if (d.optString("genre") == "apps") c.addView(Ui.marge(this, Ui.boutonSecondaire(this, "Exception : même pendant les coupures") { repondreAcces(pc, id, "exception") }, haut = 8f))
+                c.addView(Ui.marge(this, Ui.texte(this, "Toujours : ouvert en dehors des plages de coupure.", 12f, Ui.TEXTE_3), haut = 6f))
                 c.addView(Ui.marge(this, Ui.boutonSecondaire(this, "Autre durée…") {
                     AlertDialog.Builder(this).setTitle("Ouvrir ${d.optString("libelle")} pour…")
                         .setItems(arrayOf("15 minutes", "30 minutes", "2 heures", "Jusqu'à ce soir (6 h)")) { _, k ->
@@ -225,7 +227,7 @@ class ParentsActivity : Activity() {
         // Les exceptions de la personne : ce qui est autorisé ou fermé à part, nom par nom.
         val ex = a.optJSONObject("exceptions")
         val nEx = (ex?.optJSONArray("autorises")?.length() ?: 0) + (ex?.optJSONArray("bloques")?.length() ?: 0) + (ex?.optJSONArray("toujours")?.let { t -> (0 until t.length()).count { t.optJSONObject(it)?.optBoolean("maison") != true } } ?: 0)
-        c.addView(Ui.marge(this, Ui.boutonSecondaire(this, if (nEx > 0) "Exceptions : $nEx" else "Exceptions") {
+        c.addView(Ui.marge(this, Ui.boutonSecondaire(this, if (nEx > 0) "Autorisations : $nEx" else "Autorisations") {
             ExceptionsActivity.fiche = a; ExceptionsActivity.cats = categories
             startActivity(Intent(this, ExceptionsActivity::class.java))
         }, haut = 8f))

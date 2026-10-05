@@ -566,6 +566,7 @@ function PageMaison() {
             if ($det.Count) { $sp.Children.Add((Txt ($det -join '   ') 12 'Texte2' $false '0,4,0,0')) | Out-Null }
             $r = Rangee; $r.Margin = [System.Windows.Thickness]::new(0, 12, 0, 0)
             $choix = @(@('1 h', 'temporaire', 60, $(if ($duree -eq '1h') { 'Primaire' } else { 'Secondaire' })), @('Toujours', 'toujours', 0, $(if ($duree -eq 'toujours' -or -not $duree) { 'Primaire' } else { 'Secondaire' })))
+            if ([string](Prop $d 'genre') -eq 'apps') { $choix += ,@('Exception', 'exception', 0, 'Secondaire') }
             if ($cats.Count) { $choix += ,@('Catégorie', 'categorie', 0, $(if ($duree -eq 'categorie') { 'Primaire' } else { 'Secondaire' })) }
             $choix += ,@('Non', 'non', 0, 'Danger')
             foreach ($def in $choix) {
@@ -576,6 +577,7 @@ function PageMaison() {
                 } @{ pc = (Prop $d 'pc'); id = (Prop $d 'id'); decision = $def[1]; minutes = $def[2] })) | Out-Null
             }
             $sp.Children.Add($r) | Out-Null
+            $sp.Children.Add((Txt 'Toujours : ouvert en dehors des plages de coupure. Exception : disponible même pendant les coupures.' 11 'Texte3' $false '0,8,0,0')) | Out-Null
             $Contenu.Children.Add($c) | Out-Null
         }
     }
@@ -610,7 +612,7 @@ function PageMaison() {
         }
         $sp.Children.Add($r) | Out-Null
         $r2 = Rangee; $r2.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
-        foreach ($def in @(@('Catégories', 'categories'), @('Exceptions', 'exceptions'), @('Ce qui est fermé', 'fermes'), @('Planning', 'planning'), @('Un mot…', 'mot'))) {
+        foreach ($def in @(@('Catégories', 'categories'), @('Autorisations', 'exceptions'), @('Ce qui est fermé', 'fermes'), @('Planning', 'planning'), @('Un mot…', 'mot'))) {
             $r2.Children.Add((Bouton $def[0] 'Secondaire' {
                 param($s, $e); $t = $s.Tag
                 if ($t.type -eq 'mot') { EnvoyerMot $t.appareil; return }
@@ -711,7 +713,7 @@ function PageSousVue() {
         'fermes' { Retour "Ce qui est fermé chez $prenom"; VueFermes $a }
         'planning' { Retour "Planning de $prenom"; VuePlanning $a }
         'categories' { Retour "Catégories de $prenom"; VueCategories $a }
-        'exceptions' { Retour "Exceptions de $prenom"; VueExceptions $a }
+        'exceptions' { Retour "Autorisations de $prenom"; VueExceptions $a }
         'mot' { Retour "Un mot pour $prenom"; VueMot $a }
         'demande' { Retour "Demander l'accès"; VueDemande $script:Vue.item }
     }
@@ -799,16 +801,16 @@ function VueExceptions($a) {
     $idPc = [string](Prop $a 'id')
     foreach ($x in @(Prop $maison 'appareils' @())) { if ([string](Prop $x 'id') -eq $idPc) { $a = $x } }
     $ex = Prop $a 'exceptions'
-    $Contenu.Children.Add((Txt 'Ce qui est décidé nom par nom pour cette personne, sur tous ses appareils. Une exception passe devant les catégories et l''âge ; le planning et un interdit de toute la maison restent plus forts.' 12 'Texte2' $false '0,0,0,0')) | Out-Null
+    $Contenu.Children.Add((Txt 'Ce qui est décidé nom par nom pour cette personne, sur tous ses appareils, en plus des catégories. Un interdit de toute la maison reste plus fort.' 12 'Texte2' $false '0,0,0,0')) | Out-Null
     if ($null -eq $ex) {
         $Contenu.Children.Add((Txt 'Les exceptions arrivent avec la prochaine mise à jour de Home Assistant.' 12 'Texte3')) | Out-Null
         return
     }
     # Toujours disponibles : les applis qui restent ouvertes même quand le planning ferme l'appareil.
     $dispo = @(Prop $ex 'toujours' @())
-    $Contenu.Children.Add((Section ('Toujours disponibles, même appareil fermé ({0})' -f $dispo.Count))) | Out-Null
+    $Contenu.Children.Add((Section ('Exceptions : disponibles même pendant les coupures ({0})' -f $dispo.Count))) | Out-Null
     $c = Carte; $sp = $c.Child
-    $sp.Children.Add((Txt 'Une exception ne lève pas le planning. Les applis de cette liste, si : elles restent ouvertes sur le téléphone ou la tablette quand tout le reste est fermé (musique pour s''endormir, par exemple).' 12 'Texte2' $false '0,0,0,6')) | Out-Null
+    $sp.Children.Add((Txt 'Ces applis restent ouvertes sur le téléphone ou la tablette pendant les plages de coupure, quand tout le reste est fermé (musique pour s''endormir, par exemple). Retirer : l''appli suit de nouveau le planning.' 12 'Texte2' $false '0,0,0,6')) | Out-Null
     $k = 0
     foreach ($e in $dispo) {
         if ($k++ -gt 0) { $sp.Children.Add((Separateur)) | Out-Null }
@@ -827,7 +829,7 @@ function VueExceptions($a) {
         $sp.Children.Add((Deux $g $r)) | Out-Null
     }
     $Contenu.Children.Add($c) | Out-Null
-    foreach ($def in @(@('autorises', 'Toujours autorisé', 'Rien d''autorisé à part.', 'Fermer', 'bloquer'), @('bloques', 'Toujours fermé', 'Rien de fermé à part.', 'Autoriser', 'toujours'))) {
+    foreach ($def in @(@('autorises', 'Toujours autorisé, hors plages de coupure', 'Rien d''autorisé à part.', 'Fermer', 'bloquer'), @('bloques', 'Toujours fermé', 'Rien de fermé à part.', 'Autoriser', 'toujours'))) {
         $liste = @(Prop $ex $def[0] @())
         $Contenu.Children.Add((Section ('{0} ({1})' -f $def[1], $liste.Count))) | Out-Null
         $c = Carte; $sp = $c.Child
@@ -854,7 +856,7 @@ function VueExceptions($a) {
         $Contenu.Children.Add($c) | Out-Null
     }
     # Ajouter : on cherche dans tout ce que Vision connaît (applis et sites classés), ou on écrit l'adresse d'un site.
-    $Contenu.Children.Add((Section 'Ajouter une exception')) | Out-Null
+    $Contenu.Children.Add((Section 'Ajouter')) | Out-Null
     $c = Carte; $sp = $c.Child
     $champ = Champ 'Nom d''une appli ou adresse d''un site'
     $sp.Children.Add($champ) | Out-Null
@@ -882,8 +884,8 @@ function VueExceptions($a) {
             $g.Children.Add((Txt $e.lib 14 'Texte' $true)) | Out-Null
             $g.Children.Add((Txt $(if ($e.genre -eq 'apps') { 'Appli' } else { 'Site' }) 11 'Texte2')) | Out-Null
             $r = Rangee
-            $choix = @(@('Autoriser', 'toujours', 'Primaire'), @('Fermer', 'bloquer', 'Secondaire'))
-            if ($e.genre -eq 'apps') { $choix += , @('Même fermé', 'disponible', 'Secondaire') }
+            $choix = @(@('Toujours', 'toujours', 'Primaire'), @('Fermer', 'bloquer', 'Secondaire'))
+            if ($e.genre -eq 'apps') { $choix += , @('Exception', 'disponible', 'Secondaire') }
             foreach ($b in $choix) {
                 $r.Children.Add((Bouton $b[0] $b[2] {
                     param($s, $e2); $t = $s.Tag
