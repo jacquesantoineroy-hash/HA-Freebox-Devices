@@ -4,7 +4,7 @@
  * mode: maison    une ligne par personne : ce que font ses appareils en ce
  *                 moment ; un clic ouvre la page de la personne.
  * mode: personne  la fiche d'une personne : du temps en plus (durée, puis
- *                 matériel), ses appareils, les siens comme ceux qu'elle
+ *                 appareil), ses appareils, les siens comme ceux qu'elle
  *                 partage, et ses
  *                 catégories, en accordéon : on ouvre, on voit le contenu,
  *                 on coupe ou on rouvre. Une catégorie coupée par une règle
@@ -54,6 +54,7 @@ class VisionMaisonCard extends HTMLElement {
     this._details = new Set();
     this._mots = new Map();
     this._partages = new Set();
+    this._ajout = false;
     // Le temps qu'on s'apprête à donner : { minutes, autre, choix:Set d'appareils } ou null.
     this._temps = null;
     this._minuteur = null;
@@ -131,6 +132,10 @@ class VisionMaisonCard extends HTMLElement {
         .filter((a) => (a.proprietaires ? a.proprietaires.includes(p.entite) : a.personne === p.entite))
         .sort((a, b) => (a.personne === p.entite ? 0 : 1) - (b.personne === p.entite ? 0 : 1)),
     }));
+    // Une personne de Home Assistant sans appareil a sa ligne aussi : c'est d'ici qu'on lui en donne un.
+    for (const m of d.maison || []) {
+      if (!liste.some((p) => p.entite === m.entite)) liste.push({ entite: m.entite, cle: m.entite.split(".").pop(), prenom: m.prenom, photo: "", appareils: [], moyenne: null });
+    }
     const orphelins = appareils.filter((a) => (a.proprietaires ? !a.proprietaires.length : !a.personne));
     if (orphelins.length) liste.push({ entite: "", cle: "autres", prenom: "Sans personne", appareils: orphelins, orphelins: true });
     // Les parents en dernier : on ouvre la page pour les enfants.
@@ -307,6 +312,7 @@ class VisionMaisonCard extends HTMLElement {
           <label class="coche"><input type="checkbox" data-tous ${a.partage_tous ? "checked" : ""} ${this._occupe ? "disabled" : ""}> Toute la maison</label>
           ${(d.maison || []).map((m) => `<label class="coche"><input type="checkbox" data-qui="${esc(m.entite)}" ${(a.proprietaires || []).includes(m.entite) ? "checked" : ""} ${this._occupe || a.partage_tous || m.entite === a.personne ? "disabled" : ""}> ${esc(m.prenom)}${m.entite === a.personne ? " (ses règles s'y appliquent)" : ""}</label>`).join("")}
           <div class="legende">Partager ne change aucune règle : l'appareil apparaît chez chacun, et chacun peut y recevoir du temps.</div>
+          ${this._personne && this._personne.entite && !a.partage_tous ? `<button data-attribuer="retirer" data-pc="${esc(a.id)}" ${this._occupe ? "disabled" : ""}>Retirer de la fiche de ${esc(this._personne.prenom)}</button>` : ""}
         </div>`
       : "";
     return `
@@ -332,7 +338,7 @@ class VisionMaisonCard extends HTMLElement {
       </div>`;
   }
 
-  // Donner du temps : d'abord la durée, puis le matériel. Un seul appareil : pas de seconde question.
+  // Donner du temps : d'abord la durée, puis l'appareil. Un seul appareil : pas de seconde question.
   _blocTemps(p) {
     const apps = p.appareils;
     if (!apps.length) return "";
@@ -345,7 +351,7 @@ class VisionMaisonCard extends HTMLElement {
         ? `<label class="saisie">Durée <input type="number" data-minutes min="5" max="720" step="5" value="${esc(t.minutes || "")}" placeholder="45"> min</label>`
         : "";
       const choix = apps.length > 1
-        ? `<div class="question">Pour quel matériel ?</div>
+        ? `<div class="question">Pour quel appareil ?</div>
            <div class="choix">
              ${apps.map((a) => `<label class="coche"><input type="checkbox" data-choix="${esc(a.id)}" ${t.choix.has(a.id) ? "checked" : ""}> ${esc(a.nom)}${a.en_ligne ? "" : " (hors ligne)"}</label>`).join("")}
              <button class="lien" data-tous-choix>${t.choix.size === apps.length ? "Aucun" : "Tous"}</button>
@@ -372,6 +378,32 @@ class VisionMaisonCard extends HTMLElement {
         <div class="boutons">${duree_b(30, "+30 min")}${duree_b(60, "+1 h")}<button data-duree="autre" class="${t && t.autre ? "principal" : ""}" ${off}>Autre…</button></div>
         ${etape}
         ${encours}
+      </div>`;
+  }
+
+  // Donner un appareil à la personne : le sien (il suit ses règles), ou partagé (il garde les siennes).
+  _blocAjout(p) {
+    const d = this._donnees || {};
+    const off = this._occupe ? "disabled" : "";
+    const autres = (d.appareils || []).filter((a) => !p.appareils.some((x) => x.id === a.id));
+    const tete = `<button class="lien ajout" data-ajout><ha-icon icon="${this._ajout ? "mdi:chevron-down" : "mdi:plus"}"></ha-icon> Ajouter un appareil</button>`;
+    if (!this._ajout) return tete;
+    if (!autres.length) return tete + '<div class="vide">Tous les appareils de la maison sont déjà sur cette fiche. Un nouvel appareil s’inscrit en y installant Vision.</div>';
+    const prenomDe = (e) => ((d.maison || []).find((m) => m.entite === e) || {}).prenom || "";
+    const lignes = autres.map((a) => {
+      const qui = a.partage_tous ? "à toute la maison" : a.personne ? `à ${prenomDe(a.personne) || "quelqu’un"}` : "à personne";
+      return `
+        <div class="candidat">
+          <ha-icon icon="${a.android ? "mdi:cellphone" : "mdi:desktop-classic"}"></ha-icon>
+          <span class="nomc"><b>${esc(a.nom)}</b> <span class="motif">aujourd’hui ${esc(qui)}</span></span>
+          <button data-attribuer="principal" data-pc="${esc(a.id)}" ${off} title="Il devient le sien et suit ses règles et son planning">Le sien</button>
+          <button data-attribuer="partage" data-pc="${esc(a.id)}" ${off} title="Il garde ses règles, mais apparaît ici et peut recevoir du temps">Partagé</button>
+        </div>`;
+    }).join("");
+    return `${tete}
+      <div class="ajouts">
+        <div class="legende">« Le sien » : l’appareil suit les règles et le planning de ${esc(p.prenom)}, et quitte la personne qui l’avait. « Partagé » : il garde ses propres règles, mais apparaît aussi sur cette fiche.</div>
+        ${lignes}
       </div>`;
   }
 
@@ -436,8 +468,11 @@ class VisionMaisonCard extends HTMLElement {
     const d = this._donnees;
     const voulu = this._config.personne || "";
     const personnes = this._personnes();
-    const p = personnes.find((x) => x.entite === voulu || x.cle === voulu || x.cle === String(voulu).split(".").pop());
+    let p = personnes.find((x) => x.entite === voulu || x.cle === voulu || x.cle === String(voulu).split(".").pop());
     if (!d) return `<ha-card><div class="vide">Chargement…</div></ha-card>`;
+    // Une personne de Home Assistant qui n'a encore aucun appareil a quand même sa fiche : on peut lui en donner un.
+    const sans = !p && (d.maison || []).find((m) => m.entite === voulu || m.entite.split(".").pop() === String(voulu).split(".").pop());
+    if (sans) p = { entite: sans.entite, cle: sans.entite.split(".").pop(), prenom: sans.prenom, photo: "", appareils: [], moyenne: null };
     if (!p) return `<ha-card><div class="vide">Personne introuvable : ${esc(voulu)}.</div></ha-card>`;
     // Les règles de la personne se posent sur un appareil à elle, jamais sur un appareil partagé.
     const propre = p.appareils.find((a) => a.personne === p.entite);
@@ -459,7 +494,8 @@ class VisionMaisonCard extends HTMLElement {
         ${d.retour ? `<div class="retour-texte">${esc(d.retour)}</div>` : ""}
         ${this._blocTemps(p)}
         <h3>Appareils</h3>
-        ${p.appareils.length ? p.appareils.map((a) => this._appareil(a)).join("") : '<div class="vide">Aucun appareil.</div>'}
+        ${p.appareils.length ? p.appareils.map((a) => this._appareil(a)).join("") : '<div class="vide">Aucun appareil pour l’instant.</div>'}
+        ${p.entite ? this._blocAjout(p) : ""}
         <h3>Catégories <span class="n">${coupees} coupée${coupees > 1 ? "s" : ""} sur ${cats.length}</span></h3>
         <div class="legende">Couper une catégorie vaut pour ${esc(p.prenom)} sur tous ses appareils. Ce que la maison, la moyenne ou le planning ferment reste coché, avec la raison.</div>
         ${cats.map((c) => this._categorie(c, pc)).join("")}
@@ -562,6 +598,11 @@ class VisionMaisonCard extends HTMLElement {
         .coche input { width:17px; height:17px; accent-color: var(--primary-color); }
         .saisie { display:flex; align-items:center; gap:8px; font-size:.92em; margin-bottom:10px; }
         .saisie input { width:84px; padding:6px 8px; border:1px solid var(--divider-color); border-radius:8px; background: var(--card-background-color); color: var(--primary-text-color); font: inherit; }
+        .lien.ajout { font-size:.95em; color: var(--primary-color); padding:6px 0; }
+        .ajouts { border:1px solid var(--divider-color); border-radius:12px; padding:10px 12px; margin:4px 0 8px; }
+        .candidat { display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--divider-color); flex-wrap:wrap; }
+        .candidat ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
+        .candidat .nomc { flex:1; min-width:150px; }
         .bonus { display:flex; align-items:center; gap:8px; font-size:.9em; margin-top:8px; }
         .bonus span { flex:1; }
         .bonus ha-icon { --mdc-icon-size: 17px; color: var(--secondary-text-color); }
@@ -593,7 +634,7 @@ class VisionMaisonCard extends HTMLElement {
     r.querySelectorAll("[data-action]").forEach((b) =>
       b.addEventListener("click", () =>
         this._agir({ action: b.dataset.action, pc: b.dataset.pc, minutes: Number(b.dataset.min || 0) })));
-    // --- temps : durée, puis matériel
+    // --- temps : durée, puis appareil
     r.querySelectorAll("[data-duree]").forEach((b) =>
       b.addEventListener("click", () => this._choisirDuree(this._personne, b.dataset.duree)));
     r.querySelectorAll("[data-minutes]").forEach((c) =>
@@ -628,6 +669,14 @@ class VisionMaisonCard extends HTMLElement {
         if (!t) return;
         this._temps = null;
         this._agir({ action: "temps", appareils: [...t.choix], minutes: Number(t.minutes) });
+      }));
+    // --- donner ou retirer un appareil
+    r.querySelectorAll("[data-ajout]").forEach((b) =>
+      b.addEventListener("click", () => { this._ajout = !this._ajout; this._rendre(); }));
+    r.querySelectorAll("[data-attribuer]").forEach((b) =>
+      b.addEventListener("click", () => {
+        if (!this._personne) return;
+        this._agir({ action: "attribuer", pc: b.dataset.pc, personne: this._personne.entite, mode: b.dataset.attribuer });
       }));
     // --- à qui est l'appareil
     r.querySelectorAll("[data-apartage]").forEach((b) =>

@@ -48,6 +48,9 @@ try {
         ('refus posé sur ' + [string](Prop $lignes[0] 'nom') + ' : ' + (RefusJusqua (Lire 'fermes.json') $genre ([string](Prop $lignes[0] 'nom')))) | Add-Content $journal
     }
     $script:Vue = $null; $script:Page = 'moi'; Rafraichir; Photo '8-moi'
+    $script:Page = 'maison'; $script:Vue = @{ type = 'ajout'; personne = [string]$par.entite; retour = @{ type = 'personne'; personne = [string]$par.entite } }; Rafraichir; Photo '9-ajout'
+    $script:Vue = $null; $script:Page = 'reglages'; Rafraichir; Photo '10-reglages'
+    ('veille de Windows choisie : ' + (SvWindowsChoisi) + ' ; programme present : ' + (Test-Path $script:SvScr)) | Add-Content $journal
     # L'œil tourne-t-il ? On laisse passer deux secondes de boucle et on compte les redessins.
     $n = 0; $fin = (Get-Date).AddSeconds(2)
     while ((Get-Date) -lt $fin) { $script:W.Dispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Background); Start-Sleep -Milliseconds 20; $n++ }

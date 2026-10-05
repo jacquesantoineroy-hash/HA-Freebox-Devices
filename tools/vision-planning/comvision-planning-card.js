@@ -671,7 +671,7 @@
             </div>
             <div class="champ"><label>Jours</label><div class="chips" id="ed-jours">${chips}</div></div>
             <div class="champ"><label>Cette plage ferme</label><div class="chips" id="ed-portee">
-              <button class="chip ${p.portee !== "etiquettes" ? "on" : ""}" data-p="session">La session (PC verrouillé)</button>
+              <button class="chip ${p.portee !== "etiquettes" ? "on" : ""}" data-p="session">La session (appareil verrouillé)</button>
               <button class="chip ${p.portee === "etiquettes" ? "on" : ""}" data-p="etiquettes">Des étiquettes</button>
             </div></div>
             <div class="champ" id="ed-zone-etiq" ${p.portee === "etiquettes" ? "" : "hidden"}>
@@ -934,9 +934,9 @@
   window.customCards = window.customCards || [];
   window.customCards.push({
     type: "comvision-planning-card",
-    name: "Planning ComVision (plages des PC)",
+    name: "Planning Vision (plages d'une personne)",
     description:
-      "Grille semaine des plages d'un PC ComVision : session ou étiquettes, "
+      "Grille semaine des plages d'une personne : session ou étiquettes, "
       + "création au glisser, déplacement, redimensionnement, couleurs.",
   });
 })();

@@ -95,7 +95,7 @@ $script:Themes = [ordered]@{
 }
 $script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
 function SvReglages() {
-    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; fondCartes = $true; contourCartes = $false; animer = $true; masques = @(); cartes = @(); figees = @(); verrou = $false; codeSel = ''; codeHash = '' }
+    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; fondCartes = $true; contourCartes = $false; animer = $true; masques = @(); cartes = @(); figees = @(); verrou = $false; codeSel = ''; codeHash = ''; windows = $null }
     try {
         if (Test-Path $script:SvFichier) {
             $lu = Get-Content $script:SvFichier -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -107,6 +107,7 @@ function SvReglages() {
             if ($null -ne (Prop $lu 'contourCartes')) { $r.contourCartes = [bool](Prop $lu 'contourCartes') }
             if ($null -ne (Prop $lu 'animer')) { $r.animer = [bool](Prop $lu 'animer') }
             if ($null -ne (Prop $lu 'verrou')) { $r.verrou = [bool](Prop $lu 'verrou') }
+            if ($null -ne (Prop $lu 'windows')) { $r.windows = [bool](Prop $lu 'windows') }
             $r.codeSel = [string](Prop $lu 'codeSel' ''); $r.codeHash = [string](Prop $lu 'codeHash' '')
             $r.masques = @(@(Prop $lu 'masques' @()) | ForEach-Object { [string]$_ })
             $r.cartes = @(@(Prop $lu 'cartes' @()) | ForEach-Object { [string]$_ })
@@ -119,7 +120,7 @@ function SvEcrire($r) {
     try {
         $d = Split-Path $script:SvFichier -Parent
         if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; fondCartes = [bool]$r.fondCartes; contourCartes = [bool]$r.contourCartes; animer = [bool]$r.animer; masques = @($r.masques); cartes = @($r.cartes); figees = @($r.figees); verrou = [bool]$r.verrou; codeSel = [string]$r.codeSel; codeHash = [string]$r.codeHash } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
+        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; fondCartes = [bool]$r.fondCartes; contourCartes = [bool]$r.contourCartes; animer = [bool]$r.animer; masques = @($r.masques); cartes = @($r.cartes); figees = @($r.figees); verrou = [bool]$r.verrou; codeSel = [string]$r.codeSel; codeHash = [string]$r.codeHash; windows = $r.windows } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
     } catch { }
 }
 $script:Pal = $script:Themes[(SvReglages).theme]
@@ -671,10 +672,10 @@ function PageMaison() {
             $Contenu.Children.Add($c) | Out-Null
         }
     }
-    # Les actifs : une carte par personne, tous ses matériels dessus. Un clic ouvre sa fiche.
+    # Les actifs : une carte par personne, tous ses appareils dessus. Un clic ouvre sa fiche.
     $Contenu.Children.Add((Section 'Les actifs')) | Out-Null
     $groupes = @(GroupesMaison $maison)
-    if ($groupes.Count -eq 0) { $Contenu.Children.Add((Txt 'Aucun matériel inscrit pour l''instant.' 13 'Texte2')) | Out-Null }
+    if ($groupes.Count -eq 0) { $Contenu.Children.Add((Txt 'Aucun appareil inscrit pour l''instant.' 13 'Texte2')) | Out-Null }
     foreach ($g in $groupes) {
         $c = Carte; $sp = $c.Child
         $c.Cursor = [System.Windows.Input.Cursors]::Hand; $c.Tag = [string]$g.entite
@@ -686,7 +687,7 @@ function PageMaison() {
         $gauche = New-Object System.Windows.Controls.StackPanel
         $gauche.Children.Add((Txt ([string]$g.prenom) 17 'Texte' $true)) | Out-Null
         $n = $g.appareils.Count
-        $gauche.Children.Add((Txt $(if ($n -eq 0) { 'Aucun matériel' } elseif ($n -eq 1) { '1 matériel' } else { "$n matériels" }) 12 'Texte2')) | Out-Null
+        $gauche.Children.Add((Txt $(if ($n -eq 0) { 'Aucun appareil' } elseif ($n -eq 1) { '1 appareil' } else { "$n appareils" }) 12 'Texte2')) | Out-Null
         $droite = Rangee
         $droite.Children.Add((Chip $etatTxt $coul)) | Out-Null
         $fl = Txt '›' 20 'Texte3'; $fl.Margin = [System.Windows.Thickness]::new(12, -4, 0, 0); $droite.Children.Add($fl) | Out-Null
@@ -705,14 +706,14 @@ function PageMaison() {
     $Contenu.Children.Add((Txt ('Actualisé à {0}' -f (Get-Date -Format 'HH:mm')) 11 'Texte3' $false '4,4,0,0')) | Out-Null
 }
 
-# ---- Les actifs : personnes et matériels -----------------------------------
+# ---- Les actifs : personnes et appareils -----------------------------------
 function IconeAppareil($a) { if ([bool](Prop $a 'android' $false)) { return '📱 ' } else { return '💻 ' } }
 function EtatAppareil($a) {
     if (-not [bool](Prop $a 'en_ligne' $false)) { return @('HORS LIGNE', 'Texte3') }
     if ([bool](Prop $a 'verrouille' $false)) { return @('FERMÉ', 'Rouge') }
     return @('OUVERT', 'Vert')
 }
-# Les matériels d'une personne : la liste que donne Home Assistant (les siens, puis ceux qu'elle partage).
+# Les appareils d'une personne : la liste que donne Home Assistant (les siens, puis ceux qu'elle partage).
 function AppareilsDe($maison, $p) {
     $tous = @(Prop $maison 'appareils' @())
     $ent = [string](Prop $p 'entite')
@@ -724,13 +725,18 @@ function AppareilsDe($maison, $p) {
     }
     return @($tous | Where-Object { [string](Prop $_ 'personne') -eq $ent })
 }
-# Une entrée par personne, puis les matériels que personne ne revendique.
+# Une entrée par personne, puis les appareils que personne ne revendique.
 function GroupesMaison($maison) {
     $sortie = @(); $pris = @{}
     foreach ($p in @(Prop $maison 'personnes' @())) {
         $siens = @(AppareilsDe $maison $p)
         foreach ($a in $siens) { $pris[[string](Prop $a 'id')] = $true }
         $sortie += , @{ entite = [string](Prop $p 'entite'); prenom = [string](Prop $p 'prenom'); personne = $p; appareils = $siens }
+    }
+    # Une personne de Home Assistant qui n'a encore aucun appareil : c'est depuis sa fiche qu'on lui en donne un.
+    foreach ($m in @(Prop $maison 'maison' @())) {
+        $e = [string](Prop $m 'entite')
+        if (-not @($sortie | Where-Object { $_.entite -eq $e }).Count) { $sortie += , @{ entite = $e; prenom = [string](Prop $m 'prenom'); personne = $m; appareils = @() } }
     }
     $seuls = @(@(Prop $maison 'appareils' @()) | Where-Object { -not $pris.ContainsKey([string](Prop $_ 'id')) })
     if ($seuls.Count -gt 0) { $sortie += , @{ entite = ''; prenom = 'Sans personne'; personne = $null; appareils = $seuls } }
@@ -760,12 +766,12 @@ $script:ApresGeste.Add_Tick({
     try {
         $script:ApresGesteReste = $script:ApresGesteReste - 1
         if ($script:ApresGesteReste -le 0) { $script:ApresGeste.Stop() }
-        if ($script:W.IsVisible -and $script:Vue -and @('personne', 'partage') -contains [string]$script:Vue.type -and -not $script:Vue.temps) { Rafraichir }
+        if ($script:W.IsVisible -and $script:Vue -and @('personne', 'partage', 'ajout') -contains [string]$script:Vue.type -and -not $script:Vue.temps) { Rafraichir }
     } catch { }
 })
 function RelireBientot() { $script:ApresGesteReste = 3; $script:ApresGeste.Stop(); $script:ApresGeste.Start() }
 
-# Donner du temps : la durée d'abord, le matériel ensuite. Un seul matériel : pas de seconde question.
+# Donner du temps : la durée d'abord, l'appareil ensuite. Un seul appareil : pas de seconde question.
 function DonnerTemps([int]$minutes, $ids) {
     $ids = @($ids | ForEach-Object { [string]$_ })
     if ($ids.Count -eq 0 -or $minutes -lt 1) { return }
@@ -796,7 +802,7 @@ function ChoisirDuree([int]$minutes, [bool]$autre) {
 function VuePersonne() {
     $maison = Lire 'maison.json'
     $g = @(GroupesMaison $maison) | Where-Object { $_.entite -eq [string]$script:Vue.personne } | Select-Object -First 1
-    if (-not $g) { $Contenu.Children.Add((Txt 'Plus aucun matériel pour cette personne.' 13 'Texte2')) | Out-Null; return }
+    if (-not $g) { $Contenu.Children.Add((Txt 'Plus aucun appareil pour cette personne.' 13 'Texte2')) | Out-Null; return }
     $siens = @($g.appareils); $prenom = [string]$g.prenom; $ent = [string]$g.entite
     $ici = @{ type = 'personne'; personne = $ent }
 
@@ -822,7 +828,7 @@ function VuePersonne() {
                 $sp.Children.Add($champ) | Out-Null
             }
             if ($siens.Count -gt 1) {
-                $sp.Children.Add((Txt 'Pour quel matériel ?' 13 'Texte' $true '0,4,0,2')) | Out-Null
+                $sp.Children.Add((Txt 'Pour quel appareil ?' 13 'Texte' $true '0,4,0,2')) | Out-Null
                 foreach ($a in $siens) {
                     $id = [string](Prop $a 'id')
                     $lib = (IconeAppareil $a) + [string](Prop $a 'nom')
@@ -842,7 +848,7 @@ function VuePersonne() {
                 }
                 $ids = @($script:Vue.temps.choix.GetEnumerator() | Where-Object { $_.Value } | ForEach-Object { [string]$_.Key })
                 if ($x.seul) { $ids = @($x.seul) }
-                if ($ids.Count -eq 0) { $x.erreur.Text = 'Coche au moins un matériel.'; $x.erreur.Visibility = 'Visible'; return }
+                if ($ids.Count -eq 0) { $x.erreur.Text = 'Coche au moins un appareil.'; $x.erreur.Visibility = 'Visible'; return }
                 DonnerTemps $min $ids
             } @{ champ = $champ; erreur = $erreur; seul = $(if ($siens.Count -eq 1) { [string](Prop $siens[0] 'id') } else { $null }) })) | Out-Null
             $r2.Children.Add((Bouton 'Annuler' 'Secondaire' { $script:Vue.temps = $null; Rafraichir })) | Out-Null
@@ -866,8 +872,9 @@ function VuePersonne() {
         $Contenu.Children.Add($c) | Out-Null
     }
 
-    # --- Ses matériels
-    $Contenu.Children.Add((Section $(if ($ent) { 'Ses matériels' } else { 'Matériels sans personne' }))) | Out-Null
+    # --- Ses appareils
+    $Contenu.Children.Add((Section $(if ($ent) { 'Ses appareils' } else { 'Appareils sans personne' }))) | Out-Null
+    if ($siens.Count -eq 0) { $Contenu.Children.Add((Txt 'Aucun appareil pour l''instant.' 13 'Texte2' $false '4,0,0,10')) | Out-Null }
     foreach ($a in $siens) {
         $c = Carte; $sp = $c.Child
         $et = EtatAppareil $a
@@ -894,7 +901,7 @@ function VuePersonne() {
             } @{ action = $def[1]; pc = (Prop $a 'id') }
             $b.Margin = [System.Windows.Thickness]::new(0, 0, 8, 8); $r.Children.Add($b) | Out-Null
         }
-        # Le planning est celui de la personne : il s'ouvre plus bas, avec ses règles. Un matériel qui n'est pas
+        # Le planning est celui de la personne : il s'ouvre plus bas, avec ses règles. Un appareil qui n'est pas
         # le sien (partagé, ou sans personne) garde le sien, ici.
         $vues = @(@('Ce qui est fermé', 'fermes'))
         if (-not $ent -or [string](Prop $a 'personne') -ne $ent) { $vues += , @('Son planning', 'planning') }
@@ -910,7 +917,15 @@ function VuePersonne() {
         $Contenu.Children.Add($c) | Out-Null
     }
 
-    # --- Ce qui vaut pour la personne, sur tous ses matériels à elle
+    if ($ent) {
+        $plus = Bouton '+ Ajouter un appareil' 'Secondaire' {
+            param($s, $e); $script:Vue = @{ type = 'ajout'; personne = [string]$s.Tag; retour = @{ type = 'personne'; personne = [string]$s.Tag } }; Rafraichir
+        } $ent
+        $plus.HorizontalAlignment = 'Left'; $plus.Margin = [System.Windows.Thickness]::new(0, 0, 0, 12)
+        $Contenu.Children.Add($plus) | Out-Null
+    }
+
+    # --- Ce qui vaut pour la personne, sur tous ses appareils à elle
     if ($ent) {
         $propre = $null
         $principal = [string](Prop $g.personne 'principal')
@@ -919,7 +934,7 @@ function VuePersonne() {
         $Contenu.Children.Add((Section "Les règles de $prenom")) | Out-Null
         $c = Carte; $sp = $c.Child
         if ($propre) {
-            $sp.Children.Add((Txt 'Elles valent sur tous ses matériels à elle. Un matériel partagé garde ses propres règles.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
+            $sp.Children.Add((Txt 'Elles valent sur tous ses appareils à elle. Un appareil partagé garde ses propres règles.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
             $r = New-Object System.Windows.Controls.WrapPanel
             foreach ($def in @(@('Planning', 'planning'), @('Catégories', 'categories'), @('Autorisations', 'exceptions'), @('Temps d''écran', 'temps'))) {
                 $b = Bouton $def[0] 'Secondaire' {
@@ -930,21 +945,59 @@ function VuePersonne() {
             }
             $sp.Children.Add($r) | Out-Null
         } else {
-            $sp.Children.Add((Txt "$prenom n'a pas encore de matériel à elle : seulement des matériels partagés, qui gardent leurs propres règles." 12 'Texte2')) | Out-Null
+            $sp.Children.Add((Txt "$prenom n'a pas encore d'appareil à elle : seulement des appareils partagés, qui gardent leurs propres règles." 12 'Texte2')) | Out-Null
         }
         $Contenu.Children.Add($c) | Out-Null
     }
     $Contenu.Children.Add((Txt ('Actualisé à {0}' -f (Get-Date -Format 'HH:mm')) 11 'Texte3' $false '4,4,0,0')) | Out-Null
 }
 
-# À qui est un matériel : sa personne principale (ses règles s'y appliquent), et ceux qui le partagent.
+# Donner un appareil à une personne : le sien (il suit ses règles et son planning) ou partagé (il garde les siennes).
+function VueAjout() {
+    $maison = Lire 'maison.json'
+    $ent = [string]$script:Vue.personne
+    $g = @(GroupesMaison $maison) | Where-Object { $_.entite -eq $ent } | Select-Object -First 1
+    if (-not $g) { return }
+    $prenom = [string]$g.prenom
+    $deja = @{}; foreach ($a in @($g.appareils)) { $deja[[string](Prop $a 'id')] = $true }
+    $autres = @(@(Prop $maison 'appareils' @()) | Where-Object { -not $deja.ContainsKey([string](Prop $_ 'id')) })
+    $Contenu.Children.Add((Txt "« Le sien » : l'appareil suit les règles et le planning de $prenom, et quitte la personne qui l'avait. « Partagé » : il garde ses propres règles, mais apparaît aussi sur cette fiche." 12 'Texte2' $false '0,0,0,10')) | Out-Null
+    if ($script:Vue.dit) { $Contenu.Children.Add((Txt ([string]$script:Vue.dit) 12 'Vert' $false '0,0,0,10')) | Out-Null }
+    if ($autres.Count -eq 0) {
+        $Contenu.Children.Add((Txt 'Tous les appareils de la maison sont déjà sur cette fiche. Un nouvel appareil s''inscrit en y installant Vision.' 13 'Texte2')) | Out-Null
+        return
+    }
+    $c = Carte; $sp = $c.Child; $k = 0
+    foreach ($a in $autres) {
+        if ($k++ -gt 0) { $sp.Children.Add((Separateur)) | Out-Null }
+        $gche = New-Object System.Windows.Controls.StackPanel
+        $gche.Children.Add((Txt ((IconeAppareil $a) + [string](Prop $a 'nom')) 14 'Texte' $true)) | Out-Null
+        $qui = 'à personne'
+        if ([bool](Prop $a 'partage_tous' $false)) { $qui = 'à toute la maison' } elseif ([string](Prop $a 'personne')) { $qui = 'à ' + (PrenomDe $maison ([string](Prop $a 'personne'))) }
+        $gche.Children.Add((Txt ("Aujourd'hui $qui") 11 'Texte2')) | Out-Null
+        $r = Rangee
+        foreach ($def in @(@('Le sien', 'principal'), @('Partagé', 'partage'))) {
+            $r.Children.Add((Bouton $def[0] 'Secondaire' {
+                param($s, $e); $x = $s.Tag
+                Agir @{ action = 'attribuer'; pc = [string]$x.pc; personne = [string]$x.personne; mode = [string]$x.mode }
+                $s.Content = '✓'; $s.Parent.IsEnabled = $false
+                $script:Vue.dit = 'Demandé, le temps que Home Assistant le reçoive.'
+                RelireBientot
+            } @{ pc = (Prop $a 'id'); personne = $ent; mode = $def[1] })) | Out-Null
+        }
+        $sp.Children.Add((Deux $gche $r)) | Out-Null
+    }
+    $Contenu.Children.Add($c) | Out-Null
+}
+
+# À qui est un appareil : sa personne principale (ses règles s'y appliquent), et ceux qui le partagent.
 function VuePartage($a) {
     $maison = Lire 'maison.json'
     $idPc = [string](Prop $a 'id')
     foreach ($x in @(Prop $maison 'appareils' @())) { if ([string](Prop $x 'id') -eq $idPc) { $a = $x } }
     $principale = [string](Prop $a 'personne'); $tous = [bool](Prop $a 'partage_tous' $false)
     $qui = @(Prop $a 'proprietaires' @() | ForEach-Object { [string]$_ })
-    $Contenu.Children.Add((Txt 'Partager un matériel ne change aucune règle : il apparaît chez chacun, et chacun peut y recevoir du temps.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
+    $Contenu.Children.Add((Txt 'Partager un appareil ne change aucune règle : il apparaît chez chacun, et chacun peut y recevoir du temps.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
     $c = Carte; $sp = $c.Child
     $script:VP = @{ pc = $idPc; coches = @(); tous = $null }
     $envoyer = {
@@ -1059,10 +1112,16 @@ function PageSousVue() {
     switch ($script:Vue.type) {
         'personne' {
             $titre = 'Sans personne'
-            foreach ($x in @(Prop (Lire 'maison.json') 'personnes' @())) { if ([string](Prop $x 'entite') -eq [string]$script:Vue.personne) { $titre = [string](Prop $x 'prenom') } }
+            $mj = Lire 'maison.json'
+            foreach ($x in (@(Prop $mj 'maison' @()) + @(Prop $mj 'personnes' @()))) { if ([string](Prop $x 'entite') -eq [string]$script:Vue.personne) { $titre = [string](Prop $x 'prenom') } }
             Retour $titre; VuePersonne
         }
         'partage' { Retour ('À qui est ' + [string](Prop $a 'nom') + ' ?'); VuePartage $a }
+        'ajout' {
+            $pour = ''
+            foreach ($x in @(Prop (Lire 'maison.json') 'maison' @())) { if ([string](Prop $x 'entite') -eq [string]$script:Vue.personne) { $pour = [string](Prop $x 'prenom') } }
+            Retour "Ajouter un appareil à $pour"; VueAjout
+        }
         'fermes' { Retour "Ce qui est fermé chez $prenom"; VueFermes $a }
         'planning' { Retour "Planning de $prenom"; VuePlanning $a }
         'categories' { Retour "Catégories de $prenom"; VueCategories $a }
@@ -1355,7 +1414,7 @@ function VueTemps($a) {
 }
 
 function VuePlanning($a) {
-    $Contenu.Children.Add((Txt 'Le planning est celui de la personne : il vaut sur tous ses matériels, sauf ceux qu''une plage épargne. Les plages se modifient dans le tableau Vision de Home Assistant.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
+    $Contenu.Children.Add((Txt 'Le planning est celui de la personne : il vaut sur tous ses appareils, sauf ceux qu''une plage épargne. Les plages se modifient dans le tableau Vision de Home Assistant.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
     $c = Carte; $sp = $c.Child
     $jours = @('L', 'M', 'M', 'J', 'V', 'S', 'D')
     $k = 0
@@ -1368,7 +1427,7 @@ function VuePlanning($a) {
         for ($i = 0; $i -lt 7; $i++) { if ($i -lt $js.Count -and [bool]$js[$i]) { $lettres += $jours[$i] } else { $lettres += '·' } }
         $quoi = switch ([string](Prop $p 'portee')) { 'etiquettes' { 'Coupe : ' + ((@(Prop $p 'etiquettes' @())) -join ', ') } 'elements' { 'Des applis ou sites précis' } default { "Tout l'appareil" } }
         $g.Children.Add((Txt ($quoi + '     ' + ($lettres -join ' ')) 11 'Texte2')) | Out-Null
-        $droite = if ([bool](Prop $p 'epargne' $false)) { Chip 'PAS SUR CE MATÉRIEL' 'Texte3' } elseif ($actif) { Chip 'EN COURS' 'Or' } elseif (-not $active) { Chip 'DÉSACTIVÉE' 'Texte3' } else { New-Object System.Windows.Controls.TextBlock }
+        $droite = if ([bool](Prop $p 'epargne' $false)) { Chip 'PAS SUR CET APPAREIL' 'Texte3' } elseif ($actif) { Chip 'EN COURS' 'Or' } elseif (-not $active) { Chip 'DÉSACTIVÉE' 'Texte3' } else { New-Object System.Windows.Controls.TextBlock }
         $sp.Children.Add((Deux $g $droite)) | Out-Null
     }
     if ($k -eq 0) { $sp.Children.Add((Txt 'Aucune plage.' 13 'Texte2')) | Out-Null }
@@ -1567,7 +1626,7 @@ $horloge.Start()
 # Le PC a le même écran de veille que les télés : l'horloge, puis les tableaux de
 # bord que Home Assistant rend disponibles (l'agent dépose veille.json). Chaque
 # PC garde ses propres réglages (activé, délai, thème) dans le profil de l'utilisateur.
-$svNatif = 'using System; using System.Runtime.InteropServices; public static class VisionVeilleNatif { [StructLayout(LayoutKind.Sequential)] struct LII { public uint cb; public uint t; } [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LII p); [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; } [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] static extern IntPtr GetDesktopWindow(); [DllImport("user32.dll")] static extern IntPtr GetShellWindow(); public static uint Inactif() { LII l = new LII(); l.cb = (uint)Marshal.SizeOf(l); if (!GetLastInputInfo(ref l)) return 0; return ((uint)Environment.TickCount - l.t) / 1000; } public static bool PleinEcran(int w, int h) { IntPtr f = GetForegroundWindow(); if (f == IntPtr.Zero || f == GetDesktopWindow() || f == GetShellWindow()) return false; RECT r; if (!GetWindowRect(f, out r)) return false; return (r.R - r.L) >= w && (r.B - r.T) >= h; } delegate bool Enum(IntPtr h, IntPtr l); [DllImport("user32.dll")] static extern bool EnumWindows(Enum f, IntPtr l); [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid); [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr apres, int x, int y, int cx, int cy, uint drapeaux); public static int Devant(int[] pids) { System.Collections.Generic.List<uint> s = new System.Collections.Generic.List<uint>(); foreach (int p in pids) s.Add((uint)p); int n = 0; EnumWindows(delegate(IntPtr h, IntPtr l) { uint pid; GetWindowThreadProcessId(h, out pid); if (s.Contains(pid) && IsWindowVisible(h)) { SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040); n++; } return true; }, IntPtr.Zero); return n; } }'
+$svNatif = 'using System; using System.Runtime.InteropServices; public static class VisionVeilleNatif { [StructLayout(LayoutKind.Sequential)] struct LII { public uint cb; public uint t; } [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LII p); [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; } [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] static extern IntPtr GetDesktopWindow(); [DllImport("user32.dll")] static extern IntPtr GetShellWindow(); [DllImport("user32.dll", SetLastError = true)] static extern bool SystemParametersInfo(uint action, uint valeur, IntPtr p, uint drapeaux); public static void VeilleWindows(bool active, uint secondes) { SystemParametersInfo(0x000F, secondes, IntPtr.Zero, 3); SystemParametersInfo(0x0011, active ? 1u : 0u, IntPtr.Zero, 3); } public static uint Inactif() { LII l = new LII(); l.cb = (uint)Marshal.SizeOf(l); if (!GetLastInputInfo(ref l)) return 0; return ((uint)Environment.TickCount - l.t) / 1000; } public static bool PleinEcran(int w, int h) { IntPtr f = GetForegroundWindow(); if (f == IntPtr.Zero || f == GetDesktopWindow() || f == GetShellWindow()) return false; RECT r; if (!GetWindowRect(f, out r)) return false; return (r.R - r.L) >= w && (r.B - r.T) >= h; } delegate bool Enum(IntPtr h, IntPtr l); [DllImport("user32.dll")] static extern bool EnumWindows(Enum f, IntPtr l); [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid); [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr apres, int x, int y, int cx, int cy, uint drapeaux); public static int Devant(int[] pids) { System.Collections.Generic.List<uint> s = new System.Collections.Generic.List<uint>(); foreach (int p in pids) s.Add((uint)p); int n = 0; EnumWindows(delegate(IntPtr h, IntPtr l) { uint pid; GetWindowThreadProcessId(h, out pid); if (s.Contains(pid) && IsWindowVisible(h)) { SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040); n++; } return true; }, IntPtr.Zero); return n; } }'
 $script:SvPret = $false
 try { Add-Type -TypeDefinition $svNatif -ErrorAction Stop; $script:SvPret = $true } catch { }
 
@@ -1916,6 +1975,79 @@ $script:SvTic.Add_Tick({
     } catch { }
 })
 
+# ---- Vision dans les écrans de veille de Windows ---------------------------
+# L'agent dépose « Vision.scr » dans Windows : Vision apparaît alors dans la liste des écrans de veille.
+# Ce petit programme ne dessine rien : quand Windows le lance, il demande la veille à cette fenêtre et
+# reste en vie tant qu'elle est affichée. Windows décide du moment, Vision de ce qu'on voit.
+$script:SvScr = Join-Path $env:SystemRoot 'System32\Vision.scr'
+$script:SvCleWin = 'HKCU:\Control Panel\Desktop'
+$script:SvDemande = $null; $script:SvOuverte = $null; $script:SvDemReglages = $null
+try {
+    $script:SvDemande = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::AutoReset, 'Local\VisionVeilleDemande')
+    $script:SvOuverte = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, 'Local\VisionVeilleOuverte')
+    $script:SvDemReglages = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::AutoReset, 'Local\VisionVeilleReglages')
+} catch { }
+function SvWindowsChoisi() {
+    try {
+        $v = Get-ItemProperty -Path $script:SvCleWin -ErrorAction Stop
+        return (([string]$v.'SCRNSAVE.EXE') -like '*\Vision.scr' -and [string]$v.ScreenSaveActive -eq '1')
+    } catch { return $false }
+}
+function SvWindowsPoser([bool]$oui, [int]$minutes) {
+    # Fait de Vision l'écran de veille de ce compte Windows, ou le retire (Windows n'en a alors plus, Vision garde le sien).
+    try {
+        if ($oui) {
+            if (-not (Test-Path $script:SvScr)) { return $false }
+            Set-ItemProperty -Path $script:SvCleWin -Name 'SCRNSAVE.EXE' -Value $script:SvScr
+            Set-ItemProperty -Path $script:SvCleWin -Name 'ScreenSaveTimeOut' -Value ([string]($minutes * 60))
+            Set-ItemProperty -Path $script:SvCleWin -Name 'ScreenSaveActive' -Value '1'
+            if ($script:SvPret) { [VisionVeilleNatif]::VeilleWindows($true, [uint32]($minutes * 60)) }
+        } elseif (SvWindowsChoisi) {
+            Remove-ItemProperty -Path $script:SvCleWin -Name 'SCRNSAVE.EXE' -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $script:SvCleWin -Name 'ScreenSaveActive' -Value '0'
+            if ($script:SvPret) { [VisionVeilleNatif]::VeilleWindows($false, [uint32]($minutes * 60)) }
+        }
+        return $true
+    } catch { return $false }
+}
+function SvWindowsSuivre() {
+    # Première fois : si la veille de Vision est en service, elle prend la place de celle de Windows. Sauf quand
+    # Windows demande le mot de passe à la reprise : sa veille tourne alors sur un bureau à part, que Vision ne voit pas.
+    try {
+        $r = SvReglages
+        if (-not (Test-Path $script:SvScr)) { return }
+        if ($null -eq $r.windows) {
+            $secure = $false
+            try { $secure = ([string](Get-ItemProperty -Path $script:SvCleWin -ErrorAction Stop).ScreenSaverIsSecure -eq '1') } catch { }
+            if (-not $r.actif -or $secure) { return }
+            if (SvWindowsPoser $true ([int]$r.delai)) { $r.windows = $true; SvEcrire $r }
+            return
+        }
+        if ($r.windows -and $r.actif) {
+            # Le délai choisi dans Vision est celui de Windows.
+            $voulu = [string]([int]$r.delai * 60)
+            $v = Get-ItemProperty -Path $script:SvCleWin -ErrorAction SilentlyContinue
+            if (-not (SvWindowsChoisi) -or [string]$v.ScreenSaveTimeOut -ne $voulu) { [void](SvWindowsPoser $true ([int]$r.delai)) }
+        } elseif ($r.windows -and -not $r.actif) {
+            [void](SvWindowsPoser $false ([int]$r.delai))
+        }
+    } catch { }
+}
+$script:SvPont = New-Object System.Windows.Threading.DispatcherTimer
+$script:SvPont.Interval = [TimeSpan]::FromMilliseconds(400)
+$script:SvPontTours = 0
+$script:SvPont.Add_Tick({
+    try {
+        $ouvert = ($script:SvFenetres.Count -gt 0 -or $script:SvWebOuvert)
+        if ($script:SvDemande -and $script:SvDemande.WaitOne(0) -and -not $ouvert) { SvOuvrir; $ouvert = ($script:SvFenetres.Count -gt 0 -or $script:SvWebOuvert) }
+        if ($script:SvOuverte) { if ($ouvert) { [void]$script:SvOuverte.Set() } else { [void]$script:SvOuverte.Reset() } }
+        if ($script:SvDemReglages -and $script:SvDemReglages.WaitOne(0)) { $script:Page = 'reglages'; $script:Vue = $null; Montrer }
+        $script:SvPontTours++
+        if ($script:SvPontTours % 75 -eq 1) { SvWindowsSuivre }
+    } catch { }
+})
+$script:SvPont.Start()
+
 # Le guet : personne au clavier ni à la souris depuis le délai choisi, et rien en plein écran (film, jeu).
 $script:SvGuet = New-Object System.Windows.Threading.DispatcherTimer
 $script:SvGuet.Interval = [TimeSpan]::FromSeconds(5)
@@ -1924,6 +2056,8 @@ $script:SvGuet.Add_Tick({
         if (-not $script:SvPret -or $script:SvFenetres.Count -gt 0 -or $script:SvWebOuvert) { return }
         $r = SvReglages
         if (-not $r.actif) { return }
+        # Vision est l'écran de veille de Windows : c'est Windows qui donne le départ.
+        if ($r.windows -and (SvWindowsChoisi)) { return }
         if ([VisionVeilleNatif]::Inactif() -lt ($r.delai * 60)) { return }
         $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
         if ([VisionVeilleNatif]::PleinEcran($b.Width, $b.Height)) { return }
@@ -2070,6 +2204,15 @@ function PageReglages() {
     $carteV.Child.Children.Add((Txt 'Il ne démarre pas pendant un film ou un jeu en plein écran. Avec plusieurs écrans, chacun montre un tableau différent.' 11 'Texte2' $false '0,2,0,8')) | Out-Null
     $voir = Bouton 'Voir maintenant' 'Secondaire' { $script:SvRouvrir = $true; $script:W.Hide(); SvOuvrir }; $voir.HorizontalAlignment = 'Left'
     $carteV.Child.Children.Add($voir) | Out-Null
+    if (Test-Path $script:SvScr) {
+        $carteV.Child.Children.Add((Separateur)) | Out-Null
+        $carteV.Child.Children.Add((Coche 'Vision est l''écran de veille de Windows' ([bool]$r.windows -and (SvWindowsChoisi)) {
+            param($s, $e)
+            $rr = SvReglages; $rr.windows = [bool]$s.IsChecked; SvEcrire $rr
+            [void](SvWindowsPoser ([bool]$s.IsChecked) ([int]$rr.delai))
+        })) | Out-Null
+        $carteV.Child.Children.Add((Txt 'Coché : Vision apparaît dans les réglages d''écran de veille de Windows et remplace celui qui y était choisi ; Windows donne le départ. Décoché : Windows n''a plus d''écran de veille, Vision lance le sien tout seul.' 11 'Texte2' $false '0,2,0,0')) | Out-Null
+    }
     $Contenu.Children.Add($carteV) | Out-Null
 
     $Contenu.Children.Add((Section 'Tableaux affichés')) | Out-Null

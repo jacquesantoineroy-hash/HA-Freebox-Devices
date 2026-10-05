@@ -72,5 +72,26 @@ await racine().locator(`[data-partage="${salon}"] [data-tous]`).click();
 await page.waitForTimeout(100);
 g = await page.evaluate(() => window.gestes.pop());
 ok(g && g.action === "partage" && g.tous === false && g.personnes.length === 0, `partage retiré : ${JSON.stringify(g)}`);
+// Ajouter un appareil depuis la fiche d'une personne.
+await page.evaluate(() => window.monter({ mode: "personne", personne: "person.laetitia" }));
+await page.waitForTimeout(200);
+await racine().locator("[data-ajout]").click();
+const candidats = await racine().locator(".candidat").count();
+const siens = d.appareils.filter((a) => (a.proprietaires || []).includes("person.laetitia")).length;
+ok(candidats === d.appareils.length - siens && candidats > 0, `ajout : ${candidats} appareils proposés, aucun de ceux qu'elle a déjà`);
+await page.screenshot({ path: `${sortie}/carte-4-ajout.png`, fullPage: true });
+await racine().locator('.candidat [data-attribuer="partage"]').first().click();
+await page.waitForTimeout(100);
+g = await page.evaluate(() => window.gestes.pop());
+ok(g && g.action === "attribuer" && g.mode === "partage" && g.personne === "person.laetitia" && g.pc, `geste envoyé : ${JSON.stringify(g)}`);
+// Une personne de Home Assistant sans appareil a sa fiche et peut en recevoir un.
+await page.evaluate((m) => {
+  const dd = JSON.parse(m); dd.maison.push({ entite: "person.invite", prenom: "Invité" });
+  const c = document.createElement("vision-maison-card"); c.setConfig({ mode: "personne", personne: "person.invite" });
+  c.hass = { callApi: async (x, y, corps) => { if (corps) window.gestes.push(corps); return dd; } };
+  const z = document.getElementById("z"); z.innerHTML = ""; z.appendChild(c);
+}, maison);
+await page.waitForTimeout(200);
+ok((await racine().locator("h2").innerText()) === "Invité" && (await racine().locator("[data-ajout]").count()) === 1, "personne sans appareil : fiche affichée, avec « Ajouter un appareil »");
 ok(erreurs.length === 0, "aucune erreur de script" + (erreurs.length ? " : " + erreurs.join(" | ") : ""));
 await nav.close();
