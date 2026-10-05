@@ -28,8 +28,19 @@ rep(
 
     Les étiquettes (catégories) ont leur propre écran ; ici ne restent que les applis et les sites.
     """
-    applis = {str(n).lower() for n in (store.etiquettes.get("apps") or {})}
-    applis.update(str(n).lower() for n in (pc.get("apps_vues") or {}))
+    # Une appli se reconnaît sous son nom brut ou raccourci (« com.snapchat.android », « snapchat.android ») ;
+    # son libellé (« Snapchat ») vient de n'importe quel appareil qui l'a déjà vue.
+    applis: dict[str, str] = {}
+    for n in (store.etiquettes.get("apps") or {}):
+        for cle_app in (str(n).lower(), str(demandes._nom_app(str(n)) or "").lower()):
+            if cle_app:
+                applis.setdefault(cle_app, "")
+    for autre in [pc, *store.pcs.values()]:
+        for n, f in (autre.get("apps_vues") or {}).items():
+            lib_app = str(f.get("libelle") or "") if isinstance(f, dict) else ""
+            for cle_app in (str(n).lower(), str(demandes._nom_app(str(n)) or "").lower()):
+                if cle_app and not applis.get(cle_app):
+                    applis[cle_app] = lib_app
     sites = {str(n).lower() for n in (store.etiquettes.get("sites") or {})}
     sortie: dict[str, list[dict[str, Any]]] = {"autorises": [], "bloques": []}
     for champ in ("autorises", "bloques"):
@@ -44,9 +55,7 @@ rep(
                 genre = "sites"
             else:
                 genre = "sites" if "." in bas and " " not in bas and not bas.endswith(".exe") and bas.count(".") <= 2 else "apps"
-            vus = pc.get("apps_vues" if genre == "apps" else "sites_vus") or {}
-            fiche = vus.get(valeur) if isinstance(vus, dict) else None
-            libelle = str(fiche.get("libelle") or "") if isinstance(fiche, dict) else ""
+            libelle = applis.get(bas, "") if genre == "apps" else ""
             sortie[champ].append({"nom": valeur, "libelle": libelle or valeur, "genre": genre, "maison": bool(store.est_banni(valeur))})
         sortie[champ].sort(key=lambda x: x["libelle"].lower())
     return sortie
