@@ -45,6 +45,18 @@ function Heure([string]$iso) {
     try { return ([datetime]$iso).ToString('HH\hmm') } catch { return '' }
 }
 $script:Demandees = @{}
+# Un parent a dit non : l'heure à partir de laquelle on peut redemander (« 18h05 »), ou rien.
+function RefusJusqua($data, [string]$genre, [string]$nom) {
+    $n = ($nom.ToLowerInvariant() -replace '\.exe$', '')
+    $maintenant = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    foreach ($x in @(Prop $data 'refus' @())) {
+        if ([string](Prop $x 'genre') -ne $genre) { continue }
+        $c = ([string](Prop $x 'nom')).ToLowerInvariant() -replace '\.exe$', ''
+        $fin = [long](Prop $x 'jusqua' 0)
+        if ($fin -gt $maintenant -and ($c -eq $n -or $n.EndsWith('.' + $c))) { return [DateTimeOffset]::FromUnixTimeSeconds($fin).ToLocalTime().ToString('HH\hmm') }
+    }
+    return ''
+}
 
 # ------------------------------------------------------------------ Réglages de ce PC
 # Propres à chaque PC et à chaque session : le thème de couleur, l'écran de veille,
@@ -882,7 +894,12 @@ function VuePersonne() {
             } @{ action = $def[1]; pc = (Prop $a 'id') }
             $b.Margin = [System.Windows.Thickness]::new(0, 0, 8, 8); $r.Children.Add($b) | Out-Null
         }
-        foreach ($def in @(@('Ce qui est fermé', 'fermes'), @('Planning', 'planning'), @('Un mot…', 'mot'), @('À qui est-il ?', 'partage'))) {
+        # Le planning est celui de la personne : il s'ouvre plus bas, avec ses règles. Un matériel qui n'est pas
+        # le sien (partagé, ou sans personne) garde le sien, ici.
+        $vues = @(@('Ce qui est fermé', 'fermes'))
+        if (-not $ent -or [string](Prop $a 'personne') -ne $ent) { $vues += , @('Son planning', 'planning') }
+        $vues += , @('Un mot…', 'mot'); $vues += , @('À qui est-il ?', 'partage')
+        foreach ($def in $vues) {
             $b = Bouton $def[0] 'Secondaire' {
                 param($s, $e); $x = $s.Tag
                 $script:Vue = @{ type = $x.type; appareil = $x.appareil; retour = $x.retour }; Rafraichir
@@ -904,7 +921,7 @@ function VuePersonne() {
         if ($propre) {
             $sp.Children.Add((Txt 'Elles valent sur tous ses matériels à elle. Un matériel partagé garde ses propres règles.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
             $r = New-Object System.Windows.Controls.WrapPanel
-            foreach ($def in @(@('Catégories', 'categories'), @('Autorisations', 'exceptions'), @('Temps d''écran', 'temps'))) {
+            foreach ($def in @(@('Planning', 'planning'), @('Catégories', 'categories'), @('Autorisations', 'exceptions'), @('Temps d''écran', 'temps'))) {
                 $b = Bouton $def[0] 'Secondaire' {
                     param($s, $e); $x = $s.Tag
                     $script:Vue = @{ type = $x.type; appareil = $x.appareil; retour = $x.retour }; Rafraichir
@@ -1338,7 +1355,7 @@ function VueTemps($a) {
 }
 
 function VuePlanning($a) {
-    $Contenu.Children.Add((Txt 'Les plages se modifient dans le tableau Vision de Home Assistant.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
+    $Contenu.Children.Add((Txt 'Le planning est celui de la personne : il vaut sur tous ses matériels, sauf ceux qu''une plage épargne. Les plages se modifient dans le tableau Vision de Home Assistant.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
     $c = Carte; $sp = $c.Child
     $jours = @('L', 'M', 'M', 'J', 'V', 'S', 'D')
     $k = 0
@@ -1351,7 +1368,7 @@ function VuePlanning($a) {
         for ($i = 0; $i -lt 7; $i++) { if ($i -lt $js.Count -and [bool]$js[$i]) { $lettres += $jours[$i] } else { $lettres += '·' } }
         $quoi = switch ([string](Prop $p 'portee')) { 'etiquettes' { 'Coupe : ' + ((@(Prop $p 'etiquettes' @())) -join ', ') } 'elements' { 'Des applis ou sites précis' } default { "Tout l'appareil" } }
         $g.Children.Add((Txt ($quoi + '     ' + ($lettres -join ' ')) 11 'Texte2')) | Out-Null
-        $droite = if ($actif) { Chip 'EN COURS' 'Or' } elseif (-not $active) { Chip 'DÉSACTIVÉE' 'Texte3' } else { New-Object System.Windows.Controls.TextBlock }
+        $droite = if ([bool](Prop $p 'epargne' $false)) { Chip 'PAS SUR CE MATÉRIEL' 'Texte3' } elseif ($actif) { Chip 'EN COURS' 'Or' } elseif (-not $active) { Chip 'DÉSACTIVÉE' 'Texte3' } else { New-Object System.Windows.Controls.TextBlock }
         $sp.Children.Add((Deux $g $droite)) | Out-Null
     }
     if ($k -eq 0) { $sp.Children.Add((Txt 'Aucune plage.' 13 'Texte2')) | Out-Null }
@@ -1448,10 +1465,12 @@ function PageMoi($etat, [bool]$ferme) {
             $g.Children.Add((Txt $nom 14 'Or' $true)) | Out-Null
             $g.Children.Add((Txt (([string](Prop $x 'quand')) + ' · ' + $type + $(if ($raison) { ' · ' + $raison } else { '' })) 11 'Texte2')) | Out-Null
             $deja = $script:Demandees.ContainsKey($genre + ':' + $nom)
-            $b = Bouton $(if ($deja) { 'Demandé ✓' } else { 'Demander' }) 'Primaire' {
+            $attente = RefusJusqua $data $genre $nom
+            if ($attente) { $g.Children.Add((Txt "Un parent a dit non. Tu pourras redemander à $attente." 11 'Rouge' $false '0,2,0,0')) | Out-Null }
+            $b = Bouton $(if ($attente) { 'Refusé' } elseif ($deja) { 'Demandé ✓' } else { 'Demander' }) 'Primaire' {
                 param($s, $e); $script:Vue = @{ type = 'demande'; item = $s.Tag }; Rafraichir
             } @{ genre = $genre; nom = $nom; raison = $raison; type = $type; saisie = $false }
-            if ($deja) { $b.IsEnabled = $false }
+            if ($deja -or $attente) { $b.IsEnabled = $false }
             $spr.Children.Add((Deux $g $b)) | Out-Null
         }
         $Contenu.Children.Add($cr) | Out-Null
@@ -1479,10 +1498,12 @@ function PageMoi($etat, [bool]$ferme) {
             $g.Children.Add((Txt $l.nom 14 $(if ($l.recent) { 'Or' } else { 'Texte' }) $true)) | Out-Null
             $g.Children.Add((Txt ($l.type + ' · ' + $l.raison) 11 'Texte2')) | Out-Null
             $deja = $script:Demandees.ContainsKey($l.genre + ':' + $l.nom)
-            $b = Bouton $(if ($deja) { 'Demandé ✓' } else { 'Demander' }) 'Secondaire' {
+            $attente = RefusJusqua $data $l.genre $l.nom
+            if ($attente) { $g.Children.Add((Txt "Un parent a dit non. Tu pourras redemander à $attente." 11 'Rouge' $false '0,2,0,0')) | Out-Null }
+            $b = Bouton $(if ($attente) { 'Refusé' } elseif ($deja) { 'Demandé ✓' } else { 'Demander' }) 'Secondaire' {
                 param($s, $e); $script:Vue = @{ type = 'demande'; item = $s.Tag }; Rafraichir
             } @{ genre = $l.genre; nom = $l.nom; raison = $l.raison; type = $l.type; saisie = $false }
-            if ($deja) { $b.IsEnabled = $false }
+            if ($deja -or $attente) { $b.IsEnabled = $false }
             $sp2.Children.Add((Deux $g $b)) | Out-Null
         }
     }

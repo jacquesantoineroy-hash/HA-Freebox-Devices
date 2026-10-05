@@ -38,6 +38,16 @@ try {
     $tv = @($par.appareils | Where-Object { [bool](Prop $_ 'partage_tous' $false) })[0]
     $script:Vue = @{ type = 'partage'; appareil = $tv; retour = @{ type = 'personne'; personne = [string]$par.entite } }; Rafraichir; Photo '6-partage'
     $script:Vue = $script:Vue.retour; Rafraichir; Photo '7-retour'
+    # Un refus en cours sur la première ligne fermée : le bouton doit se fermer et dire jusqu'à quand.
+    $f = Lire 'fermes.json'
+    $lignes = @(Prop $f 'apps' @()) + @(Prop $f 'sites' @())
+    if ($lignes.Count -gt 0) {
+        $genre = if (@(Prop $f 'apps' @()).Count -gt 0) { 'apps' } else { 'sites' }
+        $f | Add-Member -NotePropertyName refus -NotePropertyValue @(@{ genre = $genre; nom = [string](Prop $lignes[0] 'nom'); jusqua = ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 1800) }) -Force
+        ($f | ConvertTo-Json -Depth 5 -Compress) | Set-Content (Join-Path $script:Dossier 'fermes.json') -Encoding UTF8
+        ('refus posé sur ' + [string](Prop $lignes[0] 'nom') + ' : ' + (RefusJusqua (Lire 'fermes.json') $genre ([string](Prop $lignes[0] 'nom')))) | Add-Content $journal
+    }
+    $script:Vue = $null; $script:Page = 'moi'; Rafraichir; Photo '8-moi'
     # L'œil tourne-t-il ? On laisse passer deux secondes de boucle et on compte les redessins.
     $n = 0; $fin = (Get-Date).AddSeconds(2)
     while ((Get-Date) -lt $fin) { $script:W.Dispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Background); Start-Sleep -Milliseconds 20; $n++ }
