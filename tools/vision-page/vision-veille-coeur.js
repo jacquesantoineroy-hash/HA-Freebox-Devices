@@ -751,7 +751,9 @@ class VisionVeillePanel extends HTMLElement {
     // Une page web embarquée (carte météo animée…) est dessinée deux fois plus grande puis réduite de moitié :
     // le site dispose d'une vraie largeur et ses boutons ne se chevauchent plus.
     if (config.type === "iframe") {
-      el.style.display = "block"; el.style.width = "200%"; el.style.transformOrigin = "0 0"; el.style.transform = "scale(0.5)";
+      const gr = Math.max(1, Math.min(2, parseFloat(this._q.get("web")) || 2));
+      this._web = gr;
+      el.style.display = "block"; el.style.width = `${gr * 100}%`; el.style.transformOrigin = "0 0"; el.style.transform = `scale(${1 / gr})`;
       const boite = document.createElement("div");
       boite.className = "web";
       boite.style.cssText = "overflow:hidden;width:100%;border-radius:var(--ha-card-border-radius,18px);break-inside:avoid;";
@@ -929,7 +931,7 @@ class VisionVeillePanel extends HTMLElement {
         await pause(120);
         this._uneLigne(c);
         // Une page web embarquée est dessinée en double puis réduite de moitié : sa boîte prend la moitié de sa hauteur.
-        for (const b of c.querySelectorAll(".web")) { const h = b.firstElementChild ? b.firstElementChild.offsetHeight : 0; if (h) b.style.height = `${h / 2}px`; }
+        for (const b of c.querySelectorAll(".web")) { const h = b.firstElementChild ? b.firstElementChild.offsetHeight : 0; if (h) b.style.height = `${h / (this._web || 2)}px`; }
         // Les rangées de sections, de haut en bas ; ce qui ne tient pas en hauteur passe sur l'écran suivant.
         const sections = [...c.querySelectorAll(".section")];
         const rangees = [];
