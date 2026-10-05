@@ -60,7 +60,7 @@ $script:Themes = [ordered]@{
 }
 $script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
 function SvReglages() {
-    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; fondCartes = $true; contourCartes = $false; masques = @(); cartes = @() }
+    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; fondCartes = $true; contourCartes = $false; masques = @(); cartes = @(); verrou = $false; codeSel = ''; codeHash = '' }
     try {
         if (Test-Path $script:SvFichier) {
             $lu = Get-Content $script:SvFichier -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -70,6 +70,8 @@ function SvReglages() {
             if (@('doux', 'neoretro') -contains [string](Prop $lu 'style')) { $r.style = [string](Prop $lu 'style') }
             if ($null -ne (Prop $lu 'fondCartes')) { $r.fondCartes = [bool](Prop $lu 'fondCartes') }
             if ($null -ne (Prop $lu 'contourCartes')) { $r.contourCartes = [bool](Prop $lu 'contourCartes') }
+            if ($null -ne (Prop $lu 'verrou')) { $r.verrou = [bool](Prop $lu 'verrou') }
+            $r.codeSel = [string](Prop $lu 'codeSel' ''); $r.codeHash = [string](Prop $lu 'codeHash' '')
             $r.masques = @(@(Prop $lu 'masques' @()) | ForEach-Object { [string]$_ })
             $r.cartes = @(@(Prop $lu 'cartes' @()) | ForEach-Object { [string]$_ })
         }
@@ -80,7 +82,7 @@ function SvEcrire($r) {
     try {
         $d = Split-Path $script:SvFichier -Parent
         if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; fondCartes = [bool]$r.fondCartes; contourCartes = [bool]$r.contourCartes; masques = @($r.masques); cartes = @($r.cartes) } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
+        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; fondCartes = [bool]$r.fondCartes; contourCartes = [bool]$r.contourCartes; masques = @($r.masques); cartes = @($r.cartes); verrou = [bool]$r.verrou; codeSel = [string]$r.codeSel; codeHash = [string]$r.codeHash } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
     } catch { }
 }
 $script:Pal = $script:Themes[(SvReglages).theme]
@@ -289,7 +291,7 @@ function CreerFenetre() {
 $lecteur = New-Object System.Xml.XmlNodeReader $xaml
 $script:W = [Windows.Markup.XamlReader]::Load($lecteur)
 $W.Add_MouseLeftButtonDown({ param($s, $e) if ($e.ButtonState -eq 'Pressed') { try { $script:W.DragMove() } catch { } } })
-$W.FindName('Fermer').Add_Click({ $script:W.Hide() })
+$W.FindName('Fermer').Add_Click({ $script:Deverrouille = $false; $script:W.Hide() })
 $script:Contenu = $W.FindName('Contenu')
 $script:Onglets = $W.FindName('Onglets')
 $script:logoPath = Join-Path $script:Dossier 'vision.png'
@@ -301,7 +303,7 @@ if (Test-Path $script:logoPath) {
         $W.Icon = $bmp
     } catch { }
 }
-$W.Add_Closing({ param($s, $e) if ($s -ne $script:W) { return }; $e.Cancel = $true; $script:W.Hide() })
+$W.Add_Closing({ param($s, $e) if ($s -ne $script:W) { return }; $e.Cancel = $true; $script:Deverrouille = $false; $script:W.Hide() })
 # Sans cela, une fenêtre WPF ouverte depuis une boucle Windows Forms ne reçoit pas les frappes : impossible d'écrire un mot.
 try { Add-Type -AssemblyName WindowsFormsIntegration; [System.Windows.Forms.Integration.ElementHost]::EnableModelessKeyboardInterop($W) } catch { }
 $W.FindName('Plein').Add_Click({ $script:W.WindowState = $(if ($script:W.WindowState -eq 'Maximized') { 'Normal' } else { 'Maximized' }) })
@@ -368,6 +370,98 @@ function Deux($gauche, $droite) {
     return $g
 }
 
+# ------------------------------------------------------------------ Verrou de la fenêtre
+# À l'ouverture, Vision peut demander Windows Hello (empreinte, visage, code Windows) ou son propre code.
+# Le verrou se remet dès que la fenêtre est fermée. Le code n'est jamais gardé en clair : seule son empreinte l'est.
+$script:Deverrouille = $false
+$script:VerrouAffiche = $false
+function CodeEmpreinte([string]$code, [string]$sel) {
+    $d = New-Object System.Security.Cryptography.Rfc2898DeriveBytes($code, [Convert]::FromBase64String($sel), 20000)
+    try { return [Convert]::ToBase64String($d.GetBytes(32)) } finally { $d.Dispose() }
+}
+function CodePoser([string]$code) {
+    $sel = New-Object byte[] 16
+    $g = [System.Security.Cryptography.RandomNumberGenerator]::Create(); $g.GetBytes($sel); $g.Dispose()
+    $rr = SvReglages; $rr.codeSel = [Convert]::ToBase64String($sel); $rr.codeHash = (CodeEmpreinte $code $rr.codeSel); SvEcrire $rr
+}
+function CodeJuste([string]$code) {
+    $rr = SvReglages
+    if (-not $rr.codeHash -or -not $rr.codeSel -or -not $code) { return $false }
+    try { return ((CodeEmpreinte $code $rr.codeSel) -ceq $rr.codeHash) } catch { return $false }
+}
+function HelloAttendre($operation, [Type]$type) {
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    $methode = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -like 'IAsyncOperation*' } | Select-Object -First 1
+    $tache = $methode.MakeGenericMethod($type).Invoke($null, @($operation))
+    # La fenêtre continue de vivre pendant que Windows pose sa question.
+    $fin = (Get-Date).AddSeconds(90)
+    while (-not $tache.IsCompleted -and (Get-Date) -lt $fin) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 40 }
+    if (-not $tache.IsCompleted -or $tache.IsFaulted) { return $null }
+    return $tache.Result
+}
+function HelloDisponible() {
+    if ($null -ne $script:HelloVu) { return $script:HelloVu }
+    $script:HelloVu = $false
+    try {
+        [void][Windows.Security.Credentials.UI.UserConsentVerifier, Windows.Security.Credentials.UI, ContentType = WindowsRuntime]
+        $r = HelloAttendre ([Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync()) ([Windows.Security.Credentials.UI.UserConsentVerifierAvailability])
+        $script:HelloVu = ([string]$r -eq 'Available')
+    } catch { }
+    return $script:HelloVu
+}
+function HelloDemander() {
+    if ($script:HelloEnCours) { return $false }
+    $script:HelloEnCours = $true
+    try {
+        $r = HelloAttendre ([Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync('Ouvrir Vision')) ([Windows.Security.Credentials.UI.UserConsentVerificationResult])
+        return ([string]$r -eq 'Verified')
+    } catch { return $false } finally { $script:HelloEnCours = $false }
+}
+function CodeEssayer() {
+    $pb = $script:ChampCode; $erreur = $script:VerrouErreur
+    if (-not $pb) { return }
+    # Après cinq essais faux, une pause qui s'allonge : pas de devinette à la chaîne.
+    if ($script:CodeBloqueJusqua -and (Get-Date) -lt $script:CodeBloqueJusqua) { $erreur.Text = ('Trop d''essais. Réessaie dans {0} s.' -f [int][Math]::Ceiling(($script:CodeBloqueJusqua - (Get-Date)).TotalSeconds)); $erreur.Visibility = 'Visible'; return }
+    if (CodeJuste $pb.Password) { Deverrouiller; return }
+    $script:EssaisCode = [int]$script:EssaisCode + 1
+    if ($script:EssaisCode -ge 5) { $script:CodeBloqueJusqua = (Get-Date).AddSeconds([Math]::Min(300, 30 * ($script:EssaisCode - 4))) }
+    $pb.Clear(); $erreur.Text = 'Ce n''est pas le bon code.'; $erreur.Visibility = 'Visible'
+}
+function CodeEnregistrer() {
+    $nouveau = $script:CodeNouveau; $noteC = $script:CodeNote
+    if (-not $nouveau) { return }
+    if ($nouveau.Password.Length -lt 4) { $noteC.Text = 'Le code doit faire au moins 4 caractères.'; $noteC.Foreground = (Pinceau 'Rouge'); return }
+    CodePoser $nouveau.Password; $nouveau.Clear(); Rafraichir
+}
+function Deverrouiller() { $script:Deverrouille = $true; $script:VerrouAffiche = $false; $script:EssaisCode = 0; $script:ChampCode = $null; Rafraichir }
+function PageVerrou() {
+    $script:VerrouAffiche = $true; $script:ChampCode = $null
+    $carte = Carte; $carte.MaxWidth = 460; $carte.Margin = [System.Windows.Thickness]::new(0, 30, 0, 0); $carte.HorizontalAlignment = 'Center'
+    $carte.Child.Children.Add((Txt 'Vision est verrouillée' 20 'Texte' $true '0,0,0,4')) | Out-Null
+    $rr = SvReglages
+    $hello = HelloDisponible
+    $carte.Child.Children.Add((Txt $(if ($hello -and $rr.codeHash) { 'Windows Hello ou le code de Vision pour entrer.' } elseif ($hello) { 'Windows Hello pour entrer.' } else { 'Le code de Vision pour entrer.' }) 12 'Texte2' $false '0,0,0,14')) | Out-Null
+    if ($hello) {
+        $bh = Bouton 'Déverrouiller avec Windows Hello' 'Primaire' { if (HelloDemander) { Deverrouiller } else { try { $script:W.Activate() | Out-Null } catch { } } }
+        $bh.HorizontalAlignment = 'Left'; $bh.Margin = [System.Windows.Thickness]::new(0, 0, 0, 12)
+        $carte.Child.Children.Add($bh) | Out-Null
+    }
+    if ($rr.codeHash) {
+        $ligne = Rangee
+        $pb = New-Object System.Windows.Controls.PasswordBox
+        $pb.Width = 180; $pb.FontSize = 16; $pb.Padding = [System.Windows.Thickness]::new(10, 7, 10, 7); $pb.MaxLength = 32; $pb.VerticalContentAlignment = 'Center'
+        $pb.Background = (Pinceau 'Haute'); $pb.Foreground = (Pinceau 'Texte'); $pb.BorderBrush = (Pinceau 'Ligne'); $pb.Margin = [System.Windows.Thickness]::new(0, 0, 8, 0)
+        $erreur = Txt '' 12 'Rouge' $false '0,8,0,0'; $erreur.Visibility = 'Collapsed'
+        $script:ChampCode = $pb; $script:VerrouErreur = $erreur
+        $pb.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Return') { CodeEssayer } })
+        $ligne.Children.Add($pb) | Out-Null
+        $ligne.Children.Add((Bouton 'Entrer' 'Secondaire' { CodeEssayer })) | Out-Null
+        $carte.Child.Children.Add($ligne) | Out-Null
+        $carte.Child.Children.Add($erreur) | Out-Null
+    }
+    $Contenu.Children.Add($carte) | Out-Null
+}
+
 # ------------------------------------------------------------------ Pages
 $script:Page = 'maison'
 $script:Vue = $null          # une sous-vue ouverte (fermés, planning, catégories) : @{ type; appareil }
@@ -377,6 +471,13 @@ function Rafraichir() {
     $ferme = ($null -ne $etat -and [bool](Prop $etat 'ferme' $false))
     $W.FindName('ChipEtatTexte').Text = $(if ($ferme) { 'FERMÉ' } else { 'OUVERT' })
     $W.FindName('ChipEtatTexte').Foreground = (Pinceau $(if ($ferme) { 'Rouge' } else { 'Vert' }))
+    # Verrouillée : ni onglets ni contenu tant que Windows Hello ou le code n'a pas ouvert.
+    $rv = SvReglages
+    if ($rv.verrou -and -not $script:Deverrouille -and ($rv.codeHash -or (HelloDisponible))) {
+        if ($script:VerrouAffiche) { return }
+        $Onglets.Children.Clear(); $Contenu.Children.Clear(); PageVerrou; return
+    }
+    $script:VerrouAffiche = $false
     $parent = Test-Path (Join-Path $script:Dossier 'maison.json')
     if (-not $parent -and $script:Page -eq 'maison') { $script:Page = 'moi' }
     $Onglets.Children.Clear()
@@ -843,8 +944,14 @@ $tray.ContextMenuStrip = $menu
 $tray.Add_MouseClick({ param($s, $e) if ($e.Button -eq 'Left') { Montrer } })
 
 function Montrer() {
+    $script:VerrouAffiche = $false
     Rafraichir
     $script:W.Show(); $script:W.Activate()
+    # Verrouillée : Windows Hello se propose de lui-même, le code reste possible à côté.
+    if ($script:VerrouAffiche) {
+        if ($script:ChampCode) { try { $script:ChampCode.Focus() | Out-Null } catch { } }
+        if (HelloDisponible) { if (HelloDemander) { Deverrouiller }; try { $script:W.Activate() | Out-Null } catch { } }
+    }
 }
 
 $horloge = New-Object System.Windows.Forms.Timer; $horloge.Interval = 30000
@@ -1267,6 +1374,32 @@ function PageReglages() {
     $carteT.Child.Children.Add((Coche 'Un fond sous les cartes' ([bool]$r.fondCartes) { param($s, $e) $rr = SvReglages; $rr.fondCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
     $carteT.Child.Children.Add((Coche 'Un contour autour des cartes' ([bool]$r.contourCartes) { param($s, $e) $rr = SvReglages; $rr.contourCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
     $Contenu.Children.Add($carteT) | Out-Null
+
+    $Contenu.Children.Add((Section 'Accès à Vision')) | Out-Null
+    $carteA = Carte
+    $hello = HelloDisponible
+    $carteA.Child.Children.Add((Coche 'Demander Windows Hello ou un code pour ouvrir Vision' ([bool]$r.verrou) {
+        param($s, $e)
+        $rr = SvReglages
+        if ($s.IsChecked -and -not $rr.codeHash -and -not (HelloDisponible)) { $s.IsChecked = $false; return }
+        $rr.verrou = [bool]$s.IsChecked; SvEcrire $rr; Rafraichir
+    })) | Out-Null
+    $carteA.Child.Children.Add((Txt $(if ($hello) { 'Windows Hello est prêt sur cet ordinateur (empreinte, visage ou code Windows).' } else { 'Windows Hello n''est pas configuré sur cet ordinateur : choisis un code ci-dessous.' }) 11 'Texte2' $false '0,2,0,10')) | Out-Null
+    $ligneC = Rangee
+    $nouveau = New-Object System.Windows.Controls.PasswordBox
+    $nouveau.Width = 180; $nouveau.FontSize = 14; $nouveau.Padding = [System.Windows.Thickness]::new(10, 6, 10, 6); $nouveau.MaxLength = 32; $nouveau.VerticalContentAlignment = 'Center'
+    $nouveau.Background = (Pinceau 'Haute'); $nouveau.Foreground = (Pinceau 'Texte'); $nouveau.BorderBrush = (Pinceau 'Ligne'); $nouveau.Margin = [System.Windows.Thickness]::new(0, 0, 8, 0)
+    $noteC = Txt $(if ($r.codeHash) { 'Un code est enregistré.' } else { 'Aucun code pour l''instant (4 caractères au moins).' }) 11 'Texte2' $false '0,6,0,0'
+    $script:CodeNouveau = $nouveau; $script:CodeNote = $noteC
+    $ligneC.Children.Add($nouveau) | Out-Null
+    $ligneC.Children.Add((Bouton $(if ($r.codeHash) { 'Changer le code' } else { 'Enregistrer le code' }) 'Secondaire' { CodeEnregistrer })) | Out-Null
+    if ($r.codeHash) {
+        $ligneC.Children.Add((Bouton 'Retirer le code' 'Secondaire' { $rr = SvReglages; $rr.codeSel = ''; $rr.codeHash = ''; if (-not (HelloDisponible)) { $rr.verrou = $false }; SvEcrire $rr; Rafraichir })) | Out-Null
+    }
+    $carteA.Child.Children.Add($ligneC) | Out-Null
+    $carteA.Child.Children.Add($noteC) | Out-Null
+    $carteA.Child.Children.Add((Txt 'Le verrou se remet dès que la fenêtre est fermée. Il protège la fenêtre, pas l''écran de veille.' 11 'Texte2' $false '0,8,0,0')) | Out-Null
+    $Contenu.Children.Add($carteA) | Out-Null
 
     $Contenu.Children.Add((Section 'Écran de veille')) | Out-Null
     $carteV = Carte
