@@ -7,6 +7,11 @@ sections, ses colonnes et la taille de ses cartes sont reprises, puis l'appli
 les redessine dans son thème et les répartit selon l'écran (télé, téléphone).
 Quand tout ne tient pas, l'appli enchaîne plusieurs écrans en fondu.
 
+La mise en page est reprise une fois, à l'enregistrement, et rangée avec les
+réglages (`fige`). Ensuite seul l'état des entités est lu à chaque relevé : un
+tableau de bord retouché ne change l'écran de veille qu'au prochain
+enregistrement dans Vision.
+
 Cartes comprises : tuile, entité, capteur, jauge, bouton, lumière, thermostat,
 météo, entités, aperçu, graphiques d'historique et de statistiques, markdown,
 et les piles, grilles et cartes conditionnelles qui les contiennent. Toute
@@ -248,8 +253,47 @@ def _choix(coord, adresse: str) -> dict[str, Any]:
     }
 
 
-def enregistrer(coord, choix: Any) -> None:
-    """Enregistre le choix (on ne garde que ce qui s'écarte du défaut : masqué)."""
+async def _structure(hass: HomeAssistant, adresse: str) -> dict[str, Any] | None:
+    """La mise en page d'un tableau de bord, telle que l'appli la redessine (sans aucun état)."""
+    config = await _config(hass, adresse)
+    vues = [v for v in (config or {}).get("views") or [] if isinstance(v, dict)]
+    if not vues:
+        return None
+    tableau = _lovelace(hass).get(None if adresse == "lovelace" else adresse)
+    sortie = []
+    for rang, vue in enumerate(vues):
+        sections = [
+            {"titre": s["titre"], "cartes": [{"cle": f["cle"], "cases": f["cases"]} for f in s["cartes"] if f["cases"]]}
+            for s in _sections(vue)
+        ]
+        sortie.append({
+            "cle": _cle_vue(vue, rang),
+            "titre": str(vue.get("title") or ""),
+            "colonnes": vue.get("max_columns") if isinstance(vue.get("max_columns"), int) else 3,
+            "sections": [s for s in sections if s["cartes"]],
+        })
+    return {
+        "le": int(time.time()),
+        "nom": _titre_tableau(None if adresse == "lovelace" else adresse, tableau),
+        "vues": sortie,
+    }
+
+
+async def figer(hass: HomeAssistant, choix: Any) -> dict[str, Any]:
+    """Reprend la mise en page des tableaux de bord retenus (appelé à l'enregistrement)."""
+    _cache.clear()
+    sortie: dict[str, Any] = {}
+    if isinstance(choix, dict):
+        for adresse, c in list(choix.items())[:40]:
+            if isinstance(c, dict) and c.get("actif"):
+                s = await _structure(hass, str(adresse))
+                if s:
+                    sortie[str(adresse)[:80]] = s
+    return sortie
+
+
+def enregistrer(coord, choix: Any, figees: dict[str, Any] | None = None) -> None:
+    """Enregistre le choix (on ne garde que ce qui s'écarte du défaut : masqué) et la mise en page reprise."""
     propre: dict[str, Any] = {}
     if isinstance(choix, dict):
         for adresse, c in list(choix.items())[:40]:
@@ -263,6 +307,8 @@ def enregistrer(coord, choix: Any) -> None:
                 "vues": {str(k)[:80]: False for k, v in (c.get("vues") or {}).items() if v is False},
                 "cartes": {str(k)[:120]: False for k, v in (c.get("cartes") or {}).items() if v is False},
             }
+            if figees and figees.get(str(adresse)[:80]):
+                propre[str(adresse)[:80]]["fige"] = figees[str(adresse)[:80]]
     coord.store.veille_dash = propre
     _cache.clear()
 
@@ -298,6 +344,7 @@ async def inventaire(hass: HomeAssistant, coord) -> list[dict[str, Any]]:
             "adresse": cle, "titre": _titre_tableau(adresse, tableau),
             "lisible": bool(vues), "genere": bool(config and config.get("strategy")),
             "actif": choix["actif"], "duree": choix["duree"], "ecrans": choix["ecrans"], "publics": choix["publics"],
+            "repris_le": int((((getattr(coord.store, "veille_dash", None) or {}).get(cle) or {}).get("fige") or {}).get("le") or 0),
             "vues": vues,
         })
     sortie.sort(key=lambda t: t["titre"].lower())
@@ -313,17 +360,19 @@ async def tableaux(hass: HomeAssistant, coord, ecran: str, qui: dict[str, str]) 
         choix = _choix(coord, adresse)
         if not choix["actif"] or not vt._vise(choix, ecran, qui):
             continue
-        config = await _config(hass, adresse)
-        vues = [v for v in (config or {}).get("views") or [] if isinstance(v, dict)]
-        tableau = _lovelace(hass).get(None if adresse == "lovelace" else adresse)
-        nom = _titre_tableau(None if adresse == "lovelace" else adresse, tableau)
-        for rang, vue in enumerate(vues):
-            cv = _cle_vue(vue, rang)
+        # La mise en page reprise à l'enregistrement ; à défaut (ancien réglage), lue sur le moment.
+        fige = ((coord.store.veille_dash.get(adresse) or {}).get("fige")) or await _structure(hass, adresse)
+        if not fige:
+            continue
+        vues = fige["vues"]
+        nom = fige.get("nom") or adresse
+        for vue in vues:
+            cv = vue["cle"]
             if not choix["vues"].get(cv, True) or len(sortie) >= MAX_TABLEAUX:
                 continue
             sections = []
             total = 0
-            for s in _sections(vue):
+            for s in vue["sections"]:
                 cases = []
                 for f in s["cartes"]:
                     if not choix["cartes"].get("{}/{}".format(cv, f["cle"]), True):
@@ -349,13 +398,13 @@ async def tableaux(hass: HomeAssistant, coord, ecran: str, qui: dict[str, str]) 
                     sections.append({"titre": s["titre"], "cases": cases})
             if not sections:
                 continue
-            titre_vue = str(vue.get("title") or "")
+            titre_vue = vue.get("titre") or ""
             sortie.append({
                 "code": "dash",
                 "id": "dash_{}_{}".format(adresse, cv),
                 "titre": titre_vue if titre_vue and len(vues) > 1 else nom,
                 "duree": choix["duree"],
-                "colonnes": int(vue.get("max_columns") or 3) if isinstance(vue.get("max_columns"), int) else 3,
+                "colonnes": int(vue.get("colonnes") or 3),
                 "sections": sections,
             })
     return sortie
@@ -418,7 +467,8 @@ class PcParentalVeilleDashView(HomeAssistantView):
         from .entity import appliquer
 
         try:
-            await appliquer(coord, lambda: enregistrer(coord, corps.get("choix")))
+            figees = await figer(self.hass, corps.get("choix"))
+            await appliquer(coord, lambda: enregistrer(coord, corps.get("choix"), figees))
         except Exception as err:  # noqa: BLE001
             return self.json({"ok": False, "error": str(err)}, status_code=400)
         return self.json({"ok": True, "tableaux": await inventaire(self.hass, coord)})

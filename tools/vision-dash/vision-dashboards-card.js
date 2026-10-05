@@ -115,7 +115,8 @@ class VisionDashboardsCard extends HTMLElement {
         <span class="groupe">${this._coches(t, i, "publics", NOMS_PUBLICS)}</span>
       </div>
       <div class="vues">${t.vues.map((v, j) => this._vue(t, i, v, j)).join("")}</div>`;
-    const note = t.lisible ? `${t.vues.length} vue${t.vues.length > 1 ? "s" : ""}` : (t.genere ? "généré automatiquement, sans cartes à reprendre" : "vide");
+    const le = t.actif && t.repris_le ? `, repris le ${new Date(t.repris_le * 1000).toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}` : "";
+    const note = t.lisible ? `${t.vues.length} vue${t.vues.length > 1 ? "s" : ""}${le}` : (t.genere ? "généré automatiquement, sans cartes à reprendre" : "vide");
     return `<div class="tableau ${t.actif ? "actif" : ""}">
       <div class="ligne tete">
         <label class="bascule"><input type="checkbox" data-a="actif" data-i="${i}" ${t.actif ? "checked" : ""} ${t.lisible ? "" : "disabled"}><b>${echap(t.titre)}</b></label>
@@ -164,11 +165,13 @@ class VisionDashboardsCard extends HTMLElement {
       <ha-card>
         <h2>Tableaux de bord sur l'écran de veille</h2>
         <p class="aide">Coche les tableaux de bord à reprendre. Leurs sections, leurs colonnes et la taille de leurs cartes sont gardées, puis redessinées dans le thème de chaque appareil. S'il y a trop de cartes pour un écran, la suite arrive en fondu.</p>
+        <p class="aide">La mise en page est reprise au moment où tu enregistres, puis gardée : les appareils ne relisent ensuite que les valeurs. Après avoir retouché un tableau de bord, reviens ici et choisis « Reprendre les cartes ».</p>
         ${this._erreur && this._tableaux !== null ? `<div class="erreur">${echap(this._erreur)}</div>` : ""}
         ${corps}
         <div class="pied">
           <button class="principal" data-a="enregistrer" ${this._modifie && !this._occupe ? "" : "disabled"}>${this._occupe ? "Enregistrement…" : "Enregistrer"}</button>
           <button class="second" data-a="annuler" ${this._modifie ? "" : "disabled"}>Annuler</button>
+          <button class="second" data-a="reprendre" ${this._occupe ? "disabled" : ""}>Reprendre les cartes</button>
         </div>
       </ha-card>`;
     this.shadowRoot.querySelectorAll("[data-a]").forEach((el) => {
@@ -177,6 +180,7 @@ class VisionDashboardsCard extends HTMLElement {
         el.addEventListener("click", () => {
           if (a === "enregistrer") return this._enregistrer();
           if (a === "annuler") return this._charger();
+          if (a === "reprendre") return this._enregistrer();
           if (a === "ouvrir") { const c = el.dataset.c; this._ouverts.has(c) ? this._ouverts.delete(c) : this._ouverts.add(c); this._rendre(); }
         });
         return;

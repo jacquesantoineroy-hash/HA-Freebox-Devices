@@ -40,8 +40,12 @@ patch("store.py", [
      "                \"veille_tableaux\": self.veille_tableaux,\n                \"veille_dash\": self.veille_dash,\n"),
 ])
 
-# Les tableaux tirés des tableaux de bord s'ajoutent à ceux de Vision (l'ancien essai « pages » est retiré).
+# Des anciens tableaux de Vision il ne reste que l'horloge ; le reste vient des tableaux de bord.
 patch("veille_tableaux.py", [
+    ("        if not t[\"actif\"] or not _vise(t, ecran, qui):\n            continue\n"
+     "        if t[\"code\"] != \"entites\":\n",
+     "        if t[\"code\"] != \"horloge\" or not t[\"actif\"] or not _vise(t, ecran, qui):\n            continue\n"
+     "        if t[\"code\"] != \"entites\":\n"),
     ("        liste.append({\"code\": \"entites\", \"id\": t[\"id\"], \"titre\": t[\"titre\"], \"duree\": t[\"duree\"], \"cases\": cases})\n"
      "    return {\"profil\": qui[\"public\"], \"ecran\": ecran, \"liste\": liste}\n",
      "        liste.append({\"code\": \"entites\", \"id\": t[\"id\"], \"titre\": t[\"titre\"], \"duree\": t[\"duree\"], \"cases\": cases})\n"
@@ -62,9 +66,10 @@ patch("http.py", [
      "    hass.http.register_view(PcParentalVeilleDashView(hass))\n"),
 ])
 
+# Dans Vision > Écran de veille, la carte des tableaux de bord remplace l'ancien compositeur.
 patch("dashboard.py", [
     ("                    {\"type\": \"custom:vision-veille-card\", \"grid_options\": {\"columns\": \"full\"}},\n",
-     "                    {\"type\": \"custom:vision-veille-card\", \"grid_options\": {\"columns\": \"full\"}},\n"
      "                    {\"type\": \"custom:vision-dashboards-card\", \"grid_options\": {\"columns\": \"full\"}},\n"),
+    ("`/local/vision-veille-card.js` ", "`/local/vision-dashboards-card.js` "),
 ])
 print("ok dash")
