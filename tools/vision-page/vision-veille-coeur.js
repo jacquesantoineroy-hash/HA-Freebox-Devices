@@ -169,6 +169,12 @@ class VisionVeillePanel extends HTMLElement {
         --ha-switch-border-color: var(--v-fort) !important; --ha-switch-thumb-background-color: var(--v-eteint) !important;
         --ha-switch-thumb-background-color-hover: var(--v-eteint) !important; --ha-switch-thumb-border-color: var(--v-eteint) !important; --ha-switch-thumb-border-color-hover: var(--v-eteint) !important;
       }
+      :host(ha-slider), :host(wa-slider), ha-slider {
+        --track-color-inactive: var(--v-moyen) !important; --track-color-active: var(--v-accent) !important; --thumb-color: var(--v-accent) !important;
+        --ha-slider-track-color: var(--v-moyen) !important; --ha-slider-indicator-color: var(--v-accent) !important; --ha-slider-thumb-color: var(--v-accent) !important;
+        --wa-color-neutral-fill-normal: var(--v-moyen) !important; --wa-color-brand-fill-loud: var(--v-accent) !important; --wa-form-control-activated-color: var(--v-accent) !important;
+        --md-sys-color-surface-container-highest: var(--v-moyen) !important; --md-slider-inactive-track-color: var(--v-moyen) !important;
+      }
       ::-webkit-scrollbar { display: none !important; }
       * { scrollbar-width: none !important; }
       ha-icon-button, ha-button-menu, ha-icon-next, ha-icon-button-next, ha-icon-button-prev, mwc-icon-button, .more-info { display: none !important; }
