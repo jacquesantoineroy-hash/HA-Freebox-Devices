@@ -127,6 +127,12 @@ class VisionVeillePanel extends HTMLElement {
   async _demarrer() {
     this._debut = Date.now();
     this._q = new URLSearchParams(location.search);
+    try {
+      const n = (parseInt(sessionStorage.getItem("visionVeille") || "0", 10) || 0) + 1;
+      sessionStorage.setItem("visionVeille", String(n));
+      const nav = (performance.getEntriesByType("navigation")[0] || {}).type || "?";
+      setTimeout(() => this._note(`chargement n° ${n} (${nav}) à ${new Date().toLocaleTimeString("fr-FR")}, page ouverte depuis ${(performance.now() / 1000).toFixed(1)} s`), 0);
+    } catch (e) { /* sans importance */ }
     this._theme();
     this.shadowRoot.innerHTML = `
       <style>
