@@ -282,4 +282,4 @@ class VisionVeillePanel extends HTMLElement {
   }
 }
 
-if (!customElements.get("vision-veille-panel")) customElements.define("vision-veille-panel", VisionVeillePanel);
+if (!customElements.get("vision-veille-coeur")) customElements.define("vision-veille-coeur", VisionVeillePanel);
