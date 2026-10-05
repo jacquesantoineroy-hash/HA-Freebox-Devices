@@ -197,6 +197,17 @@ class VisionVeillePanel extends HTMLElement {
       for (const x of noeud.children) voir(x);
     };
     try { voir(racine); } catch (e) { /* sans gravité */ }
+    if (this._q.get("diag") === "2" && !this._diagVu) {
+      const trouver = (n, nom) => { if (n.localName === nom) return n; for (const y of [...(n.shadowRoot ? n.shadowRoot.children : []), ...n.children]) { const r = trouver(y, nom); if (r) return r; } return null; };
+      const sw = trouver(racine, "ha-switch");
+      if (sw && sw.shadowRoot) {
+        this._diagVu = true;
+        const cs = getComputedStyle(sw), d = document.createElement("div");
+        d.style.cssText = "position:absolute;left:1vw;top:12vh;width:60vw;z-index:9;font:22px Consolas,monospace;color:#fff;background:#000;white-space:normal;word-break:break-all";
+        d.textContent = `regle0=${this._feuille.cssRules[0].cssText.slice(0, 160)} ## nb=${this._feuille.cssRules.length} ## fill=${cs.getPropertyValue("--ha-color-fill-primary-normal-resting")} ## sw=${cs.getPropertyValue("--ha-switch-checked-background-color")} ## on=${cs.getPropertyValue("--ha-color-on-primary-normal")} ## ` + [...sw.shadowRoot.adoptedStyleSheets].map((f) => [...f.cssRules].filter((r) => /checked/.test(r.cssText)).map((r) => r.cssText.slice(0, 260)).join(" // ")).join(" ");
+        this.shadowRoot.appendChild(d);
+      }
+    }
   }
 
   // Avec « diag=1 » dans l'adresse, les temps de chargement s'écrivent en haut de l'écran.
