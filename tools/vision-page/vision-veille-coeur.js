@@ -51,13 +51,11 @@ class VisionVeillePanel extends HTMLElement {
     this._style = this._q.get("style") === "neoretro" ? "neoretro" : "doux";
     if (this._style === "neoretro") {
       Object.assign(vars, {
-        "--ha-card-border-radius": "3px", "--ha-card-border-width": "1.5px", "--ha-card-border-color": accent,
-        "--ha-card-background": "transparent", "--card-background-color": "transparent",
+        "--ha-card-border-radius": "3px", "--ha-card-border-width": "0px", "--ha-card-border-color": "transparent",
         "--ha-font-family-body": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
         "--primary-font-family": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
         "--paper-font-common-base_-_font-family": "Bahnschrift, 'DIN Alternate', 'Roboto Condensed', 'Segoe UI', sans-serif",
-        "--chip-border-radius": "3px", "--chip-background": "transparent", "--chip-border-width": "1.5px", "--chip-border-color": accent,
-        "--mush-chip-border-radius": "3px", "--mush-chip-background": "transparent",
+        "--chip-border-radius": "3px", "--chip-border-width": "0px", "--mush-chip-border-radius": "3px",
       });
     }
     this.setAttribute("data-style", this._style);
@@ -108,7 +106,7 @@ class VisionVeillePanel extends HTMLElement {
         .tete { display: flex; justify-content: space-between; align-items: baseline; padding: 3.2vh 3.5vw 1.6vh; }
         .titre { font-size: 3.6vh; font-weight: 600; }
         .petite { font-size: 3.2vh; color: var(--v-texte2); }
-        .cadre { position: absolute; left: 3.5vw; right: 3.5vw; top: 11vh; bottom: 3vh; overflow: hidden; }
+        .cadre { position: absolute; left: 3.5vw; right: 3.5vw; top: 11vh; bottom: 9.5vh; overflow: hidden; }
         .colonnes { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; transform-origin: top left;
                     column-width: 400px; column-gap: 24px; column-fill: auto; }
         .section { break-inside: avoid; margin: 0 0 18px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px; }
@@ -127,9 +125,21 @@ class VisionVeillePanel extends HTMLElement {
         :host([data-style="neoretro"]) .horloge::before { content: "VISION"; letter-spacing: .6em; font-size: 2.2vh; color: var(--v-accent); margin-bottom: 4vh; padding-left: .6em; }
         :host([data-style="neoretro"]) .date { text-transform: uppercase; letter-spacing: .3em; font-size: 3vh; margin-top: 3vh; padding-top: 3vh; border-top: 1.5px solid var(--v-accent); min-width: 46vw; text-align: center; }
         :host([data-style="neoretro"]) .ciel { text-transform: uppercase; letter-spacing: .3em; font-size: 2.6vh; }
+        /* L'œil de Vision, en bas à gauche : il cligne de temps en temps. */
+        .oeil { position: absolute; left: 3.5vw; bottom: 2.4vh; width: 5.4vh; height: 5.4vh; z-index: 5; opacity: .92; pointer-events: none; }
+        .oeil .paupiere { transform-box: fill-box; transform-origin: center; animation: clin 7s infinite; }
+        @keyframes clin { 0%, 91%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.06); } 97% { transform: scaleY(1); } }
         .vide { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--v-texte2); font-size: 3vh; }
       </style>
-      <div class="scene vue" id="s0"><div class="vide">Vision</div></div>`;
+      <svg class="oeil" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="29" fill="none" stroke="var(--v-accent)" stroke-width="2.4"/>
+        <g class="paupiere">
+          <path d="M11 32 Q32 13 53 32 Q32 51 11 32 Z" fill="none" stroke="var(--v-accent)" stroke-width="2.4" stroke-linejoin="round"/>
+          <circle cx="32" cy="32" r="7.6" fill="var(--v-accent)"/>
+          <circle cx="32" cy="32" r="3" fill="var(--v-fond)"/>
+        </g>
+      </svg>
+      <div class="scene vue" id="s0"></div>`;
     let page = null, aides = null;
     try {
       [page, aides] = await Promise.all([
@@ -232,6 +242,7 @@ class VisionVeillePanel extends HTMLElement {
         // Le temps que les cartes se dessinent, puis on compte les écrans nécessaires.
         await pause(1800);
         const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
+        this._uneLigne(c);
         const sections = [...c.querySelectorAll(".section")];
         // Peu de sections : leurs cartes se répartissent librement dans les colonnes, pour occuper l'écran.
         const visibles = Math.max(1, Math.floor((L + 24) / 424));
@@ -271,6 +282,24 @@ class VisionVeillePanel extends HTMLElement {
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
     this._minuteur = setTimeout(() => this._suivant(), Math.max(5, e.duree) * 1000);
+  }
+
+  // Une rangée de pastilles reste sur une ligne : si elle est trop large, elle rétrécit au lieu de passer dessous.
+  // Rien à changer dans le tableau de bord : c'est la veille qui s'adapte.
+  _uneLigne(racine) {
+    for (const el of racine.querySelectorAll("mushroom-chips-card")) {
+      try {
+        const rangee = el.shadowRoot && el.shadowRoot.querySelector(".chip-container");
+        if (!rangee) continue;
+        rangee.style.flexWrap = "nowrap"; rangee.style.justifyContent = "flex-start";
+        const dispo = el.clientWidth, besoin = rangee.scrollWidth;
+        if (besoin > dispo + 2) {
+          rangee.style.width = `${besoin}px`;
+          rangee.style.transformOrigin = "left center";
+          rangee.style.transform = `scale(${dispo / besoin})`;
+        }
+      } catch (e) { /* la carte reste telle quelle */ }
+    }
   }
 
   _suivant() {
