@@ -486,7 +486,6 @@ class VisionVeillePanel extends HTMLElement {
       :host(hui-media-control-card) .background.off, :host(hui-media-control-card) .background.unavailable { display: none !important; }
       :host(hui-media-control-card) .background.off ~ .player, :host(hui-media-control-card) .background.unavailable ~ .player { color: var(--v-texte) !important; }
       :host(hui-media-control-card) .controls { display: none !important; }
-      ${this._q.get("diag") === "3" ? (this._q.get("css") || "") : ""}
       ${net ? `
       .card-header { text-transform: uppercase; letter-spacing: .16em; font-size: 15px !important; font-weight: 400 !important; color: var(--v-accent) !important; line-height: 1.4 !important; padding-bottom: 8px !important; }
       :host(ha-card) { border-radius: 3px !important; }
@@ -494,7 +493,6 @@ class VisionVeillePanel extends HTMLElement {
   }
 
   _percer(racine) {
-    if (this._sans && this._sans.has("percer")) return;
     if (!this._feuille) { try { this._feuille = new CSSStyleSheet(); this._feuille.replaceSync(this._regles()); } catch (e) { this._feuille = false; } }
     if (!this._feuille) return;
     const voir = (noeud) => {
@@ -511,7 +509,6 @@ class VisionVeillePanel extends HTMLElement {
   // Avec « diag=1 » dans l'adresse, les temps de chargement s'écrivent en haut de l'écran.
   _note(texte) {
     if (!this._q || !["1", "3"].includes(this._q.get("diag"))) return;
-    if (this._q.get("diag") === "3") console.log(`VISION ${((Date.now() - this._debut) / 1000).toFixed(1)} s  ${texte}`);
     let d = this.shadowRoot.querySelector(".diag");
     if (!d) { d = document.createElement("div"); d.className = "diag"; d.style.cssText = "position:absolute;left:1vw;top:1vh;z-index:9;font:14px Consolas,monospace;color:#fff;white-space:pre"; this.shadowRoot.appendChild(d); }
     d.textContent += `${((Date.now() - this._debut) / 1000).toFixed(1)} s  ${texte}\n`;
@@ -556,7 +553,6 @@ class VisionVeillePanel extends HTMLElement {
       const nav = (performance.getEntriesByType("navigation")[0] || {}).type || "?";
       setTimeout(() => this._note(`chargement n° ${n} (${nav}) à ${new Date().toLocaleTimeString("fr-FR")}, page ouverte depuis ${(performance.now() / 1000).toFixed(1)} s`), 0);
     } catch (e) { /* sans importance */ }
-    this._sans = new Set((this._q.get("sans") || "").split(",").filter(Boolean));
     this._theme();
     this.shadowRoot.innerHTML = `
       <style>
@@ -572,7 +568,6 @@ class VisionVeillePanel extends HTMLElement {
         /* Anti-marquage : tout dérive de quelques points au fil des minutes (écrans OLED, vieilles dalles). */
         @keyframes derive { 0% { transform: translate(0, 0); } 25% { transform: translate(.5vw, .35vh); } 50% { transform: translate(0, .7vh); } 75% { transform: translate(-.5vw, .35vh); } 100% { transform: translate(0, 0); } }
         .scene, .marque { animation: derive 420s linear infinite; }
-        :host([data-fixe]) .scene, :host([data-fixe]) .marque { animation: none; }
         .annonce { position: absolute; right: 3.5vw; bottom: 2.6vh; z-index: 6; max-width: 60vw; padding: .9vh 2.2vh; border-radius: 99px; background: var(--v-carte); color: var(--v-texte2);
                    font-size: min(2.4vh, 3.6vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .5s ease; }
         .annonce::before { content: ""; display: inline-block; width: 1.1vh; height: 1.1vh; border-radius: 50%; background: var(--v-accent); margin-right: 1.2vh; }
@@ -679,12 +674,15 @@ class VisionVeillePanel extends HTMLElement {
   // ici et là, la paupière qui cligne vite et se rouvre plus doucement, parfois deux fois de suite.
   _oeil() {
     const toile = this.shadowRoot.querySelector(".marque canvas");
-    if (this._sans.has("toile")) { toile.remove(); return; }
     const g = toile.getContext("2d");
     const pourpre = this._sombre ? "#C2577B" : "#8C2F4B";
     const or = this._couleur("accent", "#F2C14E"), encre = this._sombre ? "#1B1418" : this._couleur("texte", "#2A2026");
     let prochainClin = 0, clinDebut = -9, prochainRegard = 0, cibleX = 0, cibleY = 0, rx = 0, ry = 0;
+    let dernier = 0;
     const pas = () => {
+      // Trente images par seconde suffisent à un clin d'œil ; au-delà, c'est de la carte graphique gaspillée.
+      if (performance.now() - dernier < 30) { requestAnimationFrame(pas); return; }
+      dernier = performance.now();
       const t = performance.now() / 1000, H = window.innerHeight, dpr = window.devicePixelRatio || 1;
       const demiL = H * 0.03, demiH = H * 0.017, L = demiL * 2 + H * 0.012, HH = demiH * 4 + H * 0.012;
       if (toile.width !== Math.round(L * dpr)) { toile.width = Math.round(L * dpr); toile.height = Math.round(HH * dpr); toile.style.width = `${L}px`; toile.style.height = `${HH}px`; }
@@ -694,7 +692,7 @@ class VisionVeillePanel extends HTMLElement {
       const tt = t - clinDebut;
       const fermeture = tt < 0 ? 0 : tt < 0.10 ? tt / 0.10 : tt < 0.26 ? 1 - (tt - 0.10) / 0.16 : 0;
       if (t >= prochainRegard) { cibleX = (Math.random() - 0.5) * 1.6; cibleY = (Math.random() - 0.5) * 0.9; prochainRegard = t + 1.5 + Math.random() * 4; }
-      rx += (cibleX - rx) * 0.18; ry += (cibleY - ry) * 0.18;
+      rx += (cibleX - rx) * 0.3; ry += (cibleY - ry) * 0.3;
       const cx = L / 2, cy = HH / 2, ouverture = demiH * (1 - fermeture * 0.96), bas = demiH * 2 * (1 - fermeture * 0.5);
       const amande = new Path2D();
       amande.moveTo(cx - demiL, cy); amande.quadraticCurveTo(cx, cy - ouverture * 2, cx + demiL, cy); amande.quadraticCurveTo(cx, cy + bas, cx - demiL, cy); amande.closePath();
@@ -709,7 +707,7 @@ class VisionVeillePanel extends HTMLElement {
       g.globalAlpha = 1; g.lineWidth = H * 0.004; g.beginPath(); g.moveTo(cx - demiL, cy); g.quadraticCurveTo(cx, cy - ouverture * 2, cx + demiL, cy); g.stroke();
       g.globalAlpha = 0.59; g.lineWidth = H * 0.002; g.beginPath(); g.moveTo(cx - demiL, cy); g.quadraticCurveTo(cx, cy + bas, cx + demiL, cy); g.stroke();
       g.globalAlpha = 1;
-      if (!this._sans.has("oeil")) requestAnimationFrame(pas);
+      requestAnimationFrame(pas);
     };
     pas();
   }
@@ -748,14 +746,12 @@ class VisionVeillePanel extends HTMLElement {
     // qu'une fois chargée, on la relit donc au moment de mesurer.
     if (v === undefined) el._largeurLibre = true;
     // Un titre ne reste jamais seul en bas d'une colonne : il suit sa carte.
-    // Une page web embarquée (carte météo animée…) est dessinée deux fois plus grande puis réduite de moitié :
+    // Une page web embarquée (carte météo animée…) est vue de deux fois plus loin :
     // le site dispose d'une vraie largeur et ses boutons ne se chevauchent plus.
     if (config.type === "iframe") {
-      const gr = Math.max(1, Math.min(2, parseFloat(this._q.get("web")) || 2));
-      this._web = gr;
-      this._webZoom = this._q.get("webz") === "1";
-      if (this._webZoom) { el.style.display = "block"; el.style.zoom = String(1 / gr); }
-      else { el.style.display = "block"; el.style.width = `${gr * 100}%`; el.style.transformOrigin = "0 0"; el.style.transform = `scale(${1 / gr})`; }
+      // Par un zoom, pas par une transformation : une page réduite par « transform » se redessine en quatre fois
+      // plus de points puis se recompose à chaque image, et toute la veille tombait à 16 images par seconde.
+      el.style.display = "block"; el.style.zoom = "0.5";
       const boite = document.createElement("div");
       boite.className = "web";
       boite.style.cssText = "overflow:hidden;width:100%;border-radius:var(--ha-card-border-radius,18px);break-inside:avoid;";
@@ -822,37 +818,26 @@ class VisionVeillePanel extends HTMLElement {
     return this._fige;
   }
 
-  // Avec « diag=3 », chaque image qui tarde (plus de 50 ms) s'écrit avec l'étape en cours : c'est ce qui se voit comme une secousse.
+  // Avec « diag=3 », le nombre d'images dessinées et celles qui tardent (plus de 34 ms) s'écrit toutes les deux
+  // secondes, à l'écran et dans le titre de la fenêtre : c'est la mesure des secousses.
   _sonde() {
     if (this._sondeLancee || !this._q || this._q.get("diag") !== "3") return;
     this._sondeLancee = true;
-    let avant = performance.now();
-    // Un bilan toutes les deux secondes, pour que la sonde ne pèse pas elle-même sur l'affichage.
-    let n = 0, lentes = 0, pire = 0, etapes = new Set();
-    const pas = (t) => { const d = t - avant; avant = t; n++; if (d > 34) { lentes++; pire = Math.max(pire, d); etapes.add(this._etape || "-"); } requestAnimationFrame(pas); };
-    requestAnimationFrame(pas);
+    let avant = performance.now(), n = 0, lentes = 0, pire = 0;
     const bilan = [];
-    setInterval(() => { bilan.push(`${n}/${lentes}${etapes.has("pose") ? "p" : ""}`); if (!this._sansBilan || this._q.get("anim") !== "1") document.title = "VISION " + bilan.join(" "); this._note(`${n} images, ${lentes} lentes, pire ${Math.round(pire)} ms  [${[...etapes].join(" ")}]`); n = 0; lentes = 0; pire = 0; etapes = new Set(); }, 2000);
-    if (this._q.get("derive") === "0") this.setAttribute("data-fixe", "1");
-    // D'où vient le temps perdu : script (lequel), calcul des styles et de la mise en page, ou dessin.
-    try {
-      let dits = 0;
-      new PerformanceObserver((liste) => {
-        for (const f of liste.getEntries()) {
-          if (this._etape !== "pose" || dits >= 6) continue;
-          dits++;
-          const fin = f.startTime + f.duration;
-          const scripts = (f.scripts || []).map((x) => `${Math.round(x.duration)} ms ${x.invoker || "?"} ${x.sourceFunctionName || ""} ${(x.sourceURL || "").split("/").pop().slice(0, 40)} (mise en page forcée ${Math.round(x.forcedStyleAndLayoutDuration || 0)})`).join("\n            ");
-          this._note(`longue ${Math.round(f.duration)} ms : scripts jusqu'à ${Math.round((f.renderStart || fin) - f.startTime)}, rendu ${Math.round((f.styleAndLayoutStart || fin) - (f.renderStart || fin))}, styles et mise en page ${Math.round(fin - (f.styleAndLayoutStart || fin))}\n            ${scripts}`);
-        }
-      }).observe({ type: "long-animation-frame", buffered: false });
-    } catch (err) { this._note("sonde longue : " + err); }
+    const pas = (t) => { const d = t - avant; avant = t; n++; if (d > 34) { lentes++; pire = Math.max(pire, d); } requestAnimationFrame(pas); };
+    requestAnimationFrame(pas);
+    setInterval(() => {
+      const e = this._ecrans && this._ecrans[this._indice];
+      bilan.push(`${n}/${lentes}`); document.title = "VISION " + bilan.join(" ");
+      this._note(`${n} images, ${lentes} lentes, pire ${Math.round(pire)} ms  [${e ? e.titre || e.genre : "-"}]`);
+      n = 0; lentes = 0; pire = 0;
+    }, 2000);
   }
 
   async _montrer(reste) {
     if (this._dort) return;
     this._sonde();
-    this._etape = "cartes";
     const passage = this._passage = (this._passage || 0) + 1;
     let cran = 0;
     if (this._synchro) {
@@ -887,7 +872,7 @@ class VisionVeillePanel extends HTMLElement {
           bloc.className = "section";
           bloc._span = Math.max(1, Math.min(4, s.span || 1));
           if (s.titre) { const t = document.createElement("div"); t.className = "sec"; t.textContent = s.titre; bloc.appendChild(t); }
-          for (const c of s.cartes) { const el = this._carte(c.config); if (el && !this._sans.has(el.localName) && !this._sans.has("cartes") && (!this._q.get("seul") || this._q.get("seul") === el.localName)) bloc.appendChild(el); else if (this._sans.has("cartes")) { const x = document.createElement("div"); x.textContent = "carte"; x.style.cssText = "height:120px;background:var(--v-carte);border-radius:12px"; bloc.appendChild(x); } }
+          for (const c of s.cartes) { const el = this._carte(c.config); if (el) bloc.appendChild(el); }
           if (bloc.children.length) blocs.push(bloc);
         }
         // Écran en hauteur (téléphone, tablette debout) : les sections passent les unes sous les autres, comme
@@ -900,13 +885,18 @@ class VisionVeillePanel extends HTMLElement {
         for (const bloc of blocs) { bloc.style.gridColumn = `span ${Math.min(n, bloc._span)}`; colonnes.appendChild(bloc); }
         e._colonnes = colonnes;
       }
+      if (ancienne && ancienne.contains(e._colonnes)) {
+        // La suite du même tableau reprend les mêmes cartes : l'écran s'efface, puis revient sur la suite.
+        ancienne.classList.remove("vue");
+        await pause(620);
+        if (passage !== this._passage) return;
+      }
       const tete = document.createElement("div");
       tete.className = "tete";
       tete.innerHTML = `<div class="titre"></div><div class="petite"></div>`;
       scene.appendChild(tete);
       const cadre = document.createElement("div");
       cadre.className = "cadre";
-      if (this._sans.has("cadre")) cadre.style.overflow = "visible";
       cadre.appendChild(e._colonnes);
       scene.appendChild(cadre);
       tete.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   ${e.page + 1}/${e.pages}` : "");
@@ -917,23 +907,19 @@ class VisionVeillePanel extends HTMLElement {
       const c = e._colonnes;
       if (e.page === 0) {
         // Le temps que les cartes se dessinent, puis on compte les écrans nécessaires.
-        this._etape = "attente";
         await pause(900);
         if (passage !== this._passage) { scene.remove(); return; }
-        this._etape = "mesure";
         this._percer(c);
         await pause(300);
         if (passage !== this._passage) { scene.remove(); return; }
         const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
         for (const el of c.querySelectorAll(".section > *")) {
           if (!el._largeurLibre) continue;
-          if (this._q.get("diag") === "1") { try { this._note(`${el.localName} : ${el.getGridOptions ? JSON.stringify(el.getGridOptions()) : "sans largeur propre"}`); } catch (err) { this._note(`${el.localName} : ${err}`); } }
+          if (this._q.get("diag") === "1") try { this._note(`${el.localName} : ${el.getGridOptions ? JSON.stringify(el.getGridOptions()) : "sans largeur propre"}`); } catch (err) { this._note(`${el.localName} : ${err}`); }
           try { const g = el.getGridOptions && el.getGridOptions(); if (g && typeof g.columns === "number") el.style.gridColumn = `span ${Math.max(3, Math.min(12, g.columns))}`; } catch (err) { /* reste pleine largeur */ }
         }
         await pause(120);
         this._uneLigne(c);
-        // Une page web embarquée est dessinée en double puis réduite de moitié : sa boîte prend la moitié de sa hauteur.
-        for (const b of c.querySelectorAll(".web")) { const h = b.firstElementChild ? b.firstElementChild.offsetHeight : 0; if (h && !this._webZoom) b.style.height = `${h / (this._web || 2)}px`; }
         // Les rangées de sections, de haut en bas ; ce qui ne tient pas en hauteur passe sur l'écran suivant.
         const sections = [...c.querySelectorAll(".section")];
         const rangees = [];
@@ -966,25 +952,13 @@ class VisionVeillePanel extends HTMLElement {
       const pg = e._pages[e.page] || e._pages[0];
       if (pg) {
         const hp = Math.max(1, pg.bas - pg.haut);
-        const z = this._sans.has("echelle") ? 1 : Math.min(e._L / e._larg, e._H / hp, 2.2) * 0.985;
+        const z = Math.min(e._L / e._larg, e._H / hp, 2.2) * 0.985;
         for (const s of c.querySelectorAll(".section")) s.style.visibility = pg.sections.includes(s) ? "visible" : "hidden";
         const dx = Math.max(0, (e._L - e._larg * z) / 2), dy = Math.max(0, Math.min((e._H - hp * z) / 2, e._H * 0.1));
         c.style.transform = `translate(${dx}px, ${dy - pg.haut * z}px) scale(${z})`;
       }
     }
     if (e.genre === "tableau") { this._percer(e._colonnes); for (const t of [700, 2000, 4500]) setTimeout(() => this._percer(e._colonnes), t); }
-    if (this._q.get("diag") === "3" && e.genre === "tableau") setTimeout(() => {
-      try {
-        const vus = {};
-        const toutes = [...document.getAnimations()];
-        const fouiller = (n) => { if (n.shadowRoot) { try { toutes.push(...n.shadowRoot.getAnimations()); } catch (err) { /* rien */ } for (const x of n.shadowRoot.querySelectorAll("*")) fouiller(x); } };
-        for (const x of document.querySelectorAll("*")) fouiller(x);
-        for (const a of new Set(toutes)) { if (a.playState !== "running") continue; const c = a.effect && a.effect.target; const hote = c && c.getRootNode && c.getRootNode().host; const k = `${a.animationName || a.transitionProperty || "?"} sur ${c ? c.localName + (c.className && c.className.baseVal === undefined ? "." + c.className : "") : "?"} dans ${hote ? hote.localName : "page"}`; vus[k] = (vus[k] || 0) + 1; }
-        document.title = "VISION ANIM " + (Object.entries(vus).map(([k, n]) => `${n} x ${k}`).join(" ; ") || "aucune"); this._sansBilan = true;
-        this._note("animations : " + (Object.entries(vus).map(([k, n]) => `${n} x ${k}`).join("\n          ") || "aucune"));
-      } catch (err) { this._note("animations : " + err); }
-    }, 3000);
-    this._etape = "fondu"; setTimeout(() => { if (passage === this._passage) this._etape = "pose"; }, 800);
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
     if (this._fige) return;
