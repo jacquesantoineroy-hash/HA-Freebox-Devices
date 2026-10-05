@@ -68,10 +68,30 @@ async def _config(hass: HomeAssistant, adresse: str) -> dict[str, Any] | None:
     if tableau is not None:
         try:
             config = await tableau.async_load(False)
-        except Exception:  # noqa: BLE001  (vide, ou illisible)
+        except Exception as err:  # noqa: BLE001  (vide, ou pas encore ouvert depuis le démarrage)
+            _LOGGER.debug("Tableau de bord %s non lu par Lovelace : %r", adresse, err)
             config = None
+    if not (config or {}).get("views") and adresse != "lovelace":
+        # Un tableau de bord jamais ouvert depuis le démarrage peut ne pas être chargé : on lit son fichier.
+        config = await hass.async_add_executor_job(_lire_fichier, hass.config.path(".storage"), adresse) or config
     _cache[adresse] = (time.time(), config)
     return config
+
+
+def _lire_fichier(dossier: str, adresse: str) -> dict[str, Any] | None:
+    import json
+    import os
+
+    for nom in ("lovelace." + adresse.replace("-", "_"), "lovelace." + adresse):
+        chemin = os.path.join(dossier, nom)
+        if os.path.exists(chemin):
+            try:
+                with open(chemin, encoding="utf-8") as f:
+                    config = (json.load(f).get("data") or {}).get("config")
+                return config if isinstance(config, dict) else None
+            except Exception:  # noqa: BLE001
+                return None
+    return None
 
 
 # --- D'une carte Home Assistant à des cases ---------------------------------------------
