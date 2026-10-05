@@ -761,6 +761,9 @@ class VisionVeillePanel extends HTMLElement {
     this._aides = aides;
     const masques = new Set((this._q.get("masques") || "").split(",").filter(Boolean));
     const cachees = new Set((this._q.get("cartes") || "").split(",").filter(Boolean));
+    // Les animations des cartes : toutes (« anim=0 » les coupe), sauf celles qu'on a choisi de laisser fixes (« figees »).
+    this._anim = this._q.get("anim") !== "0";
+    const figees = new Set((this._q.get("figees") || "").split(",").filter(Boolean));
     // La liste des écrans à enchaîner : l'horloge, puis les tableaux (découpés à l'affichage).
     const liste = [];
     // Chaque appareil peut donner sa durée à chaque tableau (« durees=horloge:20,dash_x_y:35 »).
@@ -772,6 +775,7 @@ class VisionVeillePanel extends HTMLElement {
       const sections = [];
       for (const s of t.sections || []) {
         const cartes = (s.cartes || []).filter((c) => !cachees.has(`${t.id}|${c.cle}`) && !(c.cles && c.cles.length && c.cles.every((k) => cachees.has(`${t.id}|${k}`))));
+        for (const c of cartes) c.fige = figees.has(`${t.id}|${c.cle}`) || !!(c.cles && c.cles.length && c.cles.every((k) => figees.has(`${t.id}|${k}`)));
         // Une section dont il ne reste que le titre (toutes ses cartes sont décochées) disparaît avec lui.
         if (cartes.some((c) => c.config && c.config.type !== "heading")) sections.push({ titre: s.titre, span: s.span || 1, cartes });
       }
@@ -971,6 +975,75 @@ class VisionVeillePanel extends HTMLElement {
     }, 2000);
   }
 
+  // L'entrée en scène d'un tableau : les cartes arrivent l'une après l'autre, et ce qu'elles montrent s'anime
+  // avec elles : les jauges montent, les courbes se tracent de gauche à droite, les nombres comptent jusqu'à leur
+  // valeur. Une carte marquée fixe arrive d'un coup, telle quelle.
+  _animer(e) {
+    const pg = (e._pages && (e._pages[e.page] || e._pages[0])) || null;
+    const elements = [...e._colonnes.querySelectorAll(".section > *")].filter((el) => !pg || pg.sections.includes(el.parentElement));
+    const nombres = [];
+    let rang = 0;
+    for (const el of elements) {
+      if (el._fige) continue;
+      const delai = 140 + Math.min(rang++, 26) * 45;
+      el.animate([{ opacity: 0, transform: "translateY(18px)" }, { opacity: 1, transform: "none" }], { duration: 480, delay: delai, easing: "cubic-bezier(.2,.7,.2,1)", fill: "backwards" });
+      if (el.classList.contains("sec") || el.classList.contains("web")) continue;
+      const fouiller = (n, dansCourbe) => {
+        const nom = n.localName || "";
+        if (nom === "ha-gauge" && typeof n.value === "number" && typeof n.min === "number") {
+          const v = n.value; n.value = n.min;
+          setTimeout(() => { if (n.value === n.min) n.value = v; }, delai + 120);
+        }
+        const courbe = dansCourbe || nom === "ha-chart-base" || nom === "hui-graph-header-footer" || nom === "ha-sparkline";
+        if (courbe && !dansCourbe) n.animate([{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }], { duration: 1100, delay: delai + 150, easing: "ease-out", fill: "backwards" });
+        if (nom === "style" || nom === "script") return;
+        const visiter = (parent) => {
+          for (const x of parent.childNodes) {
+            if (x.nodeType === 1) fouiller(x, courbe);
+            else if (x.nodeType === 3 && !courbe && nombres.length < 40) {
+              const m = /^(\s*)(-?)(\d{1,3}(?:[   ]\d{3})+|\d+)(?:([.,])(\d+))?(\s?[^\d\s:.][^\d:.]{0,5})?(\s*)$/.exec(x.data);
+              if (m && !(m[3].length === 4 && !m[4] && !m[6])) nombres.push({ n: x, m, fin: x.data, delai: delai + 100 });
+            }
+          }
+        };
+        if (n.shadowRoot) visiter(n.shadowRoot);
+        visiter(n);
+      };
+      fouiller(el, false);
+    }
+    if (!nombres.length) return;
+    const ecrire = (o, part) => {
+      const m = o.m, entier = m[3].replace(/\D/g, ""), sep = (m[3].match(/\D/) || [""])[0], dec = m[5] ? m[5].length : 0;
+      const v = parseFloat(entier + (dec ? "." + m[5] : "")) * part;
+      let [a, b] = v.toFixed(dec).split(".");
+      if (sep) a = a.replace(/\B(?=(\d{3})+$)/g, sep);
+      return m[1] + m[2] + a + (dec ? m[4] + b : "") + (m[6] || "") + m[7];
+    };
+    for (const o of nombres) { o.dit = ecrire(o, 0); o.n.data = o.dit; }
+    const debut = performance.now();
+    let dernier = 0;
+    const tour = (t) => {
+      let reste = false;
+      if (t - dernier >= 33) {
+        dernier = t;
+        for (const o of nombres) {
+          if (o.fini) continue;
+          // La carte a reçu une nouvelle valeur entre-temps : on la lui laisse.
+          if (o.n.data !== o.dit) { o.fini = true; continue; }
+          const p = Math.max(0, Math.min(1, (t - debut - o.delai) / 900));
+          o.dit = p >= 1 ? o.fin : ecrire(o, 1 - Math.pow(1 - p, 3));
+          o.n.data = o.dit;
+          if (p >= 1) o.fini = true;
+        }
+      }
+      for (const o of nombres) if (!o.fini) reste = true;
+      if (reste) requestAnimationFrame(tour);
+    };
+    requestAnimationFrame(tour);
+    // Filet de sécurité : quoi qu'il arrive (page mise en pause), chaque nombre retrouve sa vraie valeur.
+    setTimeout(() => { for (const o of nombres) if (!o.fini && o.n.data === o.dit) { o.n.data = o.fin; o.fini = true; } }, 4000);
+  }
+
   // L'en-tête et le cadre d'un tableau, avec sa grille de sections dedans.
   _garnir(scene, e, colonnes) {
     const tete = document.createElement("div");
@@ -1039,7 +1112,7 @@ class VisionVeillePanel extends HTMLElement {
         this.shadowRoot.appendChild(scene);
         for (const bloc of blocs) {
           for (const c of bloc._cartes) {
-            const el = this._carte(c.config); if (el) bloc.appendChild(el);
+            const el = this._carte(c.config); if (el) { el._fige = !!c.fige; bloc.appendChild(el); }
             await Promise.race([new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))), pause(80)]);
             if (passage !== this._passage) { scene.remove(); return; }
           }
@@ -1116,6 +1189,7 @@ class VisionVeillePanel extends HTMLElement {
       }
     }
     if (e.genre === "tableau") { this._percer(e._colonnes); for (const t of [700, 2000, 4500]) setTimeout(() => this._percer(e._colonnes), t); }
+    if (e.genre === "tableau" && this._anim) { try { this._animer(e); } catch (err) { /* le tableau s'affiche sans animation */ } }
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);
     if (this._fige) return;
