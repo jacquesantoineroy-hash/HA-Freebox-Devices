@@ -94,7 +94,8 @@ class VisionVeillePanel extends HTMLElement {
         .tete { display: flex; justify-content: space-between; align-items: baseline; padding: 3.2vh 3.5vw 1.6vh; }
         .titre { font-size: 3.6vh; font-weight: 600; }
         .petite { font-size: 3.2vh; color: var(--v-texte2); }
-        .colonnes { position: absolute; left: 3.5vw; right: 3.5vw; top: 11vh; bottom: 3vh; overflow: hidden;
+        .cadre { position: absolute; left: 3.5vw; right: 3.5vw; top: 11vh; bottom: 3vh; overflow: hidden; }
+        .colonnes { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; transform-origin: top left;
                     column-width: 400px; column-gap: 24px; column-fill: auto; }
         .section { break-inside: avoid; margin: 0 0 18px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px; }
         .section.longue { break-inside: auto; display: block; }
@@ -190,7 +191,10 @@ class VisionVeillePanel extends HTMLElement {
       tete.className = "tete";
       tete.innerHTML = `<div class="titre"></div><div class="petite"></div>`;
       scene.appendChild(tete);
-      scene.appendChild(e._colonnes);
+      const cadre = document.createElement("div");
+      cadre.className = "cadre";
+      cadre.appendChild(e._colonnes);
+      scene.appendChild(cadre);
       tete.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   ${e.page + 1}/${e.pages}` : "");
     }
     this.shadowRoot.appendChild(scene);
@@ -200,8 +204,29 @@ class VisionVeillePanel extends HTMLElement {
       if (e.page === 0) {
         // Le temps que les cartes se dessinent, puis on compte les écrans nécessaires.
         await pause(1800);
-        for (const s of c.querySelectorAll(".section")) if (s.offsetHeight > c.clientHeight) s.classList.add("longue");
-        await pause(200);
+        const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
+        const sections = [...c.querySelectorAll(".section")];
+        // Peu de sections : leurs cartes se répartissent librement dans les colonnes, pour occuper l'écran.
+        const visibles = Math.max(1, Math.floor((L + 24) / 424));
+        for (const s of sections) if (s.offsetHeight > H || sections.length < visibles) s.classList.add("longue");
+        await pause(250);
+        // Un tableau qui n'occupe qu'un coin de l'écran est agrandi jusqu'à le remplir (deux fois au plus).
+        const occupe = () => {
+          const o = c.getBoundingClientRect(); let d = 0, b = 0;
+          for (const el of c.querySelectorAll(".section > *")) { const r = el.getBoundingClientRect(); if (r.width) { d = Math.max(d, r.right - o.left); b = Math.max(b, r.bottom - o.top); } }
+          return [d, b];
+        };
+        if (c.scrollWidth <= c.clientWidth + 4) {
+          const [d, b] = occupe();
+          let z = d && b ? Math.min(L / d, H / b, 2) * 0.97 : 1;
+          for (let essai = 0; essai < 5 && z > 1.08; essai++) {
+            c.style.width = `${L / z}px`; c.style.height = `${H / z}px`; c.style.transform = `scale(${z})`;
+            await pause(120);
+            if (c.scrollWidth <= c.clientWidth + 4) break;
+            z *= 0.86;
+            if (z <= 1.08) { c.style.width = ""; c.style.height = ""; c.style.transform = ""; }
+          }
+        }
         e.pas = c.clientWidth + 24;
         e.pages = Math.max(1, Math.min(8, Math.ceil((c.scrollWidth - 4) / e.pas)));
         scene.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   1/${e.pages}` : "");
