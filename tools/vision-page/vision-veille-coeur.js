@@ -238,6 +238,9 @@ class VisionVeillePanel extends HTMLElement {
     else { try { const g = el.getGridOptions && el.getGridOptions(); if (g && typeof g.columns === "number") colonnes = Math.max(3, Math.min(12, g.columns)); } catch (e) { /* 12 */ } }
     el.style.gridColumn = `span ${colonnes}`;
     // Un titre ne reste jamais seul en bas d'une colonne : il suit sa carte.
+    // Une page web embarquée (carte météo animée…) est dessinée deux fois plus grande puis réduite de moitié :
+    // le site dispose d'une vraie largeur et ses boutons ne se chevauchent plus.
+    if (config.type === "iframe") { el.style.display = "block"; el.style.width = "200%"; el.style.zoom = "0.5"; }
     if (config.type === "heading") { el.style.breakAfter = "avoid"; el.style.display = "block"; }
     return el;
   }
