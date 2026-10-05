@@ -1274,40 +1274,72 @@ function PageReglages() {
     $Contenu.Children.Add((Section 'Tableaux affichés')) | Out-Null
     $carteL = Carte
     $data = Lire 'veille.json'
+    # La liste vient de Home Assistant (l'agent la relève toutes les vingt secondes) ; « Actualiser » la relit.
+    $teteL = New-Object System.Windows.Controls.DockPanel; $teteL.Margin = [System.Windows.Thickness]::new(0, 0, 0, 8)
+    $actualiser = Bouton 'Actualiser' 'Secondaire' { Rafraichir }; $actualiser.Margin = [System.Windows.Thickness]::new(0)
+    [System.Windows.Controls.DockPanel]::SetDock($actualiser, 'Right'); $teteL.Children.Add($actualiser) | Out-Null
+    $releve = ''
+    try { $releve = 'Liste relevée à ' + (Get-Item (Join-Path $script:Dossier 'veille.json')).LastWriteTime.ToString('HH:mm:ss') + '. Un tableau rendu disponible dans Home Assistant arrive ici en moins d''une minute.' } catch { }
+    $noteL = Txt $releve 11 'Texte2'; $noteL.VerticalAlignment = 'Center'
+    $teteL.Children.Add($noteL) | Out-Null
+    $carteL.Child.Children.Add($teteL) | Out-Null
     $nbDash = 0
-    foreach ($def in @(Prop (Prop $data 'tableaux') 'liste' @())) {
-        $code = [string](Prop $def 'code')
-        if ($code -eq 'horloge') {
-            $carteL.Child.Children.Add((Coche 'Horloge' (-not ($r.masques -contains 'horloge')) { param($s, $e) $rr = SvReglages; $rr.masques = @($rr.masques | Where-Object { $_ -ne 'horloge' }); if (-not $s.IsChecked) { $rr.masques += 'horloge' }; SvEcrire $rr })) | Out-Null
-            continue
-        }
-        if ($code -ne 'dash') { continue }
-        $nbDash++
-        $idTab = [string](Prop $def 'id')
-        $montre = -not ($r.masques -contains $idTab)
-        $ct = Coche ([string](Prop $def 'titre' 'Tableau de bord')) $montre { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.masques = @($rr.masques | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.masques += $cle }; SvEcrire $rr; Rafraichir } $idTab
-        $ct.FontWeight = 'SemiBold'
-        $carteL.Child.Children.Add($ct) | Out-Null
-        if (-not $montre) { continue }
-        # Ses cartes : une ligne par carte du tableau de bord.
-        $lot = New-Object System.Windows.Controls.StackPanel; $lot.Margin = [System.Windows.Thickness]::new(26, 0, 0, 8)
-        foreach ($sec in @(Prop $def 'sections' @())) {
-            $vues = [ordered]@{}
-            foreach ($k in @(Prop $sec 'cases' @())) {
-                $cc = [string](Prop $k 'carte' '')
-                if (-not $vues.Contains($cc)) { $vues[$cc] = @{ nom = [string](Prop $k 'nom' ''); n = 0 } }
-                $vues[$cc].n++
+    $listePage = @(Prop $data 'page' @())
+    if ($listePage.Count -gt 0) {
+        $carteL.Child.Children.Add((Coche 'Horloge' (-not ($r.masques -contains 'horloge')) { param($s, $e) $rr = SvReglages; $rr.masques = @($rr.masques | Where-Object { $_ -ne 'horloge' }); if (-not $s.IsChecked) { $rr.masques += 'horloge' }; SvEcrire $rr })) | Out-Null
+        foreach ($def in $listePage) {
+            $nbDash++
+            $idTab = [string](Prop $def 'id')
+            $montre = -not ($r.masques -contains $idTab)
+            $ct = Coche ([string](Prop $def 'titre' 'Tableau de bord')) $montre { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.masques = @($rr.masques | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.masques += $cle }; SvEcrire $rr; Rafraichir } $idTab
+            $ct.FontWeight = 'SemiBold'
+            $carteL.Child.Children.Add($ct) | Out-Null
+            if (-not $montre) { continue }
+            $lot = New-Object System.Windows.Controls.StackPanel; $lot.Margin = [System.Windows.Thickness]::new(26, 0, 0, 8)
+            $sectionVue = $null
+            foreach ($cc in @(Prop $def 'cartes' @())) {
+                $sec = [string](Prop $cc 'section' '')
+                if ($sec -ne $sectionVue) { $sectionVue = $sec; if ($sec) { $lot.Children.Add((Txt $sec.ToUpper() 10 'Texte3' $true '0,6,0,2')) | Out-Null } }
+                $cleC = $idTab + '|' + [string](Prop $cc 'cle')
+                $lot.Children.Add((Coche ([string](Prop $cc 'nom' 'Carte')) (-not ($r.cartes -contains $cleC)) { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.cartes = @($rr.cartes | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.cartes += $cle }; SvEcrire $rr } $cleC)) | Out-Null
             }
-            if ($vues.Count -eq 0) { continue }
-            $titreSec = [string](Prop $sec 'titre' '')
-            if ($titreSec) { $lot.Children.Add((Txt $titreSec.ToUpper() 10 'Texte3' $true '0,6,0,2')) | Out-Null }
-            foreach ($cc in $vues.Keys) {
-                $nomC = $vues[$cc].nom; if ($vues[$cc].n -gt 1) { $nomC = '{0} (+{1})' -f $nomC, ($vues[$cc].n - 1) }
-                $cleC = $idTab + '|' + $cc
-                $lot.Children.Add((Coche $nomC (-not ($r.cartes -contains $cleC)) { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.cartes = @($rr.cartes | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.cartes += $cle }; SvEcrire $rr } $cleC)) | Out-Null
-            }
+            $carteL.Child.Children.Add($lot) | Out-Null
         }
-        $carteL.Child.Children.Add($lot) | Out-Null
+    } else {
+        foreach ($def in @(Prop (Prop $data 'tableaux') 'liste' @())) {
+            $code = [string](Prop $def 'code')
+            if ($code -eq 'horloge') {
+                $carteL.Child.Children.Add((Coche 'Horloge' (-not ($r.masques -contains 'horloge')) { param($s, $e) $rr = SvReglages; $rr.masques = @($rr.masques | Where-Object { $_ -ne 'horloge' }); if (-not $s.IsChecked) { $rr.masques += 'horloge' }; SvEcrire $rr })) | Out-Null
+                continue
+            }
+            if ($code -ne 'dash') { continue }
+            $nbDash++
+            $idTab = [string](Prop $def 'id')
+            $montre = -not ($r.masques -contains $idTab)
+            $ct = Coche ([string](Prop $def 'titre' 'Tableau de bord')) $montre { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.masques = @($rr.masques | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.masques += $cle }; SvEcrire $rr; Rafraichir } $idTab
+            $ct.FontWeight = 'SemiBold'
+            $carteL.Child.Children.Add($ct) | Out-Null
+            if (-not $montre) { continue }
+            # Ses cartes : une ligne par carte du tableau de bord.
+            $lot = New-Object System.Windows.Controls.StackPanel; $lot.Margin = [System.Windows.Thickness]::new(26, 0, 0, 8)
+            foreach ($sec in @(Prop $def 'sections' @())) {
+                $vues = [ordered]@{}
+                foreach ($k in @(Prop $sec 'cases' @())) {
+                    $cc = [string](Prop $k 'carte' '')
+                    if (-not $vues.Contains($cc)) { $vues[$cc] = @{ nom = [string](Prop $k 'nom' ''); n = 0 } }
+                    $vues[$cc].n++
+                }
+                if ($vues.Count -eq 0) { continue }
+                $titreSec = [string](Prop $sec 'titre' '')
+                if ($titreSec) { $lot.Children.Add((Txt $titreSec.ToUpper() 10 'Texte3' $true '0,6,0,2')) | Out-Null }
+                foreach ($cc in $vues.Keys) {
+                    $nomC = $vues[$cc].nom; if ($vues[$cc].n -gt 1) { $nomC = '{0} (+{1})' -f $nomC, ($vues[$cc].n - 1) }
+                    $cleC = $idTab + '|' + $cc
+                    $lot.Children.Add((Coche $nomC (-not ($r.cartes -contains $cleC)) { param($s, $e) $rr = SvReglages; $cle = [string]$s.Tag; $rr.cartes = @($rr.cartes | Where-Object { $_ -ne $cle }); if (-not $s.IsChecked) { $rr.cartes += $cle }; SvEcrire $rr } $cleC)) | Out-Null
+                }
+            }
+            $carteL.Child.Children.Add($lot) | Out-Null
+        }
     }
     if ($nbDash -eq 0) { $carteL.Child.Children.Add((Txt 'Aucun tableau de bord n''est encore rendu disponible. Cela se choisit dans Home Assistant : Vision, onglet Écran de veille.' 12 'Texte2' $false '0,6,0,0')) | Out-Null }
     $Contenu.Children.Add($carteL) | Out-Null

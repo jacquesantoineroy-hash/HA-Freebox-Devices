@@ -197,7 +197,7 @@ class VisionVeillePanel extends HTMLElement {
       if (masques.has(t.id)) continue;
       const sections = [];
       for (const s of t.sections || []) {
-        const cartes = (s.cartes || []).filter((c) => !(c.cles && c.cles.length && c.cles.every((k) => cachees.has(`${t.id}|${k}`))));
+        const cartes = (s.cartes || []).filter((c) => !cachees.has(`${t.id}|${c.cle}`) && !(c.cles && c.cles.length && c.cles.every((k) => cachees.has(`${t.id}|${k}`))));
         if (cartes.length) sections.push({ titre: s.titre, cartes });
       }
       if (sections.length) liste.push({ genre: "tableau", duree: t.duree || 25, titre: t.titre, sections, pages: 1, page: 0 });

@@ -92,11 +92,22 @@ def _cartes_de(vue: dict[str, Any]) -> list[dict[str, Any]]:
     éléments (celles que l'on coche dans Vision et sur l'appareil)."""
     sections: list[dict[str, Any]] = []
 
+    vues_cles: dict[str, int] = {}
+
     def _carte(carte: Any) -> dict[str, Any] | None:
         if not isinstance(carte, dict) or not carte.get("type"):
             return None
         cles = [f["cle"] for f in veille_dash._feuilles(carte) if f.get("cases")]
-        return {"cles": cles, "config": carte}
+        # Une clé par carte, pour la cocher sur l'appareil : stable tant que la carte ne change pas.
+        import hashlib
+        import json
+
+        cle = hashlib.sha1(json.dumps(carte, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:10]
+        n = vues_cles.get(cle, 0) + 1
+        vues_cles[cle] = n
+        if n > 1:
+            cle = "{}-{}".format(cle, n)
+        return {"cle": cle, "cles": cles, "config": carte}
 
     for section in vue.get("sections") or []:
         if not isinstance(section, dict):
@@ -158,6 +169,41 @@ async def page(hass: HomeAssistant, coord, pc: dict[str, Any] | None, ecran: str
     }
 
 
+def _nom_carte(hass: HomeAssistant, carte: dict[str, Any]) -> str:
+    for champ in ("title", "name", "primary", "heading"):
+        v = carte.get(champ)
+        if isinstance(v, str) and v.strip() and "{{" not in v:
+            return v.strip()[:60]
+    eid = carte.get("entity")
+    if not isinstance(eid, str):
+        ents = carte.get("entities") or carte.get("include") or []
+        premier = ents[0] if isinstance(ents, list) and ents else None
+        eid = premier if isinstance(premier, str) else (premier or {}).get("entity") if isinstance(premier, dict) else None
+    if isinstance(eid, str) and eid:
+        etat = hass.states.get(eid)
+        if etat is not None:
+            return str(etat.attributes.get("friendly_name") or eid)[:60]
+    genre = str(carte.get("type") or "carte").replace("custom:", "").replace("-card", "").replace("-", " ")
+    return genre.capitalize()[:60]
+
+
+def legere(hass: HomeAssistant, complet: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pour les réglages de l'appareil : les tableaux disponibles et leurs cartes, par nom (sans configuration)."""
+    sortie = []
+    for t in complet.get("tableaux") or []:
+        cartes = []
+        for s in t["sections"]:
+            section = s["titre"]
+            for c in s["cartes"]:
+                config = c["config"]
+                if config.get("type") == "heading":
+                    section = str(config.get("heading") or section)
+                    continue
+                cartes.append({"cle": c["cle"], "nom": _nom_carte(hass, config), "section": section})
+        sortie.append({"id": t["id"], "titre": t["titre"], "cartes": cartes})
+    return sortie
+
+
 class PcParentalVeilleAccesView(HomeAssistantView):
     url = "/api/pc_parental/veille/acces"
     name = "api:pc_parental:veille_acces"
@@ -174,10 +220,12 @@ class PcParentalVeilleAccesView(HomeAssistantView):
         coord = _coord(self.hass)
         if coord is None:
             return self.json({"ok": False, "error": "loading"}, status_code=503)
-        if coord.store.by_secret(str(corps.get("id") or ""), str(corps.get("secret") or "")) is None:
+        pc = coord.store.by_secret(str(corps.get("id") or ""), str(corps.get("secret") or ""))
+        if pc is None:
             return self.json({"ok": False, "error": "auth"}, status_code=401)
         try:
-            return self.json({"ok": True, "jeton": await _jeton(self.hass)})
+            tableaux = legere(self.hass, await page(self.hass, coord, pc, str(corps.get("ecran") or "tele")))
+            return self.json({"ok": True, "jeton": await _jeton(self.hass), "tableaux": tableaux})
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception("Accès d'affichage de l'écran de veille")
             return self.json({"ok": False, "error": str(err)}, status_code=500)
