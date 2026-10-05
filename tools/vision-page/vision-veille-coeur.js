@@ -106,6 +106,10 @@ class VisionVeillePanel extends HTMLElement {
         vars[`--ha-color-border-${fam}-${force}`] = force === "quiet" ? ligne : this._melange(carte, base, 0.4);
       }
     }
+    // L'échelle de la couleur principale (interrupteurs, curseurs) part de l'accent de l'appareil.
+    for (const n of [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95]) {
+      vars[`--ha-color-primary-${String(n).padStart(2, "0")}`] = n <= 50 ? this._melange("#000000", accent, 0.25 + 0.75 * n / 50) : this._melange(accent, carte, (n - 50) / 50 * 0.85);
+    }
     for (const n of ["default", "low", "lower", "lowest", "raised"]) vars[`--ha-color-surface-${n}`] = carte;
     // Le style graphique (formes, bordures, lettres) est distinct des couleurs : chacun choisit les deux.
     this._style = this._q.get("style") === "neoretro" ? "neoretro" : "doux";
