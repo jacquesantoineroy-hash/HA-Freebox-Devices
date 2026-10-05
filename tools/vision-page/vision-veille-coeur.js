@@ -149,11 +149,8 @@ class VisionVeillePanel extends HTMLElement {
         .titre { font-size: 3.6vh; font-weight: 600; }
         .petite { font-size: 3.2vh; color: var(--v-texte2); }
         .cadre { position: absolute; left: 3.5vw; right: 3.5vw; top: 11vh; bottom: 9.5vh; overflow: hidden; }
-        .colonnes { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; transform-origin: top left;
-                    column-width: 400px; column-gap: 40px; column-fill: auto; }
-        .section { break-inside: avoid; margin: 0 0 30px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 22px; }
-        .section.longue { break-inside: auto; display: block; }
-        .section.longue > * { margin-bottom: 24px; break-inside: avoid; }
+        .grille { position: absolute; left: 0; top: 0; display: grid; gap: 34px 44px; align-items: start; transform-origin: top left; }
+        .section { display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; align-items: start; }
         .section > * { min-width: 0; }
         .sec { grid-column: 1 / -1; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--v-accent); margin: 2px 2px 0; }
         /* Néo-rétro : filets d'or, angles nets, capitales espacées, chiffres de tableau de bord. */
@@ -170,7 +167,7 @@ class VisionVeillePanel extends HTMLElement {
         /* La marque, en bas à gauche : l'œil de Vision (le même que sur les télés) et son nom. */
         .marque { position: absolute; left: 3.5vw; bottom: 1.6vh; height: 7vh; display: flex; align-items: center; z-index: 5; pointer-events: none; }
         .marque span { margin-left: 1vh; font-size: 2.6vh; font-weight: 700; letter-spacing: .12em; color: var(--v-texte2); opacity: .9; }
-        mushroom-chips-card { margin-bottom: 24px; }
+        mushroom-chips-card { margin-bottom: 4px; }
         .vide { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--v-texte2); font-size: 3vh; }
       </style>
       <div class="marque"><canvas></canvas><span>Vision</span></div>
@@ -198,9 +195,9 @@ class VisionVeillePanel extends HTMLElement {
       const sections = [];
       for (const s of t.sections || []) {
         const cartes = (s.cartes || []).filter((c) => !cachees.has(`${t.id}|${c.cle}`) && !(c.cles && c.cles.length && c.cles.every((k) => cachees.has(`${t.id}|${k}`))));
-        if (cartes.length) sections.push({ titre: s.titre, cartes });
+        if (cartes.length) sections.push({ titre: s.titre, span: s.span || 1, cartes });
       }
-      if (sections.length) liste.push({ genre: "tableau", duree: t.duree || 25, titre: t.titre, sections, pages: 1, page: 0 });
+      if (sections.length) liste.push({ genre: "tableau", duree: t.duree || 25, titre: t.titre, colonnes: t.colonnes || 4, sections, pages: 1, page: 0 });
     }
     if (!liste.length) liste.push({ genre: "horloge", duree: 30 });
     this._ecrans = liste;
@@ -310,15 +307,24 @@ class VisionVeillePanel extends HTMLElement {
       if (e.page === 0) {
         // Les cartes sont créées une fois par passage, pour des valeurs à jour.
         this._cartes = [];
+        // La disposition du tableau de bord est gardée telle quelle : ses sections côte à côte, dans le même
+        // ordre et sur le même nombre de colonnes que dans Home Assistant. Seule la taille s'adapte à l'écran.
         const colonnes = document.createElement("div");
-        colonnes.className = "colonnes";
+        colonnes.className = "grille";
+        const blocs = [];
         for (const s of e.sections) {
           const bloc = document.createElement("div");
           bloc.className = "section";
+          bloc._span = Math.max(1, Math.min(4, s.span || 1));
           if (s.titre) { const t = document.createElement("div"); t.className = "sec"; t.textContent = s.titre; bloc.appendChild(t); }
           for (const c of s.cartes) { const el = this._carte(c.config); if (el) bloc.appendChild(el); }
-          if (bloc.children.length) colonnes.appendChild(bloc);
+          if (bloc.children.length) blocs.push(bloc);
         }
+        const voulu = Math.max(1, Math.min(6, e.colonnes || 4));
+        const n = Math.max(1, Math.min(voulu, blocs.reduce((a, x) => a + x._span, 0)));
+        colonnes.style.gridTemplateColumns = `repeat(${n}, 460px)`;
+        colonnes.style.width = `${n * 460 + (n - 1) * 44}px`;
+        for (const bloc of blocs) { bloc.style.gridColumn = `span ${Math.min(n, bloc._span)}`; colonnes.appendChild(bloc); }
         e._colonnes = colonnes;
       }
       const tete = document.createElement("div");
@@ -342,41 +348,41 @@ class VisionVeillePanel extends HTMLElement {
         this._uneLigne(c);
         // Une page web embarquée est dessinée en double puis réduite de moitié : sa boîte prend la moitié de sa hauteur.
         for (const b of c.querySelectorAll(".web")) { const h = b.firstElementChild ? b.firstElementChild.offsetHeight : 0; if (h) b.style.height = `${h / 2}px`; }
+        // Les rangées de sections, de haut en bas ; ce qui ne tient pas en hauteur passe sur l'écran suivant.
         const sections = [...c.querySelectorAll(".section")];
-        // Peu de sections : leurs cartes se répartissent librement dans les colonnes, pour occuper l'écran.
-        const visibles = Math.max(1, Math.floor((L + 40) / 440));
-        for (const s of sections) if (s.offsetHeight > H || sections.length < visibles) s.classList.add("longue");
-        await pause(250);
-        // Tout tient sur un écran : on cherche le nombre de colonnes qui permet le plus grand agrandissement
-        // (2,2 fois au plus), puis on centre. Un petit tableau de bord remplit ainsi l'écran au lieu d'un coin.
-        if (c.scrollWidth <= c.clientWidth + 4) {
-          const elements = c.querySelectorAll(".section > *").length;
-          if (sections.length < 3) for (const s of sections) s.classList.add("longue");
-          const blocs = sections.length < 3 ? elements : sections.length;
-          let mieux = null;
-          c.style.height = "auto"; c.style.columnWidth = "auto"; c.style.columnFill = "balance";
-          for (let k = 1; k <= Math.min(blocs, 6); k++) {
-            const lk = k * 420 + (k - 1) * 40;
-            c.style.width = `${lk}px`; c.style.columnCount = String(k);
-            await pause(70);
-            const hk = c.scrollHeight || 1;
-            const z = Math.min(L / lk, H / hk, 2.2);
-            if (!mieux || z > mieux.z + 0.01) mieux = { k, lk, hk, z };
-          }
-          if (mieux) {
-            const z = mieux.z * 0.98;
-            c.style.width = `${mieux.lk}px`; c.style.columnCount = String(mieux.k);
-            c.style.transform = `scale(${z})`;
-            c.style.left = `${Math.max(0, (L - mieux.lk * z) / 2)}px`;
-            c.style.top = `${Math.max(0, Math.min((H - mieux.hk * z) / 2, H * 0.12))}px`;
-            c.style.overflow = "visible";
+        const rangees = [];
+        for (const s of sections) {
+          const derniere = rangees[rangees.length - 1];
+          if (derniere && Math.abs(derniere.haut - s.offsetTop) < 4) { derniere.sections.push(s); derniere.bas = Math.max(derniere.bas, s.offsetTop + s.offsetHeight); }
+          else rangees.push({ haut: s.offsetTop, bas: s.offsetTop + s.offsetHeight, sections: [s] });
+        }
+        const larg = c.offsetWidth || 1, haut = c.offsetHeight || 1;
+        const zl = Math.min(L / larg, 2.2);
+        e._pages = [];
+        if (haut * zl <= H || H / haut >= zl * 0.62) {
+          // Tout tient sur un écran, quitte à réduire un peu.
+          e._pages.push({ haut: 0, bas: haut, sections });
+        } else {
+          let courante = null;
+          for (const r of rangees) {
+            if (courante && (r.bas - courante.haut) * zl <= H) { courante.bas = r.bas; courante.sections.push(...r.sections); }
+            else { courante = { haut: r.haut, bas: r.bas, sections: [...r.sections] }; e._pages.push(courante); }
           }
         }
-        e.pas = c.clientWidth + 40;
-        e.pages = Math.max(1, Math.min(8, Math.ceil((c.scrollWidth - 4) / e.pas)));
+        e._pages = e._pages.slice(0, 8);
+        e._larg = larg; e._L = L; e._H = H;
+        e.pages = e._pages.length || 1;
         scene.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   1/${e.pages}` : "");
       }
-      c.scrollLeft = e.page * e.pas;
+      // L'écran demandé : ses sections seules, à la plus grande taille qui tient, centrées.
+      const pg = e._pages[e.page] || e._pages[0];
+      if (pg) {
+        const hp = Math.max(1, pg.bas - pg.haut);
+        const z = Math.min(e._L / e._larg, e._H / hp, 2.2) * 0.985;
+        for (const s of c.querySelectorAll(".section")) s.style.visibility = pg.sections.includes(s) ? "visible" : "hidden";
+        const dx = Math.max(0, (e._L - e._larg * z) / 2), dy = Math.max(0, Math.min((e._H - hp * z) / 2, e._H * 0.1));
+        c.style.transform = `translate(${dx}px, ${dy - pg.haut * z}px) scale(${z})`;
+      }
     }
     requestAnimationFrame(() => { scene.classList.add("vue"); if (ancienne) { ancienne.classList.remove("vue"); setTimeout(() => ancienne.remove(), 700); } });
     clearTimeout(this._minuteur);

@@ -114,10 +114,11 @@ def _cartes_de(vue: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         cartes = [c for c in (_carte(x) for x in section.get("cards") or []) if c]
         if cartes:
-            sections.append({"titre": str(section.get("title") or ""), "cartes": cartes})
+            portee = section.get("column_span")
+            sections.append({"titre": str(section.get("title") or ""), "span": portee if isinstance(portee, int) else 1, "cartes": cartes})
     libres = [c for c in (_carte(x) for x in vue.get("cards") or []) if c]
     if libres:
-        sections.extend({"titre": "", "cartes": [c]} for c in libres)
+        sections.extend({"titre": "", "span": 1, "cartes": [c]} for c in libres)
     return sections
 
 
@@ -148,7 +149,7 @@ async def page(hass: HomeAssistant, coord, pc: dict[str, Any] | None, ecran: str
                         continue
                     gardees.append(c)
                 if gardees:
-                    sections.append({"titre": s["titre"], "cartes": gardees})
+                    sections.append({"titre": s["titre"], "span": s.get("span", 1), "cartes": gardees})
             if not sections:
                 continue
             titre_vue = str(vue.get("title") or "")
@@ -156,7 +157,7 @@ async def page(hass: HomeAssistant, coord, pc: dict[str, Any] | None, ecran: str
                 "id": "dash_{}_{}".format(adresse, cv),
                 "titre": titre_vue if titre_vue and len(vues) > 1 else nom,
                 "duree": choix["duree"],
-                "colonnes": vue.get("max_columns") if isinstance(vue.get("max_columns"), int) else 3,
+                "colonnes": vue.get("max_columns") if isinstance(vue.get("max_columns"), int) else 4,
                 "sections": sections,
             })
     horloge = next((t for t in vt.configuration(coord) if t["code"] == "horloge"), None)
