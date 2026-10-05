@@ -193,6 +193,31 @@ function CreerFenetre() {
         </Setter.Value>
       </Setter>
     </Style>
+    <Style x:Key="Coche" TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{StaticResource Texte}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <StackPanel Orientation="Horizontal" Background="Transparent">
+              <Border x:Name="boite" Width="22" Height="22" CornerRadius="7" Background="{StaticResource Haute}" BorderBrush="{StaticResource Ligne}" BorderThickness="1.5" VerticalAlignment="Center">
+                <Path x:Name="trait" Data="M4.5,10 L8.5,14 L15,5.5" Stroke="{StaticResource OrSombre}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed"/>
+              </Border>
+              <ContentPresenter Margin="11,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="boite" Property="Background" Value="{StaticResource Or}"/>
+                <Setter TargetName="boite" Property="BorderBrush" Value="{StaticResource Or}"/>
+                <Setter TargetName="trait" Property="Visibility" Value="Visible"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="boite" Property="BorderBrush" Value="{StaticResource Or}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style x:Key="Champ" TargetType="TextBox">
       <Setter Property="Background" Value="{StaticResource Haute}"/>
       <Setter Property="Foreground" Value="{StaticResource Texte}"/>
@@ -1174,8 +1199,8 @@ $script:SvGuet.Start()
 # Les réglages de ce PC, dans la fenêtre (onglet Réglages) : thème, écran de veille, tableaux et cartes.
 function Coche([string]$t, [bool]$etat, $action, $tag = $null) {
     $c = New-Object System.Windows.Controls.CheckBox
-    $c.Content = $t; $c.IsChecked = $etat; $c.Foreground = (Pinceau 'Texte'); $c.FontSize = 13; $c.Tag = $tag; $c.Cursor = 'Hand'
-    $c.Margin = [System.Windows.Thickness]::new(0, 5, 0, 5); $c.VerticalContentAlignment = 'Center'
+    $c.Content = $t; $c.IsChecked = $etat; $c.Style = $script:W.Resources['Coche']; $c.Tag = $tag
+    $c.Margin = [System.Windows.Thickness]::new(0, 6, 0, 6)
     if ($action) { $c.Add_Click($action) }
     return $c
 }
