@@ -12,14 +12,17 @@ val signing = Properties().apply {
 
 android {
     namespace = "fr.familleroy.vision"
-    compileSdk = 34
+    // Compilé contre l'API qu'on vise : targetSdk 36 (depuis la 1.34.2) contre un
+    // compileSdk 34 laissait le code ignorer les API et changements de comportement
+    // d'Android 15 et 16 qu'il subit pourtant sur les appareils récents.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "fr.familleroy.vision"
         // Android 5.0 : couvre Fire OS 5+, vieux téléphones et TV.
         minSdk = 21
-        // 33 : évite les contraintes de type de service au premier plan
-        // d'Android 14 tout en restant installable partout.
+        // 36 (Android 16) depuis la 1.34.2. Le service au premier plan déclare
+        // foregroundServiceType="specialUse", exigé à partir de la cible 34.
         targetSdk = 36
         versionCode = 98
         versionName = "1.48.0"
