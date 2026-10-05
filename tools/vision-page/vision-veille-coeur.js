@@ -177,6 +177,62 @@ const HORLOGES = {
       dessiner(".c1", 92, h * 30); dessiner(".c2", 78, m * 6); dessiner(".c3", 64, (s + 1) * 6);
     },
   },
+  // Code : des colonnes de signes qui tombent derrière des chiffres de terminal.
+  code: {
+    html: (c) => `<div class="pluie">${Array.from({ length: 22 }, () => "<i></i>").join("")}</div><div class="heure"></div><div class="date">&gt; ${c.jourCourt.toUpperCase()} <b class="sec"></b><u>_</u></div>`,
+    tic: (el, d) => {
+      poser(el, ".heure", hm(d)); poser(el, ".sec", `:${p2(d.getSeconds())}`);
+      const signes = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ0123456789";
+      el.querySelectorAll(".pluie i").forEach((x, i) => {
+        if (x.textContent && (i + d.getSeconds()) % 3) { x.style.transform = `translateY(${(parseFloat(x.dataset.y) + 4).toFixed(0)}vh)`; x.dataset.y = String(parseFloat(x.dataset.y) + 4); return; }
+        let t = ""; const n = 6 + Math.floor(Math.random() * 12); for (let k = 0; k < n; k++) t += signes[Math.floor(Math.random() * signes.length)];
+        x.textContent = t; x.dataset.y = String(-20 + Math.random() * 60); x.style.transform = `translateY(${x.dataset.y}vh)`; x.style.opacity = (0.25 + Math.random() * 0.5).toFixed(2);
+      });
+    },
+  },
+  // Plume : une plume qui flotte au-dessus de l'heure, un banc dessous.
+  plume: {
+    html: (c) => `<svg class="vol" viewBox="0 0 60 30"><path d="M 2 26 C 14 20 30 6 56 3 C 50 14 34 24 12 26 Z"/><path class="tige" d="M 2 27 C 18 22 36 12 54 4"/></svg><div class="heure"></div><div class="banc"></div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => poser(el, ".heure", hm(d)),
+  },
+  // Galaxie : des chiffres en contour sur un champ d'étoiles.
+  galaxie: {
+    html: (c) => `<div class="etoiles">${Array.from({ length: 70 }, (_, i) => `<i style="left:${((Math.sin(i * 12.9898) * 43758.5453) % 1 * 50 + 50).toFixed(1)}%;top:${((Math.sin(i * 78.233) * 12543.123) % 1 * 50 + 50).toFixed(1)}%;opacity:${(0.25 + (i % 7) / 9).toFixed(2)};width:${1 + (i % 3)}px;height:${1 + (i % 3)}px"></i>`).join("")}</div><div class="heure"></div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => poser(el, ".heure", hm(d)),
+  },
+  // Rétro 85 : le tableau de bord d'une machine à voyager, case par case.
+  "retro-85": {
+    html: (c) => `<div class="tableau">${[["mois", "MOIS"], ["jour", "JOUR"], ["an", "ANNÉE"], ["hh", "HEURE"], ["mm", "MIN"]].map(([k, t]) => `<div class="case ${k}"><b></b><span>${t}</span></div>`).join("")}</div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => {
+      poser(el, ".mois b", d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", "").slice(0, 4).toUpperCase());
+      poser(el, ".jour b", p2(d.getDate())); poser(el, ".an b", String(d.getFullYear())); poser(el, ".hh b", p2(d.getHours())); poser(el, ".mm b", p2(d.getMinutes()));
+    },
+  },
+  // Grimoire : une heure de vieux livre, entre deux filets étoilés.
+  grimoire: {
+    html: (c) => `<div class="filet"><span>✦</span></div><div class="heure"></div><div class="filet"><span>✦</span></div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => poser(el, ".heure", hm(d)),
+  },
+  // Féerie : une voûte d'étoiles qui s'allument l'une après l'autre.
+  feerie: {
+    html: (c) => `<svg class="voute" viewBox="-110 -100 220 70">${Array.from({ length: 11 }, (_, i) => { const [x, y] = pt(92, -60 + i * 12), r = i % 2 ? 5 : 8; return `<path class="et" transform="translate(${x} ${y})" d="M 0 ${-r} Q 0 0 ${r} 0 Q 0 0 0 ${r} Q 0 0 ${-r} 0 Q 0 0 0 ${-r} Z"/>`; }).join("")}</svg><div class="heure"></div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => { poser(el, ".heure", hm(d)); const s = d.getSeconds() % 11; el.querySelectorAll(".et").forEach((x, i) => x.classList.toggle("vif", i === s || i === (s + 5) % 11)); },
+  },
+  // Banquise : un flocon qui tourne d'un cran par seconde, des chiffres de givre.
+  banquise: {
+    html: (c) => `<svg class="flocon" viewBox="-50 -50 100 100"><g class="tour">${Array.from({ length: 6 }, (_, i) => `<g transform="rotate(${i * 60})"><line x1="0" y1="0" x2="0" y2="-44"/><line x1="0" y1="-20" x2="-9" y2="-29"/><line x1="0" y1="-20" x2="9" y2="-29"/><line x1="0" y1="-32" x2="-6" y2="-38"/><line x1="0" y1="-32" x2="6" y2="-38"/></g>`).join("")}</g></svg><div class="heure"></div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => { poser(el, ".heure", hm(d)); tourner(el, ".tour", d.getSeconds() * 6); },
+  },
+  // Lagon : une spirale de vague, une perle qui en fait le tour en une heure.
+  lagon: {
+    html: (c) => `<div class="rond">${svg(`<path class="spire" d="M ${Array.from({ length: 90 }, (_, i) => { const a = i * 12, [x, y] = pt(16 + i * 0.88, a); return `${x} ${y}`; }).join(" L ")}"/><g class="perle"><circle r="5"/></g>`)}<div class="dedans"><div class="heure"></div><div class="date">${c.jourCourt}</div></div></div>`,
+    tic: (el, d) => { poser(el, ".heure", hm(d)); const [x, y] = pt(95, (d.getMinutes() + d.getSeconds() / 60) * 6), p = el.querySelector(".perle"); if (p) p.setAttribute("transform", `translate(${x} ${y})`); },
+  },
+  // Étincelle : des chiffres ronds et un éclair à la place des deux-points.
+  etincelle: {
+    html: (c) => `<div class="duo"><span class="hh"></span><svg class="eclair" viewBox="0 0 24 40"><path d="M 14 0 L 2 22 H 11 L 8 40 L 22 15 H 13 Z"/></svg><span class="mm"></span></div><div class="pastille">${c.jour}</div>`,
+    tic: (el, d) => { poser(el, ".hh", p2(d.getHours())); poser(el, ".mm", p2(d.getMinutes())); el.classList.toggle("flash", d.getSeconds() % 2 === 0); },
+  },
 };
 
 const CSS_HORLOGES = `
@@ -299,6 +355,53 @@ const CSS_HORLOGES = `
   .h-sous-bois .c1, .h-sous-bois .c2, .h-sous-bois .c3 { fill: none; stroke-linecap: round; stroke-width: 6; stroke: var(--v-accent); }
   .h-sous-bois .c2 { stroke: var(--v-texte); stroke-width: 4.5; } .h-sous-bois .c3 { stroke: var(--v-texte2); stroke-width: 3; }
   .h-sous-bois .rond .heure { font-size: min(11vh, 14vw); font-weight: 300; }
+  .h-code { position: relative; overflow: hidden; font-family: Consolas, "Roboto Mono", "DejaVu Sans Mono", monospace; }
+  .h-code .pluie { position: absolute; inset: 0; display: flex; justify-content: space-between; padding: 0 2vw; }
+  .h-code .pluie i { font-style: normal; writing-mode: vertical-rl; text-orientation: upright; color: var(--v-accent); font-size: min(2.4vh, 3vw); line-height: 1; transition: transform 1s linear; }
+  .h-code .heure { position: relative; font-size: min(26vh, 28vw); font-weight: 700; color: var(--v-accent); text-shadow: 0 0 3vh var(--v-fond), 0 0 6vh var(--v-fond); }
+  .h-code .date { position: relative; color: var(--v-texte); letter-spacing: .12em; font-size: min(3vh, 4vw); text-shadow: 0 0 2vh var(--v-fond); }
+  .h-code .date b { color: var(--v-accent); font-weight: 400; } .h-code .date u { text-decoration: none; color: var(--v-accent); }
+  .h-plume { font-family: Georgia, "Times New Roman", serif; }
+  .h-plume .vol { width: min(16vh, 20vw); margin-bottom: 1vh; animation: plume 11s ease-in-out infinite alternate; }
+  .h-plume .vol path { fill: var(--v-texte2); opacity: .55; } .h-plume .vol .tige { fill: none; stroke: var(--v-texte); stroke-width: .8; opacity: .8; }
+  @keyframes plume { from { transform: translate(-9vw, -1vh) rotate(-14deg); } to { transform: translate(9vw, 2vh) rotate(10deg); } }
+  .h-plume .heure { font-size: min(24vh, 28vw); font-weight: 400; }
+  .h-plume .banc { width: min(34vw, 50vh); height: .5vh; border-radius: 9px; background: var(--v-accent); margin-top: 2.4vh; }
+  .h-plume .date { font-style: italic; }
+  .h-galaxie { position: relative; }
+  .h-galaxie .etoiles { position: absolute; inset: 0; } .h-galaxie .etoiles i { position: absolute; border-radius: 50%; background: var(--v-texte); }
+  .h-galaxie .heure { position: relative; font-size: min(27vh, 30vw); font-weight: 800; letter-spacing: .04em; color: transparent; -webkit-text-stroke: .5vh var(--v-accent); }
+  .h-galaxie .date { position: relative; text-transform: uppercase; letter-spacing: .5em; color: var(--v-accent); font-size: min(2.8vh, 3.6vw); margin-top: 4vh; }
+  .h-retro-85 { font-family: Consolas, "Roboto Mono", "DejaVu Sans Mono", monospace; }
+  .h-retro-85 .tableau { display: flex; flex-wrap: wrap; justify-content: center; max-width: 88vw; box-sizing: border-box; row-gap: 2.6vh; gap: 2.6vh 1.6vw; padding: 3vh 2.4vw; border: 2px solid var(--v-ligne); border-radius: 1.2vh; background: var(--v-carte); }
+  .h-retro-85 .case { display: flex; flex-direction: column; align-items: center; gap: 1.4vh; }
+  .h-retro-85 .case b { min-width: 2.2em; text-align: center; padding: 1vh 1.2vw; background: var(--v-fond); border-radius: .6vh; font-size: min(11vh, 8.4vw); font-weight: 700; color: var(--v-accent); text-shadow: 0 0 1.6vh var(--v-accent); }
+  .h-retro-85 .case.hh b, .h-retro-85 .case.mm b { color: var(--v-texte); text-shadow: 0 0 1.6vh var(--v-texte2); }
+  .h-retro-85 .case span { font-size: min(2vh, 2.4vw); letter-spacing: .2em; color: var(--v-fond); background: var(--v-accent); padding: .3vh 1vh; border-radius: 2px; }
+  .h-retro-85 .date { margin-top: 4vh; letter-spacing: .14em; text-transform: uppercase; font-size: min(2.8vh, 3.6vw); }
+  .h-grimoire { font-family: Georgia, "Times New Roman", serif; }
+  .h-grimoire .filet { display: flex; align-items: center; gap: 1.4vw; width: min(52vw, 80vh); color: var(--v-accent); font-size: min(3vh, 4vw); }
+  .h-grimoire .filet::before, .h-grimoire .filet::after { content: ""; flex: 1; height: 1px; background: var(--v-accent); }
+  .h-grimoire .heure { font-size: min(25vh, 28vw); font-weight: 400; letter-spacing: .03em; margin: 1vh 0 2vh; }
+  .h-grimoire .date { font-style: italic; font-variant: small-caps; letter-spacing: .08em; margin-top: 3vh; }
+  .h-feerie .voute { width: min(70vh, 76vw); overflow: visible; margin-bottom: -2vh; }
+  .h-feerie .et { fill: var(--v-accent); opacity: .45; transition: opacity 1s ease; } .h-feerie .et.vif { opacity: 1; }
+  .h-feerie .heure { font-size: min(24vh, 28vw); font-weight: 300; }
+  .h-banquise .flocon { width: min(15vh, 18vw); margin-bottom: 1vh; }
+  .h-banquise .flocon line { stroke: var(--v-accent); stroke-width: 2.4; stroke-linecap: round; } .h-banquise .tour { transition: transform 1s linear; }
+  .h-banquise .heure { font-size: min(26vh, 30vw); font-weight: 200; letter-spacing: .02em; }
+  .h-lagon .rond { position: relative; width: min(74vh, 84vw); height: min(74vh, 84vw); }
+  .h-lagon .rond .cadran { width: 100%; height: 100%; }
+  .h-lagon .spire { fill: none; stroke: var(--v-ligne); stroke-width: 2.2; stroke-linecap: round; }
+  .h-lagon .perle circle { fill: var(--v-accent); }
+  .h-lagon .dedans { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .h-lagon .rond .heure { font-size: min(13vh, 16vw); font-weight: 600; text-shadow: 0 0 3vh var(--v-fond), 0 0 3vh var(--v-fond); }
+  .h-lagon .rond .date { text-shadow: 0 0 2vh var(--v-fond); }
+  .h-etincelle { font-family: "Arial Rounded MT Bold", "Segoe UI Black", "Segoe UI", Roboto, sans-serif; }
+  .h-etincelle .duo { display: flex; align-items: center; font-size: min(27vh, 26vw); font-weight: 900; line-height: 1; }
+  .h-etincelle .eclair { height: .8em; margin: 0 .06em; } .h-etincelle .eclair path { fill: var(--v-accent); transition: opacity .6s ease; }
+  .h-etincelle.flash .eclair path { opacity: .45; }
+  .h-etincelle .pastille { margin-top: 3.4vh; padding: 1vh 3vh; border-radius: 99px; background: var(--v-accent); color: var(--v-carte); font-weight: 800; font-size: min(3vh, 4.2vw); }
 `;
 
 

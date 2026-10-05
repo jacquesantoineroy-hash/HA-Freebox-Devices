@@ -53,6 +53,25 @@ object Themes {
             0xFFF8FAFC.toInt(), 0x55C2553A, 0xFFC2553A.toInt(), 0xFFC2553A.toInt(), intArrayOf(0xD08A7A, 0x86929E, 0xE2B8AE), false),
         Theme("Sous-bois", 0xFF1A2119.toInt(), 0xFFECE6D6.toInt(), 0xFFA9B19C.toInt(), 0xFF777F6E.toInt(),
             0xFF252E23.toInt(), 0x55C58B3B, 0xFFC58B3B.toInt(), 0xFFC58B3B.toInt(), intArrayOf(0x89662F, 0x7E8675, 0x65532D), true),
+        // Thèmes d'histoires : écran (Code, Plume, Galaxie, Rétro 85, Grimoire), contes (Féerie, Banquise, Lagon), créatures (Étincelle).
+        Theme("Code", 0xFF030A05.toInt(), 0xFFD7FFE0.toInt(), 0xFF6FBF87.toInt(), 0xFF49805A.toInt(),
+            0xFF0A1A10.toInt(), 0x552BEA6B, 0xFF2BEA6B.toInt(), 0xFF2BEA6B.toInt(), intArrayOf(0x1D9C47, 0x4F8960, 0x176D34), true),
+        Theme("Plume", 0xFFE8F1F7.toInt(), 0xFF23313D.toInt(), 0xFF5F7482.toInt(), 0xFF8FA0AB.toInt(),
+            0xFFF8FBFD.toInt(), 0x55A8552F, 0xFFA8552F.toInt(), 0xFFA8552F.toInt(), intArrayOf(0xBE8C75, 0x889AA5, 0xD8B9AB), false),
+        Theme("Galaxie", 0xFF05060A.toInt(), 0xFFF4F1E4.toInt(), 0xFF9AA0B4.toInt(), 0xFF666A78.toInt(),
+            0xFF10131C.toInt(), 0x55FFD426, 0xFFFFD426.toInt(), 0xFFFFD426.toInt(), intArrayOf(0xA88C1C, 0x6D7281, 0x706020), true),
+        Theme("Rétro 85", 0xFF14100E.toInt(), 0xFFF6EDE2.toInt(), 0xFFB8A698.toInt(), 0xFF7F7268.toInt(),
+            0xFF221B17.toInt(), 0x55FF7A1A, 0xFFFF7A1A.toInt(), 0xFFFF7A1A.toInt(), intArrayOf(0xAD5516, 0x87796F, 0x7A4118), true),
+        Theme("Grimoire", 0xFF1C1210.toInt(), 0xFFF1E6CF.toInt(), 0xFFB9A583.toInt(), 0xFF82725B.toInt(),
+            0xFF2A1C18.toInt(), 0x55D4A843, 0xFFD4A843.toInt(), 0xFFD4A843.toInt(), intArrayOf(0x947431, 0x8A7960, 0x6E5429), true),
+        Theme("Féerie", 0xFF141A3C.toInt(), 0xFFF6F3FF.toInt(), 0xFFB4B8E0.toInt(), 0xFF7C81A7.toInt(),
+            0xFF1F2757.toInt(), 0x55FFD36E, 0xFFFFD36E.toInt(), 0xFFFFD36E.toInt(), intArrayOf(0xAD925C, 0x8489AF, 0x796C60), true),
+        Theme("Banquise", 0xFFE9F4FB.toInt(), 0xFF173247.toInt(), 0xFF5C7C92.toInt(), 0xFF8DA6B7.toInt(),
+            0xFFF8FCFF.toInt(), 0x552F8FCB, 0xFF2F8FCB.toInt(), 0xFF2F8FCB.toInt(), intArrayOf(0x70B2DC, 0x86A0B2, 0xA8D0EA), false),
+        Theme("Lagon", 0xFF06343B.toInt(), 0xFFF3F0DC.toInt(), 0xFF9CC7C2.toInt(), 0xFF689493.toInt(),
+            0xFF0C4750.toInt(), 0x55FF8A5B, 0xFFFF8A5B.toInt(), 0xFFFF8A5B.toInt(), intArrayOf(0xA86C50, 0x6F9B9A, 0x6D6254), true),
+        Theme("Étincelle", 0xFFFFF4CC.toInt(), 0xFF2B2416.toInt(), 0xFF75683F.toInt(), 0xFFA59970.toInt(),
+            0xFFFFFBEA.toInt(), 0x55D93A2B, 0xFFD93A2B.toInt(), 0xFFD93A2B.toInt(), intArrayOf(0xE67B63, 0x9E9269, 0xF0AE9E), false),
     )
 
     /** Le nom d'un thème en clé simple (« Rose poudré » → « rose-poudre ») : c'est elle qui choisit l'horloge de la veille. */
