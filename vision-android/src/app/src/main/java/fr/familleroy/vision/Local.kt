@@ -138,6 +138,8 @@ object Local {
     fun poserFondCartes(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("fond_cartes", on).apply(); toucher() }
     fun contourCartes(ctx: Context): Boolean = p(ctx).getBoolean("contour_cartes", false)
     fun poserContourCartes(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("contour_cartes", on).apply(); toucher() }
+    fun animerCartes(ctx: Context): Boolean = p(ctx).getBoolean("animer_cartes", true)
+    fun poserAnimerCartes(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("animer_cartes", on).apply(); toucher() }
 
     /** Les tableaux et leurs cartes tels que la page de veille les montre : [{id, titre, cartes: [{cle, cles, nom, section}]}]. */
     fun listeWeb(ctx: Context): JSONArray = try { JSONArray(p(ctx).getString("liste_web", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }

@@ -202,7 +202,7 @@ object PageVeille {
         val q = "id=${e(cfg.id)}&ecran=$ecran&dec=0" +
             "&fond=${hex(t.fond)}&carte=${hex(carte)}&texte=${hex(t.encre)}&texte2=${hex(t.encre2)}&accent=${hex(accent)}&ligne=${hex(Palette.melanger(carte, t.encre, 0.18f))}" +
             "&masques=${e(masques.joinToString(","))}&cartes=${e(cartes.joinToString(","))}&durees=${e(durees.joinToString(","))}" +
-            "&horloge=${Themes.cle(t.nom)}&style=${Local.styleCartes(ctx)}&cfond=${if (Local.fondCartes(ctx)) 1 else 0}&ccontour=${if (Local.contourCartes(ctx)) 1 else 0}"
+            "&horloge=${Themes.cle(t.nom)}&style=${Local.styleCartes(ctx)}&cfond=${if (Local.fondCartes(ctx)) 1 else 0}&ccontour=${if (Local.contourCartes(ctx)) 1 else 0}&anim=${if (Local.animerCartes(ctx)) 1 else 0}"
         return "$base/api/pc_parental/veille/entree#t=$jeton&q=${e(q).replace("+", "%20")}"
     }
 }

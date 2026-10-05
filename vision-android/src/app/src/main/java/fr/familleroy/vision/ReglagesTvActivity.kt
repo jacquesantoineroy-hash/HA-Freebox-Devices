@@ -143,6 +143,7 @@ class ReglagesTvActivity : Activity() {
             gauche.addView(ligne("Style des cartes", styles.first { it.first == style }.second, "style") { Local.poserStyleCartes(this, styles[(styles.indexOfFirst { it.first == style } + 1) % styles.size].first); repeindre() })
             gauche.addView(ligne("Fond sous les cartes", if (Local.fondCartes(this)) "Oui" else "Non", "fond_cartes") { Local.poserFondCartes(this, !Local.fondCartes(this)); repeindre() })
             gauche.addView(ligne("Contour des cartes", if (Local.contourCartes(this)) "Oui" else "Non", "contour_cartes") { Local.poserContourCartes(this, !Local.contourCartes(this)); repeindre() })
+            gauche.addView(ligne("Cartes animées", if (Local.animerCartes(this)) "Oui" else "Non", "animer_cartes") { Local.poserAnimerCartes(this, !Local.animerCartes(this)); repeindre() })
         }
         if (tele) {
             val delai = Local.delaiVeille(this)

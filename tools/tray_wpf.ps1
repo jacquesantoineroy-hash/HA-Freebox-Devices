@@ -83,7 +83,7 @@ $script:Themes = [ordered]@{
 }
 $script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
 function SvReglages() {
-    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; fondCartes = $true; contourCartes = $false; masques = @(); cartes = @(); verrou = $false; codeSel = ''; codeHash = '' }
+    $r = @{ actif = $true; delai = 10; theme = 'Vision'; style = 'doux'; fondCartes = $true; contourCartes = $false; animer = $true; masques = @(); cartes = @(); verrou = $false; codeSel = ''; codeHash = '' }
     try {
         if (Test-Path $script:SvFichier) {
             $lu = Get-Content $script:SvFichier -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -93,6 +93,7 @@ function SvReglages() {
             if (@('doux', 'neoretro') -contains [string](Prop $lu 'style')) { $r.style = [string](Prop $lu 'style') }
             if ($null -ne (Prop $lu 'fondCartes')) { $r.fondCartes = [bool](Prop $lu 'fondCartes') }
             if ($null -ne (Prop $lu 'contourCartes')) { $r.contourCartes = [bool](Prop $lu 'contourCartes') }
+            if ($null -ne (Prop $lu 'animer')) { $r.animer = [bool](Prop $lu 'animer') }
             if ($null -ne (Prop $lu 'verrou')) { $r.verrou = [bool](Prop $lu 'verrou') }
             $r.codeSel = [string](Prop $lu 'codeSel' ''); $r.codeHash = [string](Prop $lu 'codeHash' '')
             $r.masques = @(@(Prop $lu 'masques' @()) | ForEach-Object { [string]$_ })
@@ -105,7 +106,7 @@ function SvEcrire($r) {
     try {
         $d = Split-Path $script:SvFichier -Parent
         if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; fondCartes = [bool]$r.fondCartes; contourCartes = [bool]$r.contourCartes; masques = @($r.masques); cartes = @($r.cartes); verrou = [bool]$r.verrou; codeSel = [string]$r.codeSel; codeHash = [string]$r.codeHash } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
+        (@{ actif = [bool]$r.actif; delai = [int]$r.delai; theme = [string]$r.theme; style = [string]$r.style; fondCartes = [bool]$r.fondCartes; contourCartes = [bool]$r.contourCartes; animer = [bool]$r.animer; masques = @($r.masques); cartes = @($r.cartes); verrou = [bool]$r.verrou; codeSel = [string]$r.codeSel; codeHash = [string]$r.codeHash } | ConvertTo-Json -Compress) | Set-Content -Path $script:SvFichier -Encoding UTF8
     } catch { }
 }
 $script:Pal = $script:Themes[(SvReglages).theme]
@@ -1226,9 +1227,9 @@ function SvOuvrirWeb() {
     $tous = @([System.Windows.Forms.Screen]::AllScreens | Sort-Object { -not $_.Primary })
     $depart = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     foreach ($ecran in $tous) {
-        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}&cfond={11}&ccontour={12}&ecrans={13}&t0={14}&horloge={15}' -f `
+        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}&cfond={11}&ccontour={12}&ecrans={13}&t0={14}&horloge={15}&anim={16}' -f `
             [uri]::EscapeDataString([string](Prop $acces 'id' '')), $j, $pal.Fond.Substring(3), $pal.Carte.Substring(3), $pal.Texte.Substring(3), $pal.Texte2.Substring(3), $pal.Or.Substring(3), $pal.Ligne.Substring(3), `
-            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 }), $tous.Count, $depart, [string]$pal.Horloge
+            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 }), $tous.Count, $depart, [string]$pal.Horloge, $(if ($r.animer) { 1 } else { 0 })
         $adresse = '{0}/api/pc_parental/veille/entree#t={1}&q={2}' -f $base, $jeton, [uri]::EscapeDataString($q)
         $profilEdge = Join-Path $env:LOCALAPPDATA ('Vision\veille-edge-{0}' -f $j)
         # Une fenêtre d'application en mode borne par écran, placée sur le sien ; en navigation privée, pour
@@ -1396,6 +1397,7 @@ function PageReglages() {
     $carteT.Child.Children.Add($styles) | Out-Null
     $carteT.Child.Children.Add((Coche 'Un fond sous les cartes' ([bool]$r.fondCartes) { param($s, $e) $rr = SvReglages; $rr.fondCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
     $carteT.Child.Children.Add((Coche 'Un contour autour des cartes' ([bool]$r.contourCartes) { param($s, $e) $rr = SvReglages; $rr.contourCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
+    $carteT.Child.Children.Add((Coche 'Animer les cartes (arrivée, jauges, courbes, nombres)' ([bool]$r.animer) { param($s, $e) $rr = SvReglages; $rr.animer = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
     $Contenu.Children.Add($carteT) | Out-Null
 
     $Contenu.Children.Add((Section 'Accès à Vision')) | Out-Null

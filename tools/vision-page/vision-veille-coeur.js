@@ -988,6 +988,9 @@ class VisionVeillePanel extends HTMLElement {
       const delai = 140 + Math.min(rang++, 26) * 45;
       el.animate([{ opacity: 0, transform: "translateY(18px)" }, { opacity: 1, transform: "none" }], { duration: 480, delay: delai, easing: "cubic-bezier(.2,.7,.2,1)", fill: "backwards" });
       if (el.classList.contains("sec") || el.classList.contains("web")) continue;
+      // Les nombres ne comptent que dans les cartes de Home Assistant (capteur, jauge, tuile, entités) : dans un
+      // agenda ou un emploi du temps, ce sont des heures et des dates, qui n'ont pas à défiler.
+      const compter = /^hui-/.test(el.localName || "") && !/calendar|clock|weather/.test(el.localName);
       const fouiller = (n, dansCourbe) => {
         const nom = n.localName || "";
         if (nom === "ha-gauge" && typeof n.value === "number" && typeof n.min === "number") {
@@ -1000,7 +1003,7 @@ class VisionVeillePanel extends HTMLElement {
         const visiter = (parent) => {
           for (const x of parent.childNodes) {
             if (x.nodeType === 1) fouiller(x, courbe);
-            else if (x.nodeType === 3 && !courbe && nombres.length < 40) {
+            else if (x.nodeType === 3 && compter && !courbe && nombres.length < 40) {
               const m = /^(\s*)(-?)(\d{1,3}(?:[   ]\d{3})+|\d+)(?:([.,])(\d+))?(\s?[^\d\s:.][^\d:.]{0,5})?(\s*)$/.exec(x.data);
               if (m && !(m[3].length === 4 && !m[4] && !m[6])) nombres.push({ n: x, m, fin: x.data, delai: delai + 100 });
             }
