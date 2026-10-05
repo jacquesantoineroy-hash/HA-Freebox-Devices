@@ -21,6 +21,16 @@ class VisionVeillePanel extends HTMLElement {
   }
 
   set hass(hass) {
+    // Home Assistant recrée parfois le panneau (quand sa liste de panneaux se met à jour) : la veille repartait
+    // alors de zéro, horloge comprise. Le premier panneau créé reste donc le seul ; les suivants le reprennent.
+    const premier = window.__visionVeille;
+    if (premier && premier !== this) {
+      if (premier.parentNode !== this.parentNode && this.parentNode) this.parentNode.appendChild(premier);
+      this.style.display = "none";
+      premier.hass = hass;
+      return;
+    }
+    window.__visionVeille = this;
     this._hass = hass;
     for (const c of this._cartes) { try { c.hass = hass; } catch (e) { /* une carte en panne ne bloque pas les autres */ } }
     if (!this._pret) { this._pret = true; this._demarrer(); }
