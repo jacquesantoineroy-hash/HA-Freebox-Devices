@@ -28,7 +28,35 @@ object Themes {
             0xFFF4F1EB.toInt(), 0x552A2724, 0xFFB07E4A.toInt(), 0xFF8A6433.toInt(), intArrayOf(0xD8B98F, 0xFFFFFF, 0x9A948B), false),
         Theme("Rose poudré", 0xFFF0DEDD.toInt(), 0xFF2C1F24.toInt(), 0xFF7A5A60.toInt(), 0xFF998287.toInt(),
             0xFFFBF1F0.toInt(), 0x5596405C, 0xFF96405C.toInt(), 0xFF875A12.toInt(), intArrayOf(0xEBA8B2, 0xEBCC95, 0xC2B0E0), false),
+        // Thèmes d'univers : jeux (Tactique, Briques, Corsaire, Royale), passions (Circuit, Cockpit, Bourse, Écrin), dehors (Prairie, Large, Sommet, Sous-bois).
+        Theme("Tactique", 0xFF0F1923.toInt(), 0xFFECE8E1.toInt(), 0xFF9AA7B1.toInt(), 0xFF69757F.toInt(),
+            0xFF1B2733.toInt(), 0x55FF4655, 0xFFFF4655.toInt(), 0xFFFF4655.toInt(), intArrayOf(0xAB3644, 0x707C86, 0x763341), true),
+        Theme("Briques", 0xFFF2F4F5.toInt(), 0xFF191B1D.toInt(), 0xFF60666C.toInt(), 0xFF93989C.toInt(),
+            0xFFFFFFFF.toInt(), 0x550A84D6, 0xFF0A84D6.toInt(), 0xFF0A84D6.toInt(), intArrayOf(0x5BABE1, 0x8C9195, 0x9DCEEF), false),
+        Theme("Corsaire", 0xFF0B2A3A.toInt(), 0xFFF4EBD0.toInt(), 0xFFA9C3C9.toInt(), 0xFF728D97.toInt(),
+            0xFF123C50.toInt(), 0x55F2A93B, 0xFFF2A93B.toInt(), 0xFFF2A93B.toInt(), intArrayOf(0xA17D3B, 0x7A959E, 0x6C6848), true),
+        Theme("Royale", 0xFF1B1035.toInt(), 0xFFF5F3FF.toInt(), 0xFFB9AEE0.toInt(), 0xFF8277A4.toInt(),
+            0xFF2A1B55.toInt(), 0x55F8D21A, 0xFFF8D21A.toInt(), 0xFFF8D21A.toInt(), intArrayOf(0xAB8E23, 0x8A7FAD, 0x7C643D), true),
+        Theme("Circuit", 0xFF121212.toInt(), 0xFFF2F2F2.toInt(), 0xFFA0A0A0.toInt(), 0xFF6E6E6E.toInt(),
+            0xFF1E1E1E.toInt(), 0x55E5281B, 0xFFE5281B.toInt(), 0xFFE5281B.toInt(), intArrayOf(0x9B2018, 0x757575, 0x6E221D), true),
+        Theme("Cockpit", 0xFF0E1A24.toInt(), 0xFFE8F1F8.toInt(), 0xFF9DB2C4.toInt(), 0xFF6B7D8C.toInt(),
+            0xFF16283A.toInt(), 0x55FFB000, 0xFFFFB000.toInt(), 0xFFFFB000.toInt(), intArrayOf(0xAB7C0D, 0x728494, 0x735E23), true),
+        Theme("Bourse", 0xFF0B0F0E.toInt(), 0xFFE6F2EC.toInt(), 0xFF8FA59B.toInt(), 0xFF61706A.toInt(),
+            0xFF141B19.toInt(), 0x5521C77A, 0xFF21C77A.toInt(), 0xFF21C77A.toInt(), intArrayOf(0x198754, 0x677871, 0x196040), true),
+        Theme("Écrin", 0xFF0E0C0A.toInt(), 0xFFF3EBDD.toInt(), 0xFFB4A68F.toInt(), 0xFF7A7060.toInt(),
+            0xFF1A1714.toInt(), 0x55C9A45C, 0xFFC9A45C.toInt(), 0xFFC9A45C.toInt(), intArrayOf(0x886F3F, 0x827867, 0x604F31), true),
+        Theme("Prairie", 0xFFEEF3E6.toInt(), 0xFF22301F.toInt(), 0xFF5F7058.toInt(), 0xFF919E8A.toInt(),
+            0xFFFAFCF5.toInt(), 0x554F8A2B, 0xFF4F8A2B.toInt(), 0xFF4F8A2B.toInt(), intArrayOf(0x87AF6C, 0x8A9783, 0xB6CEA4), false),
+        Theme("Large", 0xFFE6F1F5.toInt(), 0xFF12303D.toInt(), 0xFF55737F.toInt(), 0xFF889FA8.toInt(),
+            0xFFF7FBFD.toInt(), 0x550F7EA3, 0xFF0F7EA3.toInt(), 0xFF0F7EA3.toInt(), intArrayOf(0x5AA6C0, 0x8099A2, 0x9AC9D9), false),
+        Theme("Sommet", 0xFFE9EDF1.toInt(), 0xFF1F2933.toInt(), 0xFF5C6B7A.toInt(), 0xFF8D98A4.toInt(),
+            0xFFF8FAFC.toInt(), 0x55C2553A, 0xFFC2553A.toInt(), 0xFFC2553A.toInt(), intArrayOf(0xD08A7A, 0x86929E, 0xE2B8AE), false),
+        Theme("Sous-bois", 0xFF1A2119.toInt(), 0xFFECE6D6.toInt(), 0xFFA9B19C.toInt(), 0xFF777F6E.toInt(),
+            0xFF252E23.toInt(), 0x55C58B3B, 0xFFC58B3B.toInt(), 0xFFC58B3B.toInt(), intArrayOf(0x89662F, 0x7E8675, 0x65532D), true),
     )
+
+    /** Le nom d'un thème en clé simple (« Rose poudré » → « rose-poudre ») : c'est elle qui choisit l'horloge de la veille. */
+    fun cle(nom: String): String = java.text.Normalizer.normalize(nom, java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase().replace(' ', '-')
 
     fun parNom(nom: String): Theme = liste.firstOrNull { it.nom.equals(nom, ignoreCase = true) } ?: liste[0]
 }

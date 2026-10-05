@@ -50,13 +50,26 @@ $script:Demandees = @{}
 # Propres à chaque PC et à chaque session : le thème de couleur, l'écran de veille,
 # les tableaux et les cartes montrés. Home Assistant dit seulement ce qui est disponible.
 $script:Themes = [ordered]@{
-    'Vision'      = @{ Fond = '#FF120609'; Carte = '#FF27111A'; Haute = '#FF361724'; Ligne = '#FF4C2231'; Or = '#FFF2C14E'; OrSombre = '#FF1E1605'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFFBF3EE'; Texte2 = '#FFCDA8A6'; Texte3 = '#FF8C666C' }
-    'Sombre'      = @{ Fond = '#FF17121C'; Carte = '#FF251C2D'; Haute = '#FF30253A'; Ligne = '#FF3A2D45'; Or = '#FFE2B24A'; OrSombre = '#FF1E1605'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFF4EDE1'; Texte2 = '#FFBDB1C4'; Texte3 = '#FF8E8396' }
-    'Bleu nuit'   = @{ Fond = '#FF0F1830'; Carte = '#FF1A2647'; Haute = '#FF223158'; Ligne = '#FF2B3A64'; Or = '#FFE2B24A'; OrSombre = '#FF1E1605'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFEAF0FA'; Texte2 = '#FFB6C1D4'; Texte3 = '#FF7F8CA3' }
-    'Beige'       = @{ Fond = '#FFEFE6D6'; Carte = '#FFFBF6EC'; Haute = '#FFE6DBC6'; Ligne = '#FFD9CBB3'; Or = '#FF8F6110'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF2A2026'; Texte2 = '#FF6E5A5E'; Texte3 = '#FF8F7D80' }
-    'Sauge'       = @{ Fond = '#FFDDE5DA'; Carte = '#FFF2F6EF'; Haute = '#FFD0DACB'; Ligne = '#FFC2CEBD'; Or = '#FF7F5C0E'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF1F2A24'; Texte2 = '#FF5E6E64'; Texte3 = '#FF7F8F85' }
-    'Salon'       = @{ Fond = '#FFD9D1C5'; Carte = '#FFF4F1EB'; Haute = '#FFCCC3B5'; Ligne = '#FFBDB3A4'; Or = '#FF8A6433'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF2A2724'; Texte2 = '#FF6B645C'; Texte3 = '#FF8E867D' }
-    'Rose poudré' = @{ Fond = '#FFF0DEDD'; Carte = '#FFFBF1F0'; Haute = '#FFE6D0CF'; Ligne = '#FFD9BFBE'; Or = '#FF875A12'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF2C1F24'; Texte2 = '#FF7A5A60'; Texte3 = '#FF998287' }
+    'Vision'      = @{ Fond = '#FF120609'; Carte = '#FF27111A'; Haute = '#FF361724'; Ligne = '#FF4C2231'; Or = '#FFF2C14E'; OrSombre = '#FF1E1605'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFFBF3EE'; Texte2 = '#FFCDA8A6'; Texte3 = '#FF8C666C'; Horloge = 'defaut' }
+    'Sombre'      = @{ Fond = '#FF17121C'; Carte = '#FF251C2D'; Haute = '#FF30253A'; Ligne = '#FF3A2D45'; Or = '#FFE2B24A'; OrSombre = '#FF1E1605'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFF4EDE1'; Texte2 = '#FFBDB1C4'; Texte3 = '#FF8E8396'; Horloge = 'sombre' }
+    'Bleu nuit'   = @{ Fond = '#FF0F1830'; Carte = '#FF1A2647'; Haute = '#FF223158'; Ligne = '#FF2B3A64'; Or = '#FFE2B24A'; OrSombre = '#FF1E1605'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFEAF0FA'; Texte2 = '#FFB6C1D4'; Texte3 = '#FF7F8CA3'; Horloge = 'bleu-nuit' }
+    'Beige'       = @{ Fond = '#FFEFE6D6'; Carte = '#FFFBF6EC'; Haute = '#FFE6DBC6'; Ligne = '#FFD9CBB3'; Or = '#FF8F6110'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF2A2026'; Texte2 = '#FF6E5A5E'; Texte3 = '#FF8F7D80'; Horloge = 'beige' }
+    'Sauge'       = @{ Fond = '#FFDDE5DA'; Carte = '#FFF2F6EF'; Haute = '#FFD0DACB'; Ligne = '#FFC2CEBD'; Or = '#FF7F5C0E'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF1F2A24'; Texte2 = '#FF5E6E64'; Texte3 = '#FF7F8F85'; Horloge = 'sauge' }
+    'Salon'       = @{ Fond = '#FFD9D1C5'; Carte = '#FFF4F1EB'; Haute = '#FFCCC3B5'; Ligne = '#FFBDB3A4'; Or = '#FF8A6433'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF2A2724'; Texte2 = '#FF6B645C'; Texte3 = '#FF8E867D'; Horloge = 'salon' }
+    'Rose poudré' = @{ Fond = '#FFF0DEDD'; Carte = '#FFFBF1F0'; Haute = '#FFE6D0CF'; Ligne = '#FFD9BFBE'; Or = '#FF875A12'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF2C1F24'; Texte2 = '#FF7A5A60'; Texte3 = '#FF998287'; Horloge = 'rose-poudre' }
+    # Thèmes d'univers : jeux (Tactique, Briques, Corsaire, Royale), passions (Circuit, Cockpit, Bourse, Écrin), dehors (Prairie, Large, Sommet, Sous-bois).
+    'Tactique' = @{ Fond = '#FF0F1923'; Carte = '#FF1B2733'; Haute = '#FF2E3843'; Ligne = '#FF2C3A47'; Or = '#FFFF4655'; OrSombre = '#FFFFFFFF'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFECE8E1'; Texte2 = '#FF9AA7B1'; Texte3 = '#FF69757F'; Horloge = 'tactique' }
+    'Briques' = @{ Fond = '#FFF2F4F5'; Carte = '#FFFFFFFF'; Haute = '#FFE1E3E4'; Ligne = '#FFD5DADE'; Or = '#FF0A84D6'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF191B1D'; Texte2 = '#FF60666C'; Texte3 = '#FF93989C'; Horloge = 'briques' }
+    'Corsaire' = @{ Fond = '#FF0B2A3A'; Carte = '#FF123C50'; Haute = '#FF264C5C'; Ligne = '#FF1F5166'; Or = '#FFF2A93B'; OrSombre = '#FF1A1408'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFF4EBD0'; Texte2 = '#FFA9C3C9'; Texte3 = '#FF728D97'; Horloge = 'corsaire' }
+    'Royale' = @{ Fond = '#FF1B1035'; Carte = '#FF2A1B55'; Haute = '#FF3C2E64'; Ligne = '#FF3D2A78'; Or = '#FFF8D21A'; OrSombre = '#FF1A1408'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFF5F3FF'; Texte2 = '#FFB9AEE0'; Texte3 = '#FF8277A4'; Horloge = 'royale' }
+    'Circuit' = @{ Fond = '#FF121212'; Carte = '#FF1E1E1E'; Haute = '#FF313131'; Ligne = '#FF363636'; Or = '#FFE5281B'; OrSombre = '#FFFFFFFF'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFF2F2F2'; Texte2 = '#FFA0A0A0'; Texte3 = '#FF6E6E6E'; Horloge = 'circuit' }
+    'Cockpit' = @{ Fond = '#FF0E1A24'; Carte = '#FF16283A'; Haute = '#FF293A4B'; Ligne = '#FF25405A'; Or = '#FFFFB000'; OrSombre = '#FF1A1408'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFE8F1F8'; Texte2 = '#FF9DB2C4'; Texte3 = '#FF6B7D8C'; Horloge = 'cockpit' }
+    'Bourse' = @{ Fond = '#FF0B0F0E'; Carte = '#FF141B19'; Haute = '#FF272E2C'; Ligne = '#FF24302C'; Or = '#FF21C77A'; OrSombre = '#FF1A1408'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFE6F2EC'; Texte2 = '#FF8FA59B'; Texte3 = '#FF61706A'; Horloge = 'bourse' }
+    'Écrin' = @{ Fond = '#FF0E0C0A'; Carte = '#FF1A1714'; Haute = '#FF2E2A26'; Ligne = '#FF322B22'; Or = '#FFC9A45C'; OrSombre = '#FF1A1408'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFF3EBDD'; Texte2 = '#FFB4A68F'; Texte3 = '#FF7A7060'; Horloge = 'ecrin' }
+    'Prairie' = @{ Fond = '#FFEEF3E6'; Carte = '#FFFAFCF5'; Haute = '#FFDEE3D6'; Ligne = '#FFCFDBC2'; Or = '#FF4F8A2B'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF22301F'; Texte2 = '#FF5F7058'; Texte3 = '#FF919E8A'; Horloge = 'prairie' }
+    'Large' = @{ Fond = '#FFE6F1F5'; Carte = '#FFF7FBFD'; Haute = '#FFD5E2E6'; Ligne = '#FFC3D9E1'; Or = '#FF0F7EA3'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF12303D'; Texte2 = '#FF55737F'; Texte3 = '#FF889FA8'; Horloge = 'large' }
+    'Sommet' = @{ Fond = '#FFE9EDF1'; Carte = '#FFF8FAFC'; Haute = '#FFD9DDE2'; Ligne = '#FFCBD3DB'; Or = '#FFC2553A'; OrSombre = '#FFFFFFFF'; Vert = '#FF2E7D57'; Rouge = '#FFB3261E'; Texte = '#FF1F2933'; Texte2 = '#FF5C6B7A'; Texte3 = '#FF8D98A4'; Horloge = 'sommet' }
+    'Sous-bois' = @{ Fond = '#FF1A2119'; Carte = '#FF252E23'; Haute = '#FF373F33'; Ligne = '#FF36422F'; Or = '#FFC58B3B'; OrSombre = '#FF1A1408'; Vert = '#FF4CC38A'; Rouge = '#FFFF6B6B'; Texte = '#FFECE6D6'; Texte2 = '#FFA9B19C'; Texte3 = '#FF777F6E'; Horloge = 'sous-bois' }
 }
 $script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
 function SvReglages() {
@@ -1203,9 +1216,9 @@ function SvOuvrirWeb() {
     $tous = @([System.Windows.Forms.Screen]::AllScreens | Sort-Object { -not $_.Primary })
     $depart = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     foreach ($ecran in $tous) {
-        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}&cfond={11}&ccontour={12}&ecrans={13}&t0={14}' -f `
+        $q = 'id={0}&ecran=tele&dec={1}&fond={2}&carte={3}&texte={4}&texte2={5}&accent={6}&ligne={7}&masques={8}&cartes={9}&style={10}&cfond={11}&ccontour={12}&ecrans={13}&t0={14}&horloge={15}' -f `
             [uri]::EscapeDataString([string](Prop $acces 'id' '')), $j, $pal.Fond.Substring(3), $pal.Carte.Substring(3), $pal.Texte.Substring(3), $pal.Texte2.Substring(3), $pal.Or.Substring(3), $pal.Ligne.Substring(3), `
-            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 }), $tous.Count, $depart
+            [uri]::EscapeDataString((@($r.masques) -join ',')), [uri]::EscapeDataString((@($r.cartes) -join ',')), [string]$r.style, $(if ($r.fondCartes) { 1 } else { 0 }), $(if ($r.contourCartes) { 1 } else { 0 }), $tous.Count, $depart, [string]$pal.Horloge
         $adresse = '{0}/api/pc_parental/veille/entree#t={1}&q={2}' -f $base, $jeton, [uri]::EscapeDataString($q)
         $profilEdge = Join-Path $env:LOCALAPPDATA ('Vision\veille-edge-{0}' -f $j)
         # Une fenêtre d'application en mode borne par écran, placée sur le sien ; en navigation privée, pour

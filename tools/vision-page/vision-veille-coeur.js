@@ -10,6 +10,298 @@
 const CIEL = { sunny: "Ensoleillé", "clear-night": "Nuit claire", partlycloudy: "Éclaircies", cloudy: "Nuageux", rainy: "Pluie", pouring: "Forte pluie", fog: "Brouillard", snowy: "Neige", "snowy-rainy": "Neige fondue", lightning: "Orage", "lightning-rainy": "Orage", windy: "Vent", "windy-variant": "Vent", hail: "Grêle", exceptional: "Exceptionnel" };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/*
+ * Vision — les horloges de l'écran de veille : une par thème, chacune la sienne.
+ *
+ * Chaque horloge donne son dessin (html) et sa façon d'avancer (tic, appelée chaque seconde).
+ * Les couleurs viennent du thème de l'appareil (--v-texte, --v-texte2, --v-accent, --v-carte, --v-ligne).
+ */
+const p2 = (n) => String(n).padStart(2, "0");
+const hm = (d) => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+const poser = (el, sel, texte) => { const x = el.querySelector(sel); if (x && x.textContent !== texte) x.textContent = texte; };
+const tourner = (el, sel, deg) => { const x = el.querySelector(sel); if (x) x.setAttribute("transform", `rotate(${deg.toFixed(2)})`); };
+const pt = (r, deg) => { const a = (deg * Math.PI) / 180; return [(Math.sin(a) * r).toFixed(2), (-Math.cos(a) * r).toFixed(2)]; };
+// Un arc de cercle, de l'angle a0 à l'angle a1 (degrés, 0 en haut, sens des aiguilles).
+const arc = (r, a0, a1) => { const [x0, y0] = pt(r, a0), [x1, y1] = pt(r, a1); return `M ${x0} ${y0} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`; };
+const traits = (n, r1, r2, classe, saut = 0) => { let o = ""; for (let i = 0; i < n; i++) { if (saut && i % saut === 0) continue; const [x1, y1] = pt(r1, (i * 360) / n), [x2, y2] = pt(r2, (i * 360) / n); o += `<line class="${classe}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`; } return o; };
+const autour = (liste, r, classe) => liste.map((t, i) => { if (!t) return ""; const [x, y] = pt(r, (i * 360) / liste.length); return `<text class="${classe}" x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central">${t}</text>`; }).join("");
+const aiguilles = (el, d) => { const s = d.getSeconds(), m = d.getMinutes() + s / 60, h = (d.getHours() % 12) + m / 60; tourner(el, ".ah", h * 30); tourner(el, ".am", m * 6); tourner(el, ".as", s * 6); };
+const svg = (contenu, classe = "") => `<svg class="cadran ${classe}" viewBox="-100 -100 200 200">${contenu}</svg>`;
+
+// L'heure en toutes lettres : « onze heures cinquante-deux ».
+const NOMBRES = ["zéro", "une", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];
+const DIZAINES = { 2: "vingt", 3: "trente", 4: "quarante", 5: "cinquante" };
+const enLettres = (n) => (n < 20 ? NOMBRES[n] : DIZAINES[Math.floor(n / 10)] + (n % 10 === 0 ? "" : n % 10 === 1 ? " et une" : "-" + NOMBRES[n % 10]));
+const heureEnLettres = (d) => { const h = d.getHours(), m = d.getMinutes(); const hh = h === 0 ? "minuit" : h === 12 ? "midi" : `${enLettres(h)} heure${h > 1 ? "s" : ""}`; return [hh, m === 0 ? "pile" : enLettres(m)]; };
+
+// Des chiffres faits de briques (5 de large, 7 de haut).
+const BRIQUES = { 0: "01110100011001110101110011000101110", 1: "00100011000010000100001000010001110", 2: "01110100010000100010001000100011111", 3: "11110000010000101110000010000111110", 4: "00010001100101010010111110001000010", 5: "11111100001111000001000011000101110", 6: "00110010001000011110100011000101110", 7: "11111000010001000100010000100001000", 8: "01110100011000101110100011000101110", 9: "01110100011000101111000010001001100", ":": "00000001000010000000001000010000000" };
+const enBriques = (texte) => {
+  let o = "", x0 = 0;
+  for (const c of texte) {
+    const g = BRIQUES[c] || BRIQUES[0], etroit = c === ":";
+    for (let i = 0; i < 35; i++) {
+      if (g[i] !== "1") continue;
+      const col = i % 5, lig = Math.floor(i / 5);
+      if (etroit && col !== 2) continue;
+      const x = x0 + (etroit ? 0 : col) * 10, y = lig * 10;
+      o += `<rect class="${etroit ? "b2" : "b1"}" x="${x}" y="${y}" width="9" height="9" rx="1.6"/><circle class="bp" cx="${x + 4.5}" cy="${y + 4.5}" r="2.1"/>`;
+    }
+    x0 += etroit ? 20 : 60;
+  }
+  return `<svg class="briques" viewBox="-4 -4 ${x0 - 2} 78">${o}</svg>`;
+};
+
+const semaine = (d) => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const j = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - j); return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7); };
+const ROMAINS = ["XII", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI"];
+
+const HORLOGES = {
+  // Vision : de grands chiffres fins, la date, le ciel.
+  defaut: {
+    html: (c) => `<div class="heure"></div><div class="date">${c.jour}</div><div class="ciel">${c.ciel}</div>`,
+    tic: (el, d) => poser(el, ".heure", hm(d)),
+  },
+  // Sombre : les chiffres, et la minute qui se remplit en un trait.
+  sombre: {
+    html: (c) => `<div class="heure"></div><div class="fil"><i></i></div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => { poser(el, ".heure", hm(d)); const i = el.querySelector(".fil i"); if (i) i.style.width = `${((d.getSeconds() + 1) / 60) * 100}%`; },
+  },
+  // Bleu nuit : un cadran de points, des aiguilles fines, un croissant de lune.
+  "bleu-nuit": {
+    html: (c) => svg(`${traits(60, 92, 94, "t1", 5)}${Array.from({ length: 12 }, (_, i) => { const [x, y] = pt(92, i * 30); return `<circle class="pt${i % 3 === 0 ? " gros" : ""}" cx="${x}" cy="${y}" r="${i % 3 === 0 ? 2.6 : 1.5}"/>`; }).join("")}
+      <path class="lune" d="M 0 -52 a 11 11 0 1 0 9 17 a 8.5 8.5 0 1 1 -9 -17"/>
+      <line class="ah" x1="0" y1="8" x2="0" y2="-48"/><line class="am" x1="0" y1="10" x2="0" y2="-76"/><line class="as" x1="0" y1="14" x2="0" y2="-84"/><circle class="axe" r="3"/>`) + `<div class="date">${c.jour}</div>`,
+    tic: aiguilles,
+  },
+  // Beige : l'heure écrite en toutes lettres, comme dans un livre.
+  beige: {
+    html: (c) => `<div class="mots"><span class="m1"></span><span class="m2"></span></div><div class="filet"></div><div class="date"><b class="hm"></b> · ${c.jour}</div>`,
+    tic: (el, d) => { const [a, b] = heureEnLettres(d); poser(el, ".m1", a); poser(el, ".m2", b); poser(el, ".hm", hm(d)); },
+  },
+  // Sauge : l'heure sur les minutes, en deux étages.
+  sauge: {
+    html: (c) => `<div class="etages"><span class="hh"></span><span class="mm"></span></div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => { poser(el, ".hh", p2(d.getHours())); poser(el, ".mm", p2(d.getMinutes())); },
+  },
+  // Salon : la pendule murale, quatre grands chiffres et des aiguilles d'acier.
+  salon: {
+    html: (c) => svg(`<circle class="bord" r="97"/>${traits(12, 82, 92, "t2", 3)}${autour(["12", "", "", "3", "", "", "6", "", "", "9", "", ""], 74, "ch")}
+      <path class="ah" d="M -3.2 10 L -2.2 -46 L 2.2 -46 L 3.2 10 Z"/><path class="am" d="M -2.4 12 L -1.5 -74 L 1.5 -74 L 2.4 12 Z"/><line class="as" x1="0" y1="16" x2="0" y2="-80"/><circle class="axe" r="4.5"/>`) + `<div class="date">${c.jour}</div>`,
+    tic: aiguilles,
+  },
+  // Rose poudré : un anneau qui se ferme au fil de l'heure, les chiffres au centre.
+  "rose-poudre": {
+    html: (c) => `<div class="rond">${svg(`<circle class="piste" r="90"/><path class="tour" d=""/>`)}<div class="dedans"><div class="heure"></div><div class="date">${c.jourCourt}</div></div></div>`,
+    tic: (el, d) => { poser(el, ".heure", hm(d)); const t = el.querySelector(".tour"); if (t) t.setAttribute("d", arc(90, 0, Math.max(0.5, Math.min(359.5, (d.getMinutes() * 60 + d.getSeconds()) / 10)))); },
+  },
+  // Tactique : des chiffres penchés, coupés au couteau, une barre d'accent.
+  tactique: {
+    html: (c) => `<div class="bloc"><div class="rep">// ${c.jourCourt.toUpperCase()}</div><div class="heure"></div><div class="barres"><i></i><i></i><i></i></div><div class="sec"></div></div>`,
+    tic: (el, d) => { poser(el, ".heure", hm(d)); poser(el, ".sec", `${p2(d.getSeconds())} S`); },
+  },
+  // Briques : les chiffres montés brique par brique.
+  briques: {
+    html: (c) => `<div class="mur"></div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => { const m = el.querySelector(".mur"), t = hm(d); if (m && m.dataset.t !== t) { m.dataset.t = t; m.innerHTML = enBriques(t); } },
+  },
+  // Corsaire : une rose des vents pour cadran.
+  corsaire: {
+    html: (c) => svg(`<circle class="bord" r="96"/><circle class="bord fin" r="84"/>${traits(72, 84, 90, "t1")}${traits(12, 78, 90, "t2")}
+      <path class="rose" d="M 0 -70 L 9 -9 L 70 0 L 9 9 L 0 70 L -9 9 L -70 0 L -9 -9 Z"/><path class="rose2" d="M 0 -70 L 0 0 L 9 -9 Z M 70 0 L 0 0 L 9 9 Z M 0 70 L 0 0 L -9 9 Z M -70 0 L 0 0 L -9 -9 Z"/>
+      ${autour(["N", "E", "S", "O"], 60, "ch")}
+      <path class="ah" d="M 0 12 L -3.5 0 L 0 -44 L 3.5 0 Z"/><path class="am" d="M 0 14 L -2.6 0 L 0 -72 L 2.6 0 Z"/><line class="as" x1="0" y1="16" x2="0" y2="-80"/><circle class="axe" r="3.6"/>`) + `<div class="date"><b class="hm"></b> · ${c.jour}</div>`,
+    tic: (el, d) => { aiguilles(el, d); poser(el, ".hm", hm(d)); },
+  },
+  // Royale : des chiffres épais et penchés, en dégradé, posés sur leur ombre.
+  royale: {
+    html: (c) => `<div class="pile"><div class="heure ombre"></div><div class="heure face"></div></div><div class="pastille">${c.jour}</div>`,
+    tic: (el, d) => { const t = hm(d); el.querySelectorAll(".heure").forEach((x) => { if (x.textContent !== t) x.textContent = t; }); },
+  },
+  // Circuit : un compte-tours dont l'aiguille suit les minutes, zone rouge en fin d'heure.
+  circuit: {
+    html: (c) => svg(`<path class="piste" d="${arc(86, -120, 120)}"/><path class="rouge" d="${arc(86, 80, 120)}"/>
+      ${Array.from({ length: 13 }, (_, i) => { const a = -120 + i * 20, [x1, y1] = pt(74, a), [x2, y2] = pt(86, a), [tx, ty] = pt(62, a); return `<line class="t2" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>${i % 2 === 0 ? `<text class="ch" x="${tx}" y="${ty}" text-anchor="middle" dominant-baseline="central">${i * 5}</text>` : ""}`; }).join("")}
+      <g class="aig"><path d="M -2.4 10 L -1 -80 L 1 -80 L 2.4 10 Z"/></g><circle class="axe" r="7"/>
+      <text class="num" x="0" y="60" text-anchor="middle"></text><text class="unite" x="0" y="74" text-anchor="middle">MIN</text>`) + `<div class="date">${c.jour}</div>`,
+    tic: (el, d) => { tourner(el, ".aig", -120 + ((d.getMinutes() + d.getSeconds() / 60) / 60) * 240); poser(el, ".num", hm(d)); },
+  },
+  // Cockpit : un instrument de bord sur vingt-quatre heures, heure locale et heure universelle.
+  cockpit: {
+    html: (c) => svg(`<circle class="bord" r="97"/>${traits(120, 88, 92, "t1", 5)}${traits(24, 82, 92, "t2")}${autour(["24", "", "", "3", "", "", "6", "", "", "9", "", "", "12", "", "", "15", "", "", "18", "", "", "21", "", ""], 71, "ch")}
+      <g class="a24"><path d="M 0 -80 L -4 -66 L 4 -66 Z"/></g>
+      <text class="num" x="0" y="-8" text-anchor="middle"></text><text class="unite" x="0" y="10" text-anchor="middle">LOCALE</text>
+      <text class="utc" x="0" y="34" text-anchor="middle"></text>`) + `<div class="date">${c.jour}</div>`,
+    tic: (el, d) => { tourner(el, ".a24", ((d.getHours() * 60 + d.getMinutes()) / 1440) * 360); poser(el, ".num", `${hm(d)}:${p2(d.getSeconds())}`); poser(el, ".utc", `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())} UTC`); },
+  },
+  // Bourse : des chiffres de téléscripteur, et les soixante secondes de la minute en bâtons.
+  bourse: {
+    html: (c) => `<div class="tele"><span class="heure"></span><span class="sec"></span></div><div class="batons">${Array.from({ length: 60 }, (_, i) => `<i style="height:${(30 + 62 * Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.6))).toFixed(0)}%"></i>`).join("")}</div><div class="date">${c.jourCourt.toUpperCase()} · SEMAINE ${semaine(new Date())}</div>`,
+    tic: (el, d) => { poser(el, ".heure", hm(d)); poser(el, ".sec", `:${p2(d.getSeconds())}`); const s = d.getSeconds(), b = el.querySelector(".batons"); if (b && b.dataset.s !== String(s)) { b.dataset.s = String(s); [...b.children].forEach((x, i) => x.classList.toggle("fait", i <= s)); } },
+  },
+  // Écrin : chiffres romains, aiguilles fines, double filet.
+  ecrin: {
+    html: (c) => svg(`<circle class="bord" r="97"/><circle class="bord fin" r="92"/>${traits(60, 80, 84, "t1", 5)}${autour(ROMAINS, 70, "ch")}
+      <text class="marque" x="0" y="-36" text-anchor="middle">VISION</text>
+      <path class="ah" d="M 0 10 L -2.6 -8 L 0 -46 L 2.6 -8 Z"/><path class="am" d="M 0 12 L -1.9 -10 L 0 -74 L 1.9 -10 Z"/><line class="as" x1="0" y1="18" x2="0" y2="-80"/><circle class="axe" r="2.6"/>`) + `<div class="date">${c.jour}</div>`,
+    tic: aiguilles,
+  },
+  // Prairie : la course du soleil sur la journée, les chiffres dessous.
+  prairie: {
+    html: (c) => `<svg class="ciel-arc" viewBox="-110 -100 220 112"><path class="piste" d="${arc(90, -90, 90)}"/><line class="sol" x1="-108" y1="0" x2="108" y2="0"/><g class="astre"><circle r="9"/></g></svg><div class="heure"></div><div class="date">${c.jour}</div>`,
+    tic: (el, d) => {
+      poser(el, ".heure", hm(d));
+      // De 6 h à 22 h le soleil va d'un bord à l'autre ; la nuit, c'est la lune qui fait le trajet.
+      const h = d.getHours() + d.getMinutes() / 60, jour = h >= 6 && h < 22, part = jour ? (h - 6) / 16 : ((h + 2) % 24) / 8;
+      const [x, y] = pt(90, -90 + part * 180), a = el.querySelector(".astre");
+      if (a) { a.setAttribute("transform", `translate(${x} ${y})`); a.classList.toggle("lune", !jour); }
+    },
+  },
+  // Large : les chiffres au-dessus de la houle.
+  large: {
+    html: (c) => `<div class="heure"></div><div class="date">${c.jour}</div><svg class="houle" viewBox="0 0 400 40" preserveAspectRatio="none"><path class="v1" d="M 0 20 Q 25 6 50 20 T 100 20 T 150 20 T 200 20 T 250 20 T 300 20 T 350 20 T 400 20 T 450 20 T 500 20"/><path class="v2" d="M 0 28 Q 25 16 50 28 T 100 28 T 150 28 T 200 28 T 250 28 T 300 28 T 350 28 T 400 28 T 450 28 T 500 28"/></svg>`,
+    tic: (el, d) => poser(el, ".heure", hm(d)),
+  },
+  // Sommet : une ligne de crête, l'heure au-dessus des cimes.
+  sommet: {
+    html: (c) => `<div class="heure"></div><div class="date">${c.jour}</div><svg class="crete" viewBox="0 0 400 90" preserveAspectRatio="none"><path class="loin" d="M 0 90 L 0 62 L 46 40 L 84 58 L 132 22 L 176 54 L 214 36 L 262 60 L 310 30 L 352 52 L 400 34 L 400 90 Z"/><path class="pres" d="M 0 90 L 0 76 L 60 54 L 104 72 L 168 38 L 190 50 L 206 42 L 252 74 L 300 56 L 344 76 L 400 58 L 400 90 Z"/><path class="neige" d="M 168 38 L 152 47 L 164 46 L 172 52 L 180 45 L 190 50 Z"/></svg>`,
+    tic: (el, d) => poser(el, ".heure", hm(d)),
+  },
+  // Sous-bois : les cernes d'un arbre, un par aiguille (heures, minutes, secondes).
+  "sous-bois": {
+    html: (c) => `<div class="rond">${svg(`<circle class="piste" r="92"/><circle class="piste" r="78"/><circle class="piste" r="64"/><path class="c1" d=""/><path class="c2" d=""/><path class="c3" d=""/>`)}<div class="dedans"><div class="heure"></div><div class="date">${c.jourCourt}</div></div></div>`,
+    tic: (el, d) => {
+      poser(el, ".heure", hm(d));
+      const borne = (v) => Math.max(0.5, Math.min(359.5, v));
+      const s = d.getSeconds(), m = d.getMinutes() + s / 60, h = (d.getHours() % 12) + m / 60;
+      const dessiner = (sel, r, a) => { const x = el.querySelector(sel); if (x) x.setAttribute("d", arc(r, 0, borne(a))); };
+      dessiner(".c1", 92, h * 30); dessiner(".c2", 78, m * 6); dessiner(".c3", 64, (s + 1) * 6);
+    },
+  },
+};
+
+const CSS_HORLOGES = `
+  .horloge .cadran { width: min(62vh, 78vw); height: min(62vh, 78vw); overflow: visible; }
+  .horloge .cadran + .date { margin-top: 3.5vh; }
+  .h-circuit .cadran { margin-top: 6vh; } .h-circuit .cadran + .date { margin-top: 0; }
+  .horloge svg text { font-family: inherit; fill: var(--v-texte); }
+  .horloge .t1 { stroke: var(--v-texte2); stroke-width: .7; opacity: .7; }
+  .horloge .t2 { stroke: var(--v-texte); stroke-width: 1.8; }
+  .horloge .ah, .horloge .am { stroke: var(--v-texte); stroke-width: 3; stroke-linecap: round; fill: var(--v-texte); }
+  .horloge .am { stroke-width: 2; }
+  .horloge .as { stroke: var(--v-accent); stroke-width: 1; stroke-linecap: round; }
+  .horloge .axe { fill: var(--v-accent); }
+  .horloge .bord { fill: none; stroke: var(--v-texte); stroke-width: 1.6; }
+  .horloge .bord.fin { stroke-width: .6; stroke: var(--v-accent); }
+  .horloge .piste { fill: none; stroke: var(--v-ligne); stroke-width: 3; stroke-linecap: round; }
+  .horloge .rond { position: relative; width: min(62vh, 78vw); height: min(62vh, 78vw); }
+  .horloge .rond .cadran { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .horloge .rond .dedans { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .horloge .rond .heure { font-size: min(15vh, 19vw); }
+  .horloge .rond .date { font-size: min(3vh, 4vw); margin-top: 1.2vh; }
+
+  .h-sombre .heure { font-weight: 200; letter-spacing: .02em; }
+  .h-sombre .fil { width: min(46vw, 70vh); height: 3px; background: var(--v-ligne); margin-top: 3vh; border-radius: 2px; overflow: hidden; }
+  .h-sombre .fil i { display: block; height: 100%; width: 0; background: var(--v-accent); transition: width 1s linear; }
+
+  .h-bleu-nuit .pt { fill: var(--v-texte2); } .h-bleu-nuit .pt.gros { fill: var(--v-accent); }
+  .h-bleu-nuit .lune { fill: var(--v-accent); opacity: .85; }
+  .h-bleu-nuit .ah { stroke-width: 2.6; } .h-bleu-nuit .am { stroke-width: 1.6; }
+
+  .h-beige { font-family: Georgia, "Times New Roman", serif; }
+  .h-beige .mots { display: flex; flex-direction: column; align-items: center; line-height: 1.06; }
+  .h-beige .m1 { font-size: min(12vh, 11vw); font-style: italic; }
+  .h-beige .m2 { font-size: min(12vh, 11vw); color: var(--v-accent); }
+  .h-beige .filet { width: 9vh; height: 1.5px; background: var(--v-texte2); margin: 4vh 0 0; }
+  .h-beige .date { font-style: italic; } .h-beige .date b { font-style: normal; font-weight: 400; color: var(--v-texte); }
+
+  .h-sauge .etages { display: flex; flex-direction: column; align-items: center; line-height: .86; font-weight: 700; font-size: min(34vh, 40vw); letter-spacing: -.03em; }
+  .h-sauge .mm { color: var(--v-accent); }
+  .h-sauge .date { margin-top: 3vh; }
+
+  .h-salon .bord { stroke-width: 3.4; }
+  .h-salon .ch { font-size: 22px; font-weight: 300; fill: var(--v-accent); }
+  .h-salon .t2 { stroke-width: 2.4; }
+  .h-salon .ah, .h-salon .am { stroke: none; } .h-salon .axe { fill: var(--v-texte); }
+
+  .h-rose-poudre .piste { stroke-width: 2; }
+  .h-rose-poudre .tour { fill: none; stroke: var(--v-accent); stroke-width: 5; stroke-linecap: round; }
+  .h-rose-poudre .heure { font-weight: 200; }
+
+  .h-tactique { font-family: Bahnschrift, "DIN Alternate", "Roboto Condensed", Impact, sans-serif; }
+  .h-tactique .bloc { transform: skewX(-9deg); display: flex; flex-direction: column; align-items: flex-start; }
+  .h-tactique .rep { font-size: min(2.8vh, 4vw); letter-spacing: .32em; color: var(--v-accent); margin-bottom: 1vh; }
+  .h-tactique .heure { font-size: min(34vh, 34vw); font-weight: 700; line-height: .9; letter-spacing: -.01em; clip-path: polygon(0 0, 100% 0, 100% 84%, 96% 100%, 0 100%); }
+  .h-tactique .barres { display: flex; gap: 1vh; margin-top: 2.4vh; width: 100%; }
+  .h-tactique .barres i { height: 1vh; background: var(--v-accent); flex: 5; } .h-tactique .barres i:nth-child(2) { flex: 1; } .h-tactique .barres i:nth-child(3) { flex: .5; background: var(--v-texte); }
+  .h-tactique .sec { font-size: min(3vh, 4.4vw); letter-spacing: .3em; color: var(--v-texte2); margin-top: 1.6vh; font-variant-numeric: tabular-nums; }
+
+  .h-briques .mur { width: min(78vw, 118vh); }
+  .h-briques .briques { width: 100%; height: auto; display: block; overflow: visible; }
+  .h-briques .b1 { fill: var(--v-accent); } .h-briques .b2 { fill: var(--v-texte); }
+  .h-briques .bp { fill: #fff; opacity: .22; }
+  .h-briques .date { margin-top: 4vh; font-weight: 700; }
+
+  .h-corsaire .rose { fill: none; stroke: var(--v-texte2); stroke-width: .8; opacity: .8; }
+  .h-corsaire .rose2 { fill: var(--v-texte2); opacity: .22; }
+  .h-corsaire .ch { font-size: 11px; font-family: Georgia, serif; fill: var(--v-accent); }
+  .h-corsaire .ah, .h-corsaire .am { stroke: none; }
+  .h-corsaire .date { font-family: Georgia, serif; font-style: italic; } .h-corsaire .date b { font-style: normal; color: var(--v-texte); }
+
+  .h-royale .pile { position: relative; transform: rotate(-4deg) skewX(-6deg); }
+  .h-royale .heure { font-size: min(36vh, 36vw); font-weight: 900; line-height: 1; letter-spacing: -.02em; font-family: "Segoe UI Black", "Arial Black", Impact, sans-serif; }
+  .h-royale .ombre { position: absolute; left: .09em; top: .08em; color: var(--v-carte); -webkit-text-stroke: .03em var(--v-ligne); }
+  .h-royale .face { position: relative; background: linear-gradient(180deg, var(--v-texte) 8%, var(--v-accent) 78%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .h-royale .pastille { margin-top: 3vh; padding: 1.1vh 3vh; border-radius: 99px; background: var(--v-accent); color: var(--v-fond); font-weight: 800; font-size: min(3vh, 4.4vw); text-transform: uppercase; letter-spacing: .08em; transform: rotate(-4deg); }
+
+  .h-circuit .piste { stroke-width: 7; stroke-linecap: butt; } .h-circuit .rouge { fill: none; stroke: var(--v-accent); stroke-width: 7; }
+  .h-circuit .ch { font-size: 10px; fill: var(--v-texte2); font-weight: 600; }
+  .h-circuit .aig path { fill: var(--v-accent); } .h-circuit .aig { transition: transform 1s linear; }
+  .h-circuit .axe { fill: var(--v-carte); stroke: var(--v-texte); stroke-width: 1.5; }
+  .h-circuit .num { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; } .h-circuit .unite { font-size: 8px; letter-spacing: .4em; fill: var(--v-texte2); }
+
+  .h-cockpit { font-family: Consolas, "Roboto Mono", "DejaVu Sans Mono", monospace; }
+  .h-cockpit .bord { stroke-width: 2.6; } .h-cockpit .ch { font-size: 9.5px; fill: var(--v-texte); }
+  .h-cockpit .a24 path { fill: var(--v-accent); }
+  .h-cockpit .num { font-size: 21px; font-weight: 700; } .h-cockpit .unite { font-size: 6.5px; letter-spacing: .5em; fill: var(--v-texte2); }
+  .h-cockpit .utc { font-size: 11px; fill: var(--v-accent); letter-spacing: .12em; }
+
+  .h-bourse { font-family: Consolas, "Roboto Mono", "DejaVu Sans Mono", monospace; }
+  .h-bourse .tele { display: flex; align-items: baseline; }
+  .h-bourse .tele .heure { font-size: min(26vh, 26vw); font-weight: 700; letter-spacing: -.02em; }
+  .h-bourse .tele .sec { font-size: min(9vh, 9vw); color: var(--v-accent); margin-left: .12em; }
+  .h-bourse .batons { display: flex; align-items: flex-end; gap: .35vw; height: 11vh; width: min(70vw, 110vh); margin-top: 2vh; }
+  .h-bourse .batons i { flex: 1; background: var(--v-ligne); border-radius: 1px; } .h-bourse .batons i.fait { background: var(--v-accent); }
+  .h-bourse .date { letter-spacing: .16em; font-size: min(2.8vh, 3.8vw); margin-top: 3vh; }
+
+  .h-ecrin { font-family: Georgia, "Times New Roman", serif; }
+  .h-ecrin .bord { stroke: var(--v-accent); stroke-width: 1.2; } .h-ecrin .t1 { stroke: var(--v-accent); }
+  .h-ecrin .ch { font-size: 12.5px; fill: var(--v-accent); letter-spacing: .04em; }
+  .h-ecrin .marque { font-size: 5.6px; letter-spacing: .5em; fill: var(--v-texte2); }
+  .h-ecrin .ah, .h-ecrin .am { stroke: none; fill: var(--v-texte); } .h-ecrin .as { stroke-width: .6; } .h-ecrin .axe { fill: var(--v-accent); }
+  .h-ecrin .date { font-style: italic; letter-spacing: .04em; }
+
+  .h-prairie .ciel-arc { width: min(72vw, 96vh); height: auto; overflow: visible; }
+  .h-prairie .piste { stroke-dasharray: 1 6; stroke-width: 2; } .h-prairie .sol { stroke: var(--v-texte2); stroke-width: 1; }
+  .h-prairie .astre circle { fill: var(--v-accent); } .h-prairie .astre.lune circle { fill: var(--v-texte2); }
+  .h-prairie .heure { font-size: min(20vh, 24vw); margin-top: 2vh; }
+
+  .h-large .heure { font-weight: 200; }
+  .h-large .houle { width: min(80vw, 120vh); height: 9vh; margin-top: 3vh; overflow: hidden; }
+  .h-large .houle path { fill: none; stroke: var(--v-accent); stroke-width: 2.2; stroke-linecap: round; animation: houle 7s linear infinite; }
+  .h-large .houle .v2 { stroke: var(--v-texte2); opacity: .55; animation-duration: 11s; animation-direction: reverse; }
+  @keyframes houle { from { transform: translateX(0); } to { transform: translateX(-100px); } }
+
+  .h-sommet .heure { font-weight: 600; letter-spacing: .01em; }
+  .h-sommet .crete { width: min(84vw, 126vh); height: 20vh; margin-top: 2vh; }
+  .h-sommet .loin { fill: var(--v-ligne); } .h-sommet .pres { fill: var(--v-texte2); opacity: .75; } .h-sommet .neige { fill: var(--v-carte); }
+
+  .h-sous-bois .piste { stroke-width: 1; }
+  .h-sous-bois .c1, .h-sous-bois .c2, .h-sous-bois .c3 { fill: none; stroke-linecap: round; stroke-width: 6; stroke: var(--v-accent); }
+  .h-sous-bois .c2 { stroke: var(--v-texte); stroke-width: 4.5; } .h-sous-bois .c3 { stroke: var(--v-texte2); stroke-width: 3; }
+  .h-sous-bois .rond .heure { font-size: min(11vh, 14vw); font-weight: 300; }
+`;
+
+
 class VisionVeillePanel extends HTMLElement {
   constructor() {
     super();
@@ -299,20 +591,20 @@ class VisionVeillePanel extends HTMLElement {
         :host([data-style="neoretro"]) .titre::before { content: ""; display: inline-block; width: 1.5vh; height: 1.5vh; background: var(--v-accent); margin-right: 1.6vh; }
         :host([data-style="neoretro"]) .petite { letter-spacing: .12em; font-variant-numeric: tabular-nums; color: var(--v-texte); }
         :host([data-style="neoretro"]) .sec { letter-spacing: .26em; font-weight: 400; }
-        :host([data-style="neoretro"]) .heure { font-weight: 300; letter-spacing: .04em; font-variant-numeric: tabular-nums; font-size: min(30vh, 28vw); }
-        :host([data-style="neoretro"]) .horloge::before { content: "VISION"; letter-spacing: .6em; font-size: 2.2vh; color: var(--v-accent); margin-bottom: 4vh; padding-left: .6em; }
-        :host([data-style="neoretro"]) .date { text-transform: uppercase; letter-spacing: .3em; font-size: min(3vh, 4.2vw); margin-top: 3vh; padding-top: 3vh; border-top: 1.5px solid var(--v-accent); min-width: 46vw; text-align: center; }
-        :host([data-style="neoretro"]) .ciel { text-transform: uppercase; letter-spacing: .3em; font-size: min(2.6vh, 3.8vw); }
+        :host([data-style="neoretro"]) .h-defaut .heure { font-weight: 300; letter-spacing: .04em; font-variant-numeric: tabular-nums; font-size: min(30vh, 28vw); }
+        :host([data-style="neoretro"]) .h-defaut::before { content: "VISION"; letter-spacing: .6em; font-size: 2.2vh; color: var(--v-accent); margin-bottom: 4vh; padding-left: .6em; }
+        :host([data-style="neoretro"]) .h-defaut .date { text-transform: uppercase; letter-spacing: .3em; font-size: min(3vh, 4.2vw); margin-top: 3vh; padding-top: 3vh; border-top: 1.5px solid var(--v-accent); min-width: 46vw; text-align: center; }
+        :host([data-style="neoretro"]) .h-defaut .ciel { text-transform: uppercase; letter-spacing: .3em; font-size: min(2.6vh, 3.8vw); }
         /* La marque, en bas à gauche : l'œil de Vision (le même que sur les télés) et son nom. */
         .marque { position: absolute; left: 3.5vw; bottom: 1.6vh; height: 7vh; display: flex; align-items: center; z-index: 5; pointer-events: none; }
         .marque span { margin-left: 1vh; font-size: 2.6vh; font-weight: 700; letter-spacing: .12em; color: var(--v-texte2); opacity: .9; }
         mushroom-chips-card { margin-bottom: 4px; }
+        ${CSS_HORLOGES}
         .vide { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--v-texte2); font-size: 3vh; }
       </style>
       <div class="marque"><canvas></canvas><span>Vision</span></div><div class="fige"></div><div class="annonce"></div>
-      <div class="scene vue" id="s0"><div class="horloge"><div class="heure"></div><div class="date"></div></div></div>`;
+      <div class="scene vue" id="s0">${this._horloge("")}</div>`;
     // L'heure s'affiche tout de suite ; les tableaux arrivent dès que Home Assistant a répondu.
-    { const j = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); this.shadowRoot.querySelector(".date").textContent = j.charAt(0).toUpperCase() + j.slice(1); }
     this._tic();
     // L'appli Android garde son propre dessin tant que cette page n'a pas dit qu'elle est là.
     try { if (window.VisionAndroid && window.VisionAndroid.pret) window.VisionAndroid.pret(); } catch (e) { /* hors de l'appli */ }
@@ -416,10 +708,20 @@ class VisionVeillePanel extends HTMLElement {
     pas();
   }
 
+  // Chaque thème a son horloge (« horloge=<thème> » dans l'adresse) ; sans thème connu, celle de Vision.
+  _horloge(ciel) {
+    const cle = HORLOGES[this._q.get("horloge") || ""] ? this._q.get("horloge") : "defaut";
+    const d = new Date(), maj = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+    const jour = maj(d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }));
+    const jourCourt = maj(d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }));
+    return `<div class="horloge h-${cle}" data-cle="${cle}">${HORLOGES[cle].html({ jour, jourCourt, ciel: ciel || "" })}</div>`;
+  }
+
   _tic() {
     const d = new Date();
     const h = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-    this.shadowRoot.querySelectorAll(".heure, .petite").forEach((e) => { if (e.textContent !== h) e.textContent = h; });
+    this.shadowRoot.querySelectorAll(".petite").forEach((e) => { if (e.textContent !== h) e.textContent = h; });
+    this.shadowRoot.querySelectorAll(".horloge").forEach((e) => { try { HORLOGES[e.dataset.cle].tic(e, d); } catch (err) { /* l'horloge garde son dernier dessin */ } });
   }
 
   _carte(config) {
@@ -497,14 +799,11 @@ class VisionVeillePanel extends HTMLElement {
     const scene = document.createElement("div");
     scene.className = "scene";
     if (e.genre === "horloge") {
-      const d = new Date();
-      let jour = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-      jour = jour.charAt(0).toUpperCase() + jour.slice(1);
       const m = this._page.meteo ? this._hass.states[this._page.meteo] : null;
       const morceaux = [];
       if (m && m.attributes && typeof m.attributes.temperature === "number") morceaux.push(`${Math.round(m.attributes.temperature)}°`);
       if (m && CIEL[m.state]) morceaux.push(CIEL[m.state]);
-      scene.innerHTML = `<div class="horloge"><div class="heure"></div><div class="date">${jour}</div><div class="ciel">${morceaux.join("  ·  ")}</div></div>`;
+      scene.innerHTML = this._horloge(morceaux.join("  ·  "));
     } else {
       if (e.page === 0) {
         // Les cartes sont créées une fois par passage, pour des valeurs à jour.
