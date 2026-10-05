@@ -638,7 +638,7 @@ class LanceurActivity : Activity() {
                 when (e.action) {
                     DragEvent.ACTION_DRAG_ENTERED -> { dragSorti = true; v.alpha = 1f; v.scaleX = 1.03f; v.scaleY = 1.03f; grilles().forEach { it.cacherCible() } }
                     DragEvent.ACTION_DRAG_EXITED -> { v.alpha = 0.85f; v.scaleX = 1f; v.scaleY = 1f }
-                    DragEvent.ACTION_DROP -> { enDrag?.let { cle -> if (cle.startsWith(Accueil.PREFIXE_DOSSIER)) Accueil.defaireSurGrille(this@LanceurActivity, cle) else Accueil.retirerDeLaGrille(this@LanceurActivity, cle) }; enDragNouveau = null; construire() }
+                    DragEvent.ACTION_DROP -> { enDrag?.let { cle -> if (cle.startsWith(Accueil.PREFIXE_DOSSIER)) Accueil.defaireSurGrille(this@LanceurActivity, cle) else Accueil.retirerDeLaGrille(this@LanceurActivity, cle) }; enDragNouveau = null; enDrag = null; construire() }
                 }
                 true
             }
@@ -703,7 +703,8 @@ class LanceurActivity : Activity() {
                     if (nouveau != null) Accueil.poserSurGrille(this, pl.cle, col, r, pl.w, pl.h)
                     else if (sous != null && !sous.estWidget && pl.w == 1 && pl.h == 1 && !pl.estDossier && surLeCentre(g, sous, e.x, e.y)) Accueil.fusionnerSurGrille(this, sous.cle, source!!)
                     else Accueil.deplacerSurGrille(this, source!!, col, r)
-                    enDragNouveau = null
+                    // La case d'origine est reconstruite : elle ne recevra pas la fin du glisser, on libère ici.
+                    enDragNouveau = null; enDrag = null
                     construire(); true
                 }
                 DragEvent.ACTION_DRAG_ENDED -> {
@@ -1064,8 +1065,12 @@ class LanceurActivity : Activity() {
         val reste = toutes.size % 4
         if (reste != 0) repeat(4 - reste) { ligne!!.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)) }
         dlg.setContentView(defile)
-        dlg.window?.let { w -> w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0)); w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (dm.heightPixels * 0.82f).toInt()); w.setGravity(Gravity.BOTTOM); w.setDimAmount(0.5f) }
+        dlg.window?.let { w -> w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0)); w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (dm.heightPixels * 0.82f).toInt()); w.setGravity(Gravity.BOTTOM); w.setDimAmount(0.5f); w.setWindowAnimations(0) }
+        // Le tiroir monte du bas et se pose en douceur, comme tiré par le doigt.
+        val course = dm.heightPixels * 0.82f
+        defile.translationY = course; defile.alpha = 0.6f
         dlg.show()
+        defile.animate().translationY(0f).alpha(1f).setDuration(300).setInterpolator(android.view.animation.DecelerateInterpolator(2.2f)).start()
     }
 
     // ---------------------------------------------------------------- widgets
