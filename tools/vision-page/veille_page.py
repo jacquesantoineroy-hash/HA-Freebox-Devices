@@ -68,7 +68,7 @@ async def _jeton(hass: HomeAssistant) -> str:
     utilisateur = None
     if lu.get("user_id"):
         utilisateur = await hass.auth.async_get_user(lu["user_id"])
-    if utilisateur is not None and lu.get("jeton") and await hass.auth.async_validate_access_token(lu["jeton"]) is not None:
+    if utilisateur is not None and lu.get("jeton") and hass.auth.async_validate_access_token(lu["jeton"]) is not None:
         hass.data["pc_parental_veille_jeton"] = lu["jeton"]
         return lu["jeton"]
     if utilisateur is None:
