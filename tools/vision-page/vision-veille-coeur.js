@@ -177,13 +177,12 @@ class VisionVeillePanel extends HTMLElement {
     this._indice = (parseInt(this._q.get("dec") || "0", 10) || 0) % liste.length;
     setInterval(() => this._tic(), 1000);
     this._oeil();
-    // L'heure est déjà à l'écran depuis l'ouverture : ce temps compte pour le tableau de l'horloge,
-    // et les cartes arrivent donc dès qu'elles sont prêtes au lieu d'attendre un tour complet.
+    // L'heure est à l'écran depuis l'ouverture : dès que les cartes sont prêtes (et après quatre secondes
+    // d'horloge au moins), on passe au premier tableau au lieu de refaire un tour d'horloge.
     const premier = liste[this._indice];
     if (premier.genre === "horloge" && liste.length > 1) {
-      const reste = premier.duree * 1000 - (Date.now() - this._debut);
-      if (reste < 3000) { this._indice = (this._indice + 1) % liste.length; this._montrer(); }
-      else this._montrer(reste);
+      this._indice = (this._indice + 1) % liste.length;
+      setTimeout(() => this._montrer(), Math.max(0, 4000 - (Date.now() - this._debut)));
     } else this._montrer();
   }
 
