@@ -116,6 +116,77 @@ function SvPinceau([string]$cle) {
     return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($script:Pal[$noms[$cle]])
 }
 
+# ------------------------------------------------------------------ L'œil de Vision
+# Le même que sur la veille et sur les télés : une amande claire, l'iris pourpre et or qui regarde ici et
+# là, la paupière qui cligne vite et se rouvre plus doucement. Mêmes proportions, mêmes couleurs, même rythme.
+$script:Oeil = $null
+$script:OeilHasard = New-Object System.Random
+function OeilInstaller($toile) {
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    $conv = New-Object System.Windows.Media.BrushConverter
+    $pourpre = $conv.ConvertFromString('#C2577B'); $encre = $conv.ConvertFromString('#1B1418'); $creme = $conv.ConvertFromString('#E9E2D6')
+    $or = $conv.ConvertFromString([string]$script:Pal.Or)
+    $toile.Children.Clear()
+    $amande = New-Object System.Windows.Shapes.Path; $amande.Fill = $creme
+    $iris = New-Object System.Windows.Controls.Canvas; $iris.Width = $toile.Width; $iris.Height = $toile.Height
+    $disques = @()
+    foreach ($def in @(@(1.0, $pourpre, 1.0), @(0.62, $or, 1.0), @(0.34, $encre, 1.0), @(0.14, [System.Windows.Media.Brushes]::White, 0.78))) {
+        $e = New-Object System.Windows.Shapes.Ellipse; $e.Fill = $def[1]; $e.Opacity = $def[2]
+        $iris.Children.Add($e) | Out-Null; $disques += , @{ forme = $e; part = [double]$def[0] }
+    }
+    $haut = New-Object System.Windows.Shapes.Path; $haut.Stroke = $pourpre; $haut.StrokeStartLineCap = 'Round'; $haut.StrokeEndLineCap = 'Round'
+    $bas = New-Object System.Windows.Shapes.Path; $bas.Stroke = $pourpre; $bas.Opacity = 0.59; $bas.StrokeStartLineCap = 'Round'; $bas.StrokeEndLineCap = 'Round'
+    foreach ($x in @($amande, $iris, $haut, $bas)) { $toile.Children.Add($x) | Out-Null }
+    $demiL = ([double]$toile.Width - 6) / 2; $h = $demiL / 0.03
+    $haut.StrokeThickness = $h * 0.004; $bas.StrokeThickness = $h * 0.002
+    $script:Oeil = @{
+        inv = $inv; amande = $amande; iris = $iris; disques = $disques; haut = $haut; bas = $bas
+        cx = [double]$toile.Width / 2; cy = [double]$toile.Height / 2; demiL = $demiL; demiH = $h * 0.017
+        clinDebut = -9.0; prochainClin = 0.0; prochainRegard = 0.0; cibleX = 0.0; cibleY = 0.0; rx = 0.0; ry = 0.0; repos = $false
+    }
+    OeilDessiner 0.0
+}
+function OeilDessiner([double]$fermeture) {
+    $o = $script:Oeil; if (-not $o) { return }
+    $cx = $o.cx; $cy = $o.cy; $dl = $o.demiL; $dh = $o.demiH
+    $ouv = $dh * (1 - $fermeture * 0.96); $bas = $dh * 2 * (1 - $fermeture * 0.5)
+    $x0 = $cx - $dl; $x1 = $cx + $dl; $yh = $cy - $ouv * 2; $yb = $cy + $bas
+    $tout = [string]::Format($o.inv, 'M {0:0.##},{1:0.##} Q {2:0.##},{3:0.##} {4:0.##},{1:0.##} Q {2:0.##},{5:0.##} {0:0.##},{1:0.##} Z', $x0, $cy, $cx, $yh, $x1, $yb)
+    $geo = [System.Windows.Media.Geometry]::Parse($tout)
+    $o.amande.Data = $geo; $o.iris.Clip = $geo
+    $o.haut.Data = [System.Windows.Media.Geometry]::Parse([string]::Format($o.inv, 'M {0:0.##},{1:0.##} Q {2:0.##},{3:0.##} {4:0.##},{1:0.##}', $x0, $cy, $cx, $yh, $x1))
+    $o.bas.Data = [System.Windows.Media.Geometry]::Parse([string]::Format($o.inv, 'M {0:0.##},{1:0.##} Q {2:0.##},{3:0.##} {4:0.##},{1:0.##}', $x0, $cy, $cx, $yb, $x1))
+    $ri = $dh * 0.95; $ix = $cx + $o.rx * $dl * 0.45; $iy = $cy + $o.ry * $dh * 0.5
+    $k = 0
+    foreach ($d in $o.disques) {
+        $r = $ri * $d.part; $x = $ix; $y = $iy
+        if ($k -eq 3) { $x = $ix - $ri * 0.28; $y = $iy - $ri * 0.3 }
+        $d.forme.Width = $r * 2; $d.forme.Height = $r * 2
+        [System.Windows.Controls.Canvas]::SetLeft($d.forme, $x - $r); [System.Windows.Controls.Canvas]::SetTop($d.forme, $y - $r)
+        $k++
+    }
+}
+$script:OeilChrono = [System.Diagnostics.Stopwatch]::StartNew()
+$script:OeilTic = New-Object System.Windows.Threading.DispatcherTimer
+$script:OeilTic.Interval = [TimeSpan]::FromMilliseconds(33)
+$script:OeilTic.Add_Tick({
+    try {
+        $o = $script:Oeil
+        if (-not $o -or -not $script:W -or -not $script:W.IsVisible) { $script:OeilTic.Stop(); return }
+        $t = $script:OeilChrono.Elapsed.TotalSeconds; $h = $script:OeilHasard
+        if ($t -ge $o.prochainClin) { $o.clinDebut = $t; $o.prochainClin = $t + $(if ($h.NextDouble() -lt 0.18) { 0.4 } else { 2.5 + $h.NextDouble() * 5 }) }
+        $tt = $t - $o.clinDebut
+        $fermeture = 0.0
+        if ($tt -ge 0 -and $tt -lt 0.10) { $fermeture = $tt / 0.10 } elseif ($tt -ge 0.10 -and $tt -lt 0.26) { $fermeture = 1 - ($tt - 0.10) / 0.16 }
+        if ($t -ge $o.prochainRegard) { $o.cibleX = ($h.NextDouble() - 0.5) * 1.6; $o.cibleY = ($h.NextDouble() - 0.5) * 0.9; $o.prochainRegard = $t + 1.5 + $h.NextDouble() * 4 }
+        $bouge = ([Math]::Abs($o.cibleX - $o.rx) + [Math]::Abs($o.cibleY - $o.ry)) -gt 0.004
+        # Rien ne bouge : on ne redessine pas.
+        if ($fermeture -eq 0 -and -not $bouge) { if ($o.repos) { return }; $o.repos = $true } else { $o.repos = $false }
+        $o.rx += ($o.cibleX - $o.rx) * 0.3; $o.ry += ($o.cibleY - $o.ry) * 0.3
+        OeilDessiner $fermeture
+    } catch { }
+})
+
 # ------------------------------------------------------------------ XAML
 function CreerFenetre() {
 [xml]$xaml = @"
@@ -123,7 +194,7 @@ function CreerFenetre() {
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Vision" Width="620" Height="760" WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
-        Topmost="True" ShowInTaskbar="True" FontFamily="Segoe UI">
+        Topmost="False" ShowInTaskbar="True" FontFamily="Segoe UI">
   <Window.Resources>
     <SolidColorBrush x:Key="Fond" Color="$($script:Pal.Fond)"/>
     <SolidColorBrush x:Key="Carte" Color="$($script:Pal.Carte)"/>
@@ -290,7 +361,10 @@ function CreerFenetre() {
       <!-- En-tête : la poignée pour déplacer la fenêtre -->
       <Grid x:Name="Entete" DockPanel.Dock="Top" Margin="24,20,20,8" Background="Transparent">
         <StackPanel Orientation="Horizontal">
-          <Image x:Name="Logo" Width="44" Height="44" Margin="0,0,14,0"/>
+          <Grid Width="52" Height="44" Margin="0,0,12,0">
+            <Image x:Name="Logo" Visibility="Collapsed"/>
+            <Canvas x:Name="Oeil" Width="52" Height="44"/>
+          </Grid>
           <StackPanel VerticalAlignment="Center">
             <TextBlock Text="Vision" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource Texte}"/>
             <TextBlock Text="Le contrôle parental de la maison" FontSize="12" Foreground="{StaticResource Texte2}"/>
@@ -332,6 +406,8 @@ $W.Add_Closing({ param($s, $e) if ($s -ne $script:W) { return }; $e.Cancel = $tr
 # Sans cela, une fenêtre WPF ouverte depuis une boucle Windows Forms ne reçoit pas les frappes : impossible d'écrire un mot.
 try { Add-Type -AssemblyName WindowsFormsIntegration; [System.Windows.Forms.Integration.ElementHost]::EnableModelessKeyboardInterop($W) } catch { }
 $W.FindName('Plein').Add_Click({ $script:W.WindowState = $(if ($script:W.WindowState -eq 'Maximized') { 'Normal' } else { 'Maximized' }) })
+try { OeilInstaller $W.FindName('Oeil') } catch { }
+$W.Add_IsVisibleChanged({ param($s, $e) if ($s -eq $script:W -and $s.IsVisible) { $script:OeilTic.Start() } })
 }
 CreerFenetre
 
@@ -525,7 +601,7 @@ function Rafraichir() {
 function Retour([string]$titre) {
     $r = Rangee
     $r.Margin = [System.Windows.Thickness]::new(0, 0, 0, 10)
-    $r.Children.Add((Bouton '←' 'Secondaire' { $script:Vue = $null; Rafraichir })) | Out-Null
+    $r.Children.Add((Bouton '←' 'Secondaire' { $script:Vue = $(if ($script:Vue -and $script:Vue.retour) { $script:Vue.retour } else { $null }); Rafraichir })) | Out-Null
     $t = Txt $titre 18 'Texte' $true; $t.VerticalAlignment = 'Center'
     $r.Children.Add($t) | Out-Null
     $Contenu.Children.Add($r) | Out-Null
@@ -583,49 +659,300 @@ function PageMaison() {
             $Contenu.Children.Add($c) | Out-Null
         }
     }
-    $Contenu.Children.Add((Section 'Les enfants')) | Out-Null
-    foreach ($a in @(Prop $maison 'appareils' @())) {
-        if ([bool](Prop $a 'parent' $false)) { continue }
+    # Les actifs : une carte par personne, tous ses matériels dessus. Un clic ouvre sa fiche.
+    $Contenu.Children.Add((Section 'Les actifs')) | Out-Null
+    $groupes = @(GroupesMaison $maison)
+    if ($groupes.Count -eq 0) { $Contenu.Children.Add((Txt 'Aucun matériel inscrit pour l''instant.' 13 'Texte2')) | Out-Null }
+    foreach ($g in $groupes) {
         $c = Carte; $sp = $c.Child
-        $prenom = [string](Prop $a 'prenom'); if (-not $prenom) { $prenom = [string](Prop $a 'nom') }
-        $enLigne = [bool](Prop $a 'en_ligne' $false); $verrou = [bool](Prop $a 'verrouille' $false)
-        $etatTxt = 'OUVERT'; $coul = 'Vert'
-        if (-not $enLigne) { $etatTxt = 'HORS LIGNE'; $coul = 'Texte3' } elseif ($verrou) { $etatTxt = 'FERMÉ'; $coul = 'Rouge' }
+        $c.Cursor = [System.Windows.Input.Cursors]::Hand; $c.Tag = [string]$g.entite
+        $c.Add_MouseLeftButtonUp({ param($s, $e) $script:Vue = @{ type = 'personne'; personne = [string]$s.Tag }; Rafraichir })
+        $enLigne = @($g.appareils | Where-Object { [bool](Prop $_ 'en_ligne' $false) })
+        $ouverts = @($enLigne | Where-Object { -not [bool](Prop $_ 'verrouille' $false) })
+        $etatTxt = 'HORS LIGNE'; $coul = 'Texte3'
+        if ($ouverts.Count -gt 0) { $etatTxt = 'OUVERT'; $coul = 'Vert' } elseif ($enLigne.Count -gt 0) { $etatTxt = 'FERMÉ'; $coul = 'Rouge' }
         $gauche = New-Object System.Windows.Controls.StackPanel
-        $gauche.Children.Add((Txt $prenom 17 'Texte' $true)) | Out-Null
-        $icone = if ([bool](Prop $a 'android' $false)) { '📱 ' } else { '💻 ' }
-        $gauche.Children.Add((Txt ($icone + [string](Prop $a 'nom')) 12 'Texte2')) | Out-Null
-        $sp.Children.Add((Deux $gauche (Chip $etatTxt $coul))) | Out-Null
+        $gauche.Children.Add((Txt ([string]$g.prenom) 17 'Texte' $true)) | Out-Null
+        $n = $g.appareils.Count
+        $gauche.Children.Add((Txt $(if ($n -eq 0) { 'Aucun matériel' } elseif ($n -eq 1) { '1 matériel' } else { "$n matériels" }) 12 'Texte2')) | Out-Null
+        $droite = Rangee
+        $droite.Children.Add((Chip $etatTxt $coul)) | Out-Null
+        $fl = Txt '›' 20 'Texte3'; $fl.Margin = [System.Windows.Thickness]::new(12, -4, 0, 0); $droite.Children.Add($fl) | Out-Null
+        $sp.Children.Add((Deux $gauche $droite)) | Out-Null
+        foreach ($a in $g.appareils) {
+            $et = EtatAppareil $a
+            $ligne = (IconeAppareil $a) + [string](Prop $a 'nom') + '  ·  ' + $et[0].ToLower()
+            $foc = [string](Prop $a 'focus_libelle'); if (-not $foc) { $foc = [string](Prop $a 'focus') }
+            if ([bool](Prop $a 'en_ligne' $false) -and $foc -and -not [bool](Prop $a 'verrouille' $false)) { $ligne += '  ·  ' + $foc }
+            $d = Prop $a 'derogation'
+            if ($d -and [string](Prop $d 'mode') -eq 'open') { $ligne += '  ·  ' + (ResumeAppareil $a).ToLower() }
+            $sp.Children.Add((Txt $ligne 12 'Texte2' $false '0,6,0,0')) | Out-Null
+        }
+        $Contenu.Children.Add($c) | Out-Null
+    }
+    $Contenu.Children.Add((Txt ('Actualisé à {0}' -f (Get-Date -Format 'HH:mm')) 11 'Texte3' $false '4,4,0,0')) | Out-Null
+}
+
+# ---- Les actifs : personnes et matériels -----------------------------------
+function IconeAppareil($a) { if ([bool](Prop $a 'android' $false)) { return '📱 ' } else { return '💻 ' } }
+function EtatAppareil($a) {
+    if (-not [bool](Prop $a 'en_ligne' $false)) { return @('HORS LIGNE', 'Texte3') }
+    if ([bool](Prop $a 'verrouille' $false)) { return @('FERMÉ', 'Rouge') }
+    return @('OUVERT', 'Vert')
+}
+# Les matériels d'une personne : la liste que donne Home Assistant (les siens, puis ceux qu'elle partage).
+function AppareilsDe($maison, $p) {
+    $tous = @(Prop $maison 'appareils' @())
+    $ent = [string](Prop $p 'entite')
+    $ids = @(Prop $p 'appareils' @())
+    if ($ids.Count -gt 0) {
+        $sortie = @()
+        foreach ($i in $ids) { foreach ($a in $tous) { if ([string](Prop $a 'id') -eq [string]$i) { $sortie += $a } } }
+        return $sortie
+    }
+    return @($tous | Where-Object { [string](Prop $_ 'personne') -eq $ent })
+}
+# Une entrée par personne, puis les matériels que personne ne revendique.
+function GroupesMaison($maison) {
+    $sortie = @(); $pris = @{}
+    foreach ($p in @(Prop $maison 'personnes' @())) {
+        $siens = @(AppareilsDe $maison $p)
+        foreach ($a in $siens) { $pris[[string](Prop $a 'id')] = $true }
+        $sortie += , @{ entite = [string](Prop $p 'entite'); prenom = [string](Prop $p 'prenom'); personne = $p; appareils = $siens }
+    }
+    $seuls = @(@(Prop $maison 'appareils' @()) | Where-Object { -not $pris.ContainsKey([string](Prop $_ 'id')) })
+    if ($seuls.Count -gt 0) { $sortie += , @{ entite = ''; prenom = 'Sans personne'; personne = $null; appareils = $seuls } }
+    return $sortie
+}
+function PrenomDe($maison, [string]$entite) {
+    foreach ($m in @(Prop $maison 'maison' @())) { if ([string](Prop $m 'entite') -eq $entite) { return [string](Prop $m 'prenom') } }
+    return ($entite -split '\.')[-1]
+}
+function PartageTexte($maison, $a) {
+    if ([bool](Prop $a 'partage_tous' $false)) { return 'À toute la maison' }
+    $qui = @(Prop $a 'proprietaires' @())
+    if ($qui.Count -gt 1) { return 'Partagé : ' + ((@($qui | ForEach-Object { PrenomDe $maison ([string]$_) })) -join ', ') }
+    return ''
+}
+function DureeMin([int]$m) {
+    if ($m -lt 60) { return "$m min" }
+    $h = [Math]::Floor($m / 60); $r = $m % 60
+    if ($r) { return ('{0} h {1:00}' -f $h, $r) } else { return "$h h" }
+}
+
+# Après un geste, l'agent envoie puis relit la maison : la fiche se redessine d'elle-même quelques secondes plus tard.
+$script:ApresGeste = New-Object System.Windows.Threading.DispatcherTimer
+$script:ApresGeste.Interval = [TimeSpan]::FromSeconds(4)
+$script:ApresGesteReste = 0
+$script:ApresGeste.Add_Tick({
+    try {
+        $script:ApresGesteReste = $script:ApresGesteReste - 1
+        if ($script:ApresGesteReste -le 0) { $script:ApresGeste.Stop() }
+        if ($script:W.IsVisible -and $script:Vue -and @('personne', 'partage') -contains [string]$script:Vue.type -and -not $script:Vue.temps) { Rafraichir }
+    } catch { }
+})
+function RelireBientot() { $script:ApresGesteReste = 3; $script:ApresGeste.Stop(); $script:ApresGeste.Start() }
+
+# Donner du temps : la durée d'abord, le matériel ensuite. Un seul matériel : pas de seconde question.
+function DonnerTemps([int]$minutes, $ids) {
+    $ids = @($ids | ForEach-Object { [string]$_ })
+    if ($ids.Count -eq 0 -or $minutes -lt 1) { return }
+    Agir @{ action = 'temps'; pc = $ids[0]; appareils = $ids; minutes = $minutes }
+    $script:Vue.temps = $null
+    $script:Vue.dit = ('{0} donné, le temps que Home Assistant le reçoive.' -f (DureeMin $minutes))
+    Rafraichir; RelireBientot
+}
+function ChoisirDuree([int]$minutes, [bool]$autre) {
+    $maison = Lire 'maison.json'
+    $g = @(GroupesMaison $maison) | Where-Object { $_.entite -eq [string]$script:Vue.personne } | Select-Object -First 1
+    if (-not $g) { return }
+    $siens = @($g.appareils)
+    if (-not $autre -and $siens.Count -eq 1) { DonnerTemps $minutes @([string](Prop $siens[0] 'id')); return }
+    # Cochés d'avance : ce qui sert en ce moment ; sinon tout.
+    $choix = @{}
+    if ($script:Vue.temps) { $choix = $script:Vue.temps.choix }
+    else {
+        $actifs = @($siens | Where-Object { [bool](Prop $_ 'en_ligne' $false) -and [int](Prop $_ 'inactif_s' 0) -le 300 })
+        if ($actifs.Count -eq 0) { $actifs = $siens }
+        foreach ($a in $actifs) { $choix[[string](Prop $a 'id')] = $true }
+    }
+    $script:Vue.temps = @{ minutes = $minutes; autre = $autre; choix = $choix }
+    $script:Vue.dit = ''
+    Rafraichir
+}
+
+function VuePersonne() {
+    $maison = Lire 'maison.json'
+    $g = @(GroupesMaison $maison) | Where-Object { $_.entite -eq [string]$script:Vue.personne } | Select-Object -First 1
+    if (-not $g) { $Contenu.Children.Add((Txt 'Plus aucun matériel pour cette personne.' 13 'Texte2')) | Out-Null; return }
+    $siens = @($g.appareils); $prenom = [string]$g.prenom; $ent = [string]$g.entite
+    $ici = @{ type = 'personne'; personne = $ent }
+
+    # --- Ajouter du temps
+    if ($siens.Count -gt 0) {
+        $Contenu.Children.Add((Section 'Ajouter du temps')) | Out-Null
+        $c = Carte; $sp = $c.Child
+        $t = $script:Vue.temps
+        $r = Rangee
+        foreach ($def in @(@('+30 min', 30), @('+1 h', 60))) {
+            $style = if ($t -and -not $t.autre -and [int]$t.minutes -eq [int]$def[1]) { 'Primaire' } else { 'Secondaire' }
+            $r.Children.Add((Bouton $def[0] $style { param($s, $e) ChoisirDuree ([int]$s.Tag) $false } $def[1])) | Out-Null
+        }
+        $r.Children.Add((Bouton 'Autre…' $(if ($t -and $t.autre) { 'Primaire' } else { 'Secondaire' }) { ChoisirDuree 0 $true })) | Out-Null
+        $sp.Children.Add($r) | Out-Null
+        if ($t) {
+            $sp.Children.Add((Separateur)) | Out-Null
+            $champ = $null
+            if ($t.autre) {
+                $sp.Children.Add((Txt 'Combien de minutes ? (de 5 à 720)' 12 'Texte2' $false '0,4,0,6')) | Out-Null
+                $champ = Champ 'Par exemple 45'
+                $champ.Width = 180; $champ.HorizontalAlignment = 'Left'
+                $sp.Children.Add($champ) | Out-Null
+            }
+            if ($siens.Count -gt 1) {
+                $sp.Children.Add((Txt 'Pour quel matériel ?' 13 'Texte' $true '0,4,0,2')) | Out-Null
+                foreach ($a in $siens) {
+                    $id = [string](Prop $a 'id')
+                    $lib = (IconeAppareil $a) + [string](Prop $a 'nom')
+                    if (-not [bool](Prop $a 'en_ligne' $false)) { $lib += '  (hors ligne)' }
+                    $sp.Children.Add((Coche $lib ([bool]$t.choix[$id]) { param($s, $e) $script:Vue.temps.choix[[string]$s.Tag] = [bool]$s.IsChecked } $id)) | Out-Null
+                }
+            }
+            $erreur = Txt '' 12 'Rouge' $false '0,6,0,0'; $erreur.Visibility = 'Collapsed'
+            $r2 = Rangee; $r2.Margin = [System.Windows.Thickness]::new(0, 10, 0, 0)
+            $libelle = if ($t.autre) { 'Donner ce temps' } else { 'Donner ' + (DureeMin ([int]$t.minutes)) }
+            $r2.Children.Add((Bouton $libelle 'Primaire' {
+                param($s, $e); $x = $s.Tag
+                $min = [int]$script:Vue.temps.minutes
+                if ($x.champ) {
+                    $min = 0; [void][int]::TryParse((Valeur $x.champ), [ref]$min)
+                    if ($min -lt 5 -or $min -gt 720) { $x.erreur.Text = 'Une durée entre 5 et 720 minutes.'; $x.erreur.Visibility = 'Visible'; return }
+                }
+                $ids = @($script:Vue.temps.choix.GetEnumerator() | Where-Object { $_.Value } | ForEach-Object { [string]$_.Key })
+                if ($x.seul) { $ids = @($x.seul) }
+                if ($ids.Count -eq 0) { $x.erreur.Text = 'Coche au moins un matériel.'; $x.erreur.Visibility = 'Visible'; return }
+                DonnerTemps $min $ids
+            } @{ champ = $champ; erreur = $erreur; seul = $(if ($siens.Count -eq 1) { [string](Prop $siens[0] 'id') } else { $null }) })) | Out-Null
+            $r2.Children.Add((Bouton 'Annuler' 'Secondaire' { $script:Vue.temps = $null; Rafraichir })) | Out-Null
+            $sp.Children.Add($r2) | Out-Null
+            $sp.Children.Add($erreur) | Out-Null
+        }
+        if ($script:Vue.dit) { $sp.Children.Add((Txt ([string]$script:Vue.dit) 12 'Vert' $false '0,10,0,0')) | Out-Null }
+        # Le temps déjà accordé, qu'on peut reprendre.
+        foreach ($a in $siens) {
+            $d = Prop $a 'derogation'
+            if (-not $d -or [string](Prop $d 'mode') -ne 'open') { continue }
+            $sp.Children.Add((Separateur)) | Out-Null
+            $ligne = Txt ((IconeAppareil $a) + [string](Prop $a 'nom') + ' : ' + (ResumeAppareil $a).ToLower()) 12 'Texte2'
+            $ligne.VerticalAlignment = 'Center'
+            $sp.Children.Add((Deux $ligne (Bouton 'Retirer' 'Secondaire' {
+                param($s, $e)
+                Agir @{ action = 'annuler'; pc = [string]$s.Tag; minutes = 0 }
+                $s.Content = '✓'; $s.IsEnabled = $false; RelireBientot
+            } ([string](Prop $a 'id'))))) | Out-Null
+        }
+        $Contenu.Children.Add($c) | Out-Null
+    }
+
+    # --- Ses matériels
+    $Contenu.Children.Add((Section $(if ($ent) { 'Ses matériels' } else { 'Matériels sans personne' }))) | Out-Null
+    foreach ($a in $siens) {
+        $c = Carte; $sp = $c.Child
+        $et = EtatAppareil $a
+        $gauche = New-Object System.Windows.Controls.StackPanel
+        $gauche.Children.Add((Txt ((IconeAppareil $a) + [string](Prop $a 'nom')) 15 'Texte' $true)) | Out-Null
+        $part = PartageTexte $maison $a
+        if ($part) { $gauche.Children.Add((Txt $part 11 'Texte3' $false '0,2,0,0')) | Out-Null }
+        $sp.Children.Add((Deux $gauche (Chip $et[0] $et[1]))) | Out-Null
         $l2 = ResumeAppareil $a
         $u = Prop $a 'usage'
         if ($u) { $l2 = $l2 + ('  ·  Écran {0} min aujourd''hui' -f [int](Prop $u 'actif' 0)) }
         $foc = [string](Prop $a 'focus_libelle'); if (-not $foc) { $foc = [string](Prop $a 'focus') }
-        if ($enLigne -and $foc) { $l2 = $l2 + ('  ·  En ce moment : {0}' -f $foc) }
+        if ([bool](Prop $a 'en_ligne' $false) -and $foc) { $l2 = $l2 + ('  ·  En ce moment : {0}' -f $foc) }
         $sp.Children.Add((Txt $l2 12 'Texte2' $false '0,10,0,0')) | Out-Null
-        $r = Rangee; $r.Margin = [System.Windows.Thickness]::new(0, 14, 0, 0)
-        $defs = @(@('+30 min', 'ouvrir', 30, 'Secondaire'), @('+1 h', 'ouvrir', 60, 'Secondaire'), @('Fermer', 'fermer', 0, 'Danger'))
-        if (Prop $a 'derogation') { $defs += ,@('Planning', 'annuler', 0, 'Secondaire') }
-        foreach ($def in $defs) {
-            $r.Children.Add((Bouton $def[0] $def[3] {
-                param($s, $e); $t = $s.Tag
-                Agir @{ action = [string]$t.action; pc = [string]$t.pc; minutes = [int]$t.minutes }
-                $s.Content = '✓'; $s.IsEnabled = $false
-            } @{ action = $def[1]; pc = (Prop $a 'id'); minutes = $def[2] })) | Out-Null
+        $r = New-Object System.Windows.Controls.WrapPanel; $r.Margin = [System.Windows.Thickness]::new(0, 12, 0, 0)
+        $gestes = @()
+        if (-not [bool](Prop $a 'verrouille' $false)) { $gestes += , @('Fermer', 'fermer', 'Danger') }
+        if (Prop $a 'derogation') { $gestes += , @('Revenir au planning', 'annuler', 'Secondaire') }
+        foreach ($def in $gestes) {
+            $b = Bouton $def[0] $def[2] {
+                param($s, $e); $x = $s.Tag
+                Agir @{ action = [string]$x.action; pc = [string]$x.pc; minutes = 0 }
+                $s.Content = '✓'; $s.IsEnabled = $false; RelireBientot
+            } @{ action = $def[1]; pc = (Prop $a 'id') }
+            $b.Margin = [System.Windows.Thickness]::new(0, 0, 8, 8); $r.Children.Add($b) | Out-Null
+        }
+        foreach ($def in @(@('Ce qui est fermé', 'fermes'), @('Planning', 'planning'), @('Un mot…', 'mot'), @('À qui est-il ?', 'partage'))) {
+            $b = Bouton $def[0] 'Secondaire' {
+                param($s, $e); $x = $s.Tag
+                $script:Vue = @{ type = $x.type; appareil = $x.appareil; retour = $x.retour }; Rafraichir
+            } @{ type = $def[1]; appareil = $a; retour = $ici }
+            $b.Margin = [System.Windows.Thickness]::new(0, 0, 8, 8); $r.Children.Add($b) | Out-Null
         }
         $sp.Children.Add($r) | Out-Null
-        $r2 = New-Object System.Windows.Controls.WrapPanel; $r2.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
-        foreach ($def in @(@('Catégories', 'categories'), @('Autorisations', 'exceptions'), @('Ce qui est fermé', 'fermes'), @('Temps', 'temps'), @('Planning', 'planning'), @('Un mot…', 'mot'))) {
-            $r2.Children.Add((Bouton $def[0] 'Secondaire' {
-                param($s, $e); $t = $s.Tag
-                if ($t.type -eq 'mot') { EnvoyerMot $t.appareil; return }
-                $script:Vue = @{ type = $t.type; appareil = $t.appareil }; Rafraichir
-            } @{ type = $def[1]; appareil = $a })) | Out-Null
-            $r2.Children[$r2.Children.Count - 1].Margin = [System.Windows.Thickness]::new(0, 0, 8, 8)
+        $Contenu.Children.Add($c) | Out-Null
+    }
+
+    # --- Ce qui vaut pour la personne, sur tous ses matériels à elle
+    if ($ent) {
+        $propre = $null
+        $principal = [string](Prop $g.personne 'principal')
+        foreach ($a in $siens) { if ($principal -and [string](Prop $a 'id') -eq $principal) { $propre = $a } }
+        if (-not $propre) { $propre = $siens | Where-Object { [string](Prop $_ 'personne') -eq $ent } | Select-Object -First 1 }
+        $Contenu.Children.Add((Section "Les règles de $prenom")) | Out-Null
+        $c = Carte; $sp = $c.Child
+        if ($propre) {
+            $sp.Children.Add((Txt 'Elles valent sur tous ses matériels à elle. Un matériel partagé garde ses propres règles.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
+            $r = New-Object System.Windows.Controls.WrapPanel
+            foreach ($def in @(@('Catégories', 'categories'), @('Autorisations', 'exceptions'), @('Temps d''écran', 'temps'))) {
+                $b = Bouton $def[0] 'Secondaire' {
+                    param($s, $e); $x = $s.Tag
+                    $script:Vue = @{ type = $x.type; appareil = $x.appareil; retour = $x.retour }; Rafraichir
+                } @{ type = $def[1]; appareil = $propre; retour = $ici }
+                $b.Margin = [System.Windows.Thickness]::new(0, 0, 8, 8); $r.Children.Add($b) | Out-Null
+            }
+            $sp.Children.Add($r) | Out-Null
+        } else {
+            $sp.Children.Add((Txt "$prenom n'a pas encore de matériel à elle : seulement des matériels partagés, qui gardent leurs propres règles." 12 'Texte2')) | Out-Null
         }
-        $sp.Children.Add($r2) | Out-Null
         $Contenu.Children.Add($c) | Out-Null
     }
     $Contenu.Children.Add((Txt ('Actualisé à {0}' -f (Get-Date -Format 'HH:mm')) 11 'Texte3' $false '4,4,0,0')) | Out-Null
+}
+
+# À qui est un matériel : sa personne principale (ses règles s'y appliquent), et ceux qui le partagent.
+function VuePartage($a) {
+    $maison = Lire 'maison.json'
+    $idPc = [string](Prop $a 'id')
+    foreach ($x in @(Prop $maison 'appareils' @())) { if ([string](Prop $x 'id') -eq $idPc) { $a = $x } }
+    $principale = [string](Prop $a 'personne'); $tous = [bool](Prop $a 'partage_tous' $false)
+    $qui = @(Prop $a 'proprietaires' @() | ForEach-Object { [string]$_ })
+    $Contenu.Children.Add((Txt 'Partager un matériel ne change aucune règle : il apparaît chez chacun, et chacun peut y recevoir du temps.' 12 'Texte2' $false '0,0,0,10')) | Out-Null
+    $c = Carte; $sp = $c.Child
+    $script:VP = @{ pc = $idPc; coches = @(); tous = $null }
+    $envoyer = {
+        $t = [bool]$script:VP.tous.IsChecked
+        $p = @($script:VP.coches | Where-Object { $_.IsChecked -and $_.IsEnabled } | ForEach-Object { [string]$_.Tag })
+        if ($t) { $p = @() }
+        foreach ($k in $script:VP.coches) { if ([string]$k.Tag -ne $script:VP.principale) { $k.IsEnabled = -not $t } }
+        Agir @{ action = 'partage'; pc = [string]$script:VP.pc; personnes = $p; tous = $t }
+        RelireBientot
+    }
+    $script:VP.principale = $principale
+    $ct = Coche 'Toute la maison' $tous $envoyer
+    $script:VP.tous = $ct
+    $sp.Children.Add($ct) | Out-Null
+    $sp.Children.Add((Separateur)) | Out-Null
+    foreach ($m in @(Prop $maison 'maison' @())) {
+        $e = [string](Prop $m 'entite'); $lib = [string](Prop $m 'prenom')
+        $estPrincipale = ($e -eq $principale)
+        if ($estPrincipale) { $lib += '  (ses règles s''y appliquent)' }
+        $k = Coche $lib ($estPrincipale -or (-not $tous -and ($qui -contains $e))) $envoyer $e
+        if ($estPrincipale -or $tous) { $k.IsEnabled = $false }
+        $script:VP.coches += $k
+        $sp.Children.Add($k) | Out-Null
+    }
+    $Contenu.Children.Add($c) | Out-Null
 }
 
 function EnvoyerMot($a) { $script:Vue = @{ type = 'mot'; appareil = $a }; Rafraichir }
@@ -713,6 +1040,12 @@ function PageSousVue() {
     $prenom = ''
     if ($a) { $prenom = [string](Prop $a 'prenom'); if (-not $prenom) { $prenom = [string](Prop $a 'nom') } }
     switch ($script:Vue.type) {
+        'personne' {
+            $titre = 'Sans personne'
+            foreach ($x in @(Prop (Lire 'maison.json') 'personnes' @())) { if ([string](Prop $x 'entite') -eq [string]$script:Vue.personne) { $titre = [string](Prop $x 'prenom') } }
+            Retour $titre; VuePersonne
+        }
+        'partage' { Retour ('À qui est ' + [string](Prop $a 'nom') + ' ?'); VuePartage $a }
         'fermes' { Retour "Ce qui est fermé chez $prenom"; VueFermes $a }
         'planning' { Retour "Planning de $prenom"; VuePlanning $a }
         'categories' { Retour "Catégories de $prenom"; VueCategories $a }
@@ -1188,7 +1521,10 @@ $tray.Add_MouseClick({ param($s, $e) if ($e.Button -eq 'Left') { Montrer } })
 function Montrer() {
     $script:VerrouAffiche = $false
     Rafraichir
-    $script:W.Show(); $script:W.Activate()
+    $script:W.Show()
+    if ($script:W.WindowState -eq 'Minimized') { $script:W.WindowState = 'Normal' }
+    # Elle vient devant quand on l'appelle, puis se comporte comme toute fenêtre : un clic ailleurs la laisse derrière.
+    $script:W.Topmost = $true; $script:W.Activate() | Out-Null; $script:W.Topmost = $false
     # Verrouillée : Windows Hello se propose de lui-même, le code reste possible à côté.
     if ($script:VerrouAffiche) {
         if ($script:ChampCode) { try { $script:ChampCode.Focus() | Out-Null } catch { } }
@@ -1202,7 +1538,7 @@ $horloge.Add_Tick({
     if ($e -and (Prop $e 'texte')) { $txt = [string](Prop $e 'texte') }
     if ($txt.Length -gt 63) { $txt = $txt.Substring(0, 63) }
     $tray.Text = $txt
-    if ($script:W.IsVisible -and $script:Page -eq 'maison' -and -not $script:Vue) { Rafraichir }
+    if ($script:W.IsVisible -and $script:Page -eq 'maison' -and (-not $script:Vue -or ([string]$script:Vue.type -eq 'personne' -and -not $script:Vue.temps))) { Rafraichir }
 })
 $horloge.Start()
 
