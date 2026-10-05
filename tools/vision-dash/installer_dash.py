@@ -18,6 +18,8 @@ def patch(nom, remplacements, bak=".bakdash", depuis=None):
     if not os.path.exists(p + bak):
         shutil.copy2(p, p + bak)
     for a, b in remplacements:
+        if b in t:
+            continue  # déjà fait
         assert a in t, (nom, a[:70])
         t = t.replace(a, b, 1)
     open(p, "w", encoding="utf-8").write(t)
@@ -87,6 +89,8 @@ patch("veille_plus.py", [
 
 # Dans Vision > Écran de veille, la carte des tableaux de bord remplace l'ancien compositeur.
 patch("dashboard.py", [
+    # L'onglet « Écran de veille » est écrit par Vision : sans cela chaque régénération en gardait un double.
+    ("CHEMINS = (\"maison\", \"pc\",", "CHEMINS = (\"maison\", \"veille\", \"pc\","),
     ("                    {\"type\": \"custom:vision-veille-card\", \"grid_options\": {\"columns\": \"full\"}},\n",
      "                    {\"type\": \"custom:vision-dashboards-card\", \"grid_options\": {\"columns\": \"full\"}},\n"),
     ("`/local/vision-veille-card.js` ", "`/local/vision-dashboards-card.js` "),

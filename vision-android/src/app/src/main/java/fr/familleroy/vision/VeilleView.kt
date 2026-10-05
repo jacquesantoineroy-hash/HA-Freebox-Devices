@@ -564,7 +564,8 @@ class VeilleView(ctx: Context) : View(ctx) {
 
         val entree = min(1f, ecoule / fonduMs.toFloat())
         val reste = dureeActuelle - ecoule
-        val sortie = if (!pause && reste < fonduMs) reste / fonduMs.toFloat() else 1f
+        // Un seul tableau (l'horloge seule) : il reste affiché, sans fondu de sortie vers un écran vide.
+        val sortie = if (!pause && tableaux.size > 1 && reste < fonduMs) (reste / fonduMs.toFloat()).coerceIn(0f, 1f) else 1f
         // Les caméras se rafraîchissent pendant leur tableau, et juste avant qu'il n'arrive.
         val suivant = tableaux.getOrNull((indice + 1) % tableaux.size)
         val actuel = tableaux.getOrNull(indice)
