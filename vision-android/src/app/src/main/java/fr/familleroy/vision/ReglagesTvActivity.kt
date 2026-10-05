@@ -131,18 +131,7 @@ class ReglagesTvActivity : Activity() {
         gauche.addView(section("Tableaux de l'écran de veille"))
         if (liste.isEmpty()) gauche.addView(texte("Chargement…", t(20f), theme.encre3))
         liste.forEach { gauche.addView(rangTableau(it), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(8f) }) }
-        val plus = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(18f), px(12f), px(18f), px(12f)) }
-        plus.addView(ImageView(this).apply { setImageResource(R.drawable.ic_plus); setColorFilter(theme.or) }, LinearLayout.LayoutParams(px(22f), px(22f)).apply { rightMargin = px(14f) })
-        plus.addView(texte("Composer un tableau avec des entités Home Assistant", t(22f), theme.encre, Polices.moyen(this)))
-        focusable(plus, "plus_tableau", 22f)
-        plus.setOnClickListener {
-            val champ = EditText(this).apply { hint = "Titre du tableau" }
-            AlertDialog.Builder(this).setTitle("Nouveau tableau").setView(champ)
-                .setPositiveButton("Créer") { _, _ -> val tt = Local.nouveauLocal(this, champ.text.toString().trim().ifEmpty { "Tableau" }); startActivity(Intent(this, TableauEditeurActivity::class.java).putExtra("id", tt.optString("id"))) }
-                .setNegativeButton("Annuler", null).show()
-        }
-        gauche.addView(plus)
-        gauche.addView(texte("Les tableaux composés dans Home Assistant (Vision → Écran de veille) apparaissent aussi ici ; ceux composés sur l'appareil se modifient d'un appui long.", t(17f), theme.encre3).apply { setPadding(px(4f), px(8f), 0, 0) })
+        gauche.addView(texte("L'horloge, puis les tableaux de bord Home Assistant choisis dans Vision → Écran de veille. Ici, chaque appareil choisit ceux qu'il montre, leur durée et, en appuyant sur un nom, les cartes affichées.", t(17f), theme.encre3).apply { setPadding(px(4f), px(8f), 0, 0) })
 
         // --- La source du son ----------------------------------------------------------
         droite.addView(section("Source du son"))
@@ -227,7 +216,7 @@ class ReglagesTvActivity : Activity() {
 
     // ------------------------------------------------------------------ tableaux
 
-    private class Ligne(val cle: String, val nom: String, val actif: Boolean, val duree: Int, val local: JSONObject?)
+    private class Ligne(val cle: String, val nom: String, val actif: Boolean, val duree: Int, val local: JSONObject?, val cartes: JSONArray? = null)
 
     /** Les tableaux connus : ceux de Home Assistant (ordre et défauts), puis ceux de l'appareil ; l'appareil a le dernier mot. */
     private fun listeTableaux(): List<Ligne> {
@@ -236,18 +225,13 @@ class ReglagesTvActivity : Activity() {
         if (ha != null) for (i in 0 until ha.length()) {
             val o = ha.getJSONObject(i)
             val cle = Local.cleTableau(o.optString("code"), o.optString("id"))
-            sortie.add(Ligne(cle, o.optString("nom"), Local.actif(this, cle, o.optBoolean("actif", true)), Local.duree(this, cle, o.optInt("duree", 20)), null))
+            val cartes = o.optJSONArray("cartes")
+            val montrees = if (cartes == null) 0 else { val m = Local.cartesMasquees(this, cle); (0 until cartes.length()).count { cartes.getJSONObject(it).optString("cle") !in m } }
+            val nom = if (cartes == null) o.optString("nom") else "${o.optString("nom")}  · $montrees/${cartes.length()} cartes"
+            sortie.add(Ligne(cle, nom, Local.actif(this, cle, o.optBoolean("actif", true)), Local.duree(this, cle, o.optInt("duree", 20)), null, cartes))
         } else {
             // Sans Home Assistant : les tableaux de l'appli, dans l'ordre d'origine.
-            listOf("horloge" to "Horloge", "vigilance" to "Vigilance Météo-France", "meteo" to "Météo", "courbe" to "Courbe des températures", "maison" to "La maison", "tuiles" to "Tuiles",
-                "cameras" to "Caméras", "esports" to "eSport", "courses" to "Sport auto", "avenir" to "À venir", "ecole" to "Demain à l'école", "agenda" to "Agenda", "chauffage" to "Chauffage et fioul",
-                "batteries" to "Batteries", "photos" to "Photos").forEach { (c, n) -> sortie.add(Ligne(c, n, Local.actif(this, c, true), Local.duree(this, c, 20), null)) }
-        }
-        val locaux = Local.locaux(this)
-        for (i in 0 until locaux.length()) {
-            val o = locaux.getJSONObject(i)
-            val cle = Local.cleTableau("entites", o.optString("id"))
-            sortie.add(Ligne(cle, o.optString("titre") + "  · ici", Local.actif(this, cle, true), Local.duree(this, cle, o.optInt("duree", 22)), o))
+            sortie.add(Ligne("horloge", "Horloge", Local.actif(this, "horloge", true), Local.duree(this, "horloge", 20), null))
         }
         return sortie
     }
@@ -271,6 +255,10 @@ class ReglagesTvActivity : Activity() {
             nom.setOnLongClickListener { menuLocal(l.local); true }
             nom.setOnClickListener { menuLocal(l.local) }
         }
+        if (l.cartes != null) {
+            focusable(nom, "c_" + l.cle, 18f)
+            nom.setOnClickListener { choisirCartes(l) }
+        }
         rang.addView(nom, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         fun pas(signe: String, tag: String, action: () -> Unit): View = texte(signe, t(28f), theme.encre, Polices.outfit(this)).apply {
             gravity = Gravity.CENTER
@@ -282,6 +270,19 @@ class ReglagesTvActivity : Activity() {
         rang.addView(texte("${l.duree} s", t(24f), theme.encre, Polices.demiGras(this)).apply { gravity = Gravity.CENTER; alpha = if (l.actif) 1f else 0.45f }, LinearLayout.LayoutParams(px(64f), ViewGroup.LayoutParams.WRAP_CONTENT))
         rang.addView(pas("+", "p_" + l.cle) { Local.poserTableau(this, l.cle, duree = l.duree + 5); repeindre() }, LinearLayout.LayoutParams(px(40f), px(40f)))
         return rang
+    }
+
+    /** Les cartes d'un tableau de bord : cocher celles que cet appareil montre. */
+    private fun choisirCartes(l: Ligne) {
+        val cartes = l.cartes ?: return
+        val cles = (0 until cartes.length()).map { cartes.getJSONObject(it).optString("cle") }
+        val noms = (0 until cartes.length()).map { val o = cartes.getJSONObject(it); val s = o.optString("section"); if (s.isEmpty()) o.optString("nom") else "$s · ${o.optString("nom")}" }
+        val masquees = Local.cartesMasquees(this, l.cle)
+        val coches = BooleanArray(cles.size) { cles[it] !in masquees }
+        AlertDialog.Builder(this).setTitle(l.nom.substringBefore("  ·"))
+            .setMultiChoiceItems(noms.toTypedArray(), coches) { _, i, c -> coches[i] = c }
+            .setPositiveButton("Valider") { _, _ -> Local.poserCartesMasquees(this, l.cle, cles.filterIndexed { i, _ -> !coches[i] }); repeindre() }
+            .setNegativeButton("Annuler", null).show()
     }
 
     private fun menuLocal(t: JSONObject) {

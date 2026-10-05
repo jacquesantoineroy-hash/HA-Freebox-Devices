@@ -390,6 +390,7 @@ async def tableaux(hass: HomeAssistant, coord, ecran: str, qui: dict[str, str]) 
                                 for borne in ("min", "max"):
                                     if borne in c:
                                         r[borne] = c[borne]
+                        r["carte"] = f["cle"]
                         r["largeur"] = int(c.get("largeur") or 6)
                         r["hauteur"] = int(c.get("hauteur") or (2 if r.get("rendu") in ("jauge", "courbe") else 1))
                         cases.append(r)
@@ -406,6 +407,42 @@ async def tableaux(hass: HomeAssistant, coord, ecran: str, qui: dict[str, str]) 
                 "duree": choix["duree"],
                 "colonnes": int(vue.get("colonnes") or 3),
                 "sections": sections,
+            })
+    return sortie
+
+
+def legers(hass: HomeAssistant, coord) -> list[dict[str, Any]]:
+    """Pour les réglages de l'appareil : les tableaux rendus disponibles et leurs cartes (sans aucun état).
+    Home Assistant rend disponible ; chaque appareil choisit ensuite ce qu'il montre."""
+    sortie: list[dict[str, Any]] = []
+    for adresse, brut in (getattr(coord.store, "veille_dash", None) or {}).items():
+        choix = _choix(coord, adresse)
+        fige = (brut or {}).get("fige")
+        if not choix["actif"] or not fige:
+            continue
+        for vue in fige["vues"]:
+            cv = vue["cle"]
+            if not choix["vues"].get(cv, True):
+                continue
+            cartes = []
+            for s in vue["sections"]:
+                for f in s["cartes"]:
+                    if not choix["cartes"].get("{}/{}".format(cv, f["cle"]), True):
+                        continue
+                    premiere = f["cases"][0]
+                    eid = premiere.get("entite") or ""
+                    etat = hass.states.get(eid) if eid else None
+                    nom = premiere.get("libelle") or (str(etat.attributes.get("friendly_name") or eid) if etat else eid) or "Note"
+                    if len(f["cases"]) > 1:
+                        nom = "{} (+{})".format(nom, len(f["cases"]) - 1)
+                    cartes.append({"cle": f["cle"], "nom": nom, "section": s["titre"]})
+            if not cartes:
+                continue
+            titre = vue.get("titre") or ""
+            sortie.append({
+                "code": "dash", "id": "dash_{}_{}".format(adresse, cv),
+                "nom": titre if titre and len(fige["vues"]) > 1 and titre != fige.get("nom") else (fige.get("nom") or adresse),
+                "actif": True, "duree": choix["duree"], "cartes": cartes,
             })
     return sortie
 

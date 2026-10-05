@@ -129,7 +129,21 @@ object Local {
     /** Les choix par tableau : {"horloge": {"actif": true, "duree": 15}, "entites:abc": {...}}. */
     private fun choix(ctx: Context): JSONObject = try { JSONObject(p(ctx).getString("tableaux", "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
 
-    fun cleTableau(code: String, id: String): String = if (code == "entites") "entites:$id" else code
+    fun cleTableau(code: String, id: String): String = if (code == "entites" || code == "dash") "$code:$id" else code
+
+    /** Les cartes d'un tableau de bord que cet appareil ne montre pas. */
+    fun cartesMasquees(ctx: Context, cle: String): Set<String> {
+        val a = choix(ctx).optJSONObject(cle)?.optJSONArray("masquees") ?: return emptySet()
+        return (0 until a.length()).map { a.optString(it) }.toSet()
+    }
+
+    fun poserCartesMasquees(ctx: Context, cle: String, masquees: Collection<String>) {
+        val c = choix(ctx)
+        val o = c.optJSONObject(cle) ?: JSONObject()
+        o.put("masquees", JSONArray(masquees.toList()))
+        c.put(cle, o)
+        p(ctx).edit().putString("tableaux", c.toString()).apply(); toucher()
+    }
 
     fun actif(ctx: Context, cle: String, defaut: Boolean): Boolean = choix(ctx).optJSONObject(cle)?.optBoolean("actif", defaut) ?: defaut
     fun duree(ctx: Context, cle: String, defaut: Int): Int = choix(ctx).optJSONObject(cle)?.optInt("duree", defaut) ?: defaut

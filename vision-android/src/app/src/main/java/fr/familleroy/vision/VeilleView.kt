@@ -67,7 +67,9 @@ class VeilleView(ctx: Context) : View(ctx) {
     private class Case(val entite: String, val nom: String, val rendu: String, val valeur: Double?, val unite: String, val texte: String, val on: Boolean?,
                        val classe: String, val min: Double, val max: Double, val serie: List<Pair<Long, Float>>, val consigne: Double?,
                        /** Tableaux de bord Home Assistant : largeur de la carte (sur 12) et hauteur (en rangées). */
-                       val largeur: Int = 6, val hauteur: Int = 1)
+                       val largeur: Int = 6, val hauteur: Int = 1,
+                       /** La carte du tableau de bord d'où vient la case (pour la masquer sur cet appareil). */
+                       val carte: String = "")
     private class Section(val titre: String, val cases: List<Case>)
     private class Def(val code: String, val dureeMs: Long, val id: String, val titre: String, val cases: List<Case>,
                       val sections: List<Section> = emptyList(), val colonnes: Int = 3)
@@ -186,14 +188,13 @@ class VeilleView(ctx: Context) : View(ctx) {
             // Les tableaux de Home Assistant (déjà filtrés pour cet écran et ce public), puis ceux composés ici.
             val tous = ArrayList<JSONObject>()
             for (i in 0 until a.length()) tous.add(a.getJSONObject(i))
-            j.optJSONArray("locaux")?.let { l -> for (i in 0 until l.length()) tous.add(l.getJSONObject(i)) }
             fun casesDe(cs: org.json.JSONArray?): List<Case> = (0 until (cs?.length() ?: 0)).map { q ->
                 val c = cs!!.getJSONObject(q)
                 val sr = c.optJSONArray("serie")
                 Case(c.optString("entite"), c.optString("nom"), c.optString("rendu", "texte"), c.optDoubleOrNull("valeur"), c.optString("unite"), c.optString("texte"),
                     if (c.isNull("on")) null else c.optBoolean("on"), c.optString("classe"), c.optDouble("min", 0.0), c.optDouble("max", 100.0),
                     (0 until (sr?.length() ?: 0)).map { k -> val pt = sr!!.getJSONArray(k); pt.getLong(0) to pt.getDouble(1).toFloat() }, c.optDoubleOrNull("consigne"),
-                    c.optInt("largeur", 6).coerceIn(1, 12), c.optInt("hauteur", 1).coerceIn(1, 3))
+                    c.optInt("largeur", 6).coerceIn(1, 12), c.optInt("hauteur", 1).coerceIn(1, 3), c.optString("carte"))
             }
             tous.map { o ->
                 val ss = o.optJSONArray("sections")
@@ -464,40 +465,12 @@ class VeilleView(ctx: Context) : View(ctx) {
             // Home Assistant dicte l'ordre, la durée et le public ; on fabrique chaque tableau à sa place.
             defs.forEach { def -> liste.addAll(tableauxPour(d, def)) }
             if (liste.isEmpty()) liste.add(Tableau(Genre.HORLOGE))
-            if (d.rang >= 2 && liste.none { it.genre == Genre.VIGILANCE }) liste.add(1.coerceAtMost(liste.size), Tableau(Genre.VIGILANCE))
             tableaux = liste
             if (indice >= tableaux.size) indice = 0
             return
         }
+        // Sans liste venue de Home Assistant : l'horloge, seul tableau propre à l'appli.
         liste.add(Tableau(Genre.HORLOGE))
-        if (d != null) {
-            if (d.rang >= 1) liste.add(Tableau(Genre.VIGILANCE))
-            if (d.etatMeteo.isNotEmpty()) liste.add(Tableau(Genre.METEO))
-            if (d.series.size >= 2) liste.add(Tableau(Genre.COURBE))
-            if (d.maison.isNotEmpty()) liste.add(Tableau(Genre.MAISON))
-            // Un tableau par thème (chauffage, ouvertures…), quatre tuiles au plus par écran.
-            val themes = LinkedHashMap<String, MutableList<Tuile>>()
-            d.tuiles.forEach { themes.getOrPut(it.theme) { ArrayList() }.add(it) }
-            themes.values.forEach { groupe -> groupe.chunked(4).forEach { liste.add(Tableau(Genre.TUILES, it)) } }
-            d.cameras.chunked(4).forEach { liste.add(Tableau(Genre.CAMERAS, cameras = it)) }
-            d.esports.forEach { liste.add(Tableau(Genre.ESPORTS, jeu = it)) }
-            d.courses.forEach { liste.add(Tableau(Genre.COURSES, sport = it)) }
-            if (d.avenir.isNotEmpty()) liste.add(Tableau(Genre.AVENIR))
-            d.ecole.forEach { liste.add(Tableau(Genre.ECOLE, ecole = it)) }
-            if (d.agenda.isNotEmpty()) liste.add(Tableau(Genre.AGENDA))
-            if (d.chauffage != null) liste.add(Tableau(Genre.CHAUFFAGE))
-            if (d.batteries.isNotEmpty()) liste.add(Tableau(Genre.BATTERIES))
-            if (d.photos.isNotEmpty()) {
-                // Trois photos par passage, en tournant au fil des cycles.
-                val depart = (tourPhotos * 3) % d.photos.size
-                liste.add(Tableau(Genre.PHOTOS, photos = (0 until minOf(3, d.photos.size)).map { d.photos[(depart + it) % d.photos.size] }))
-            }
-            if (d.rang >= 2) {
-                val avec = ArrayList<Tableau>()
-                liste.forEach { t -> avec.add(t); if (t.genre != Genre.VIGILANCE) avec.add(Tableau(Genre.VIGILANCE)) }
-                liste.clear(); liste.addAll(avec)
-            }
-        }
         tableaux = liste
         if (indice >= tableaux.size) indice = 0
     }
@@ -505,6 +478,8 @@ class VeilleView(ctx: Context) : View(ctx) {
     /** Les tableaux que produit une définition venue de Home Assistant (zéro, un ou plusieurs). */
     private fun tableauxPour(d: Donnees, def: Def): List<Tableau> {
         // L'appareil a le dernier mot : affiché ou non, et combien de temps.
+        // Seuls restent l'horloge (propre à l'appli) et les tableaux de bord de Home Assistant.
+        if (def.code != "horloge" && def.code != "dash") return emptyList()
         val cle = Local.cleTableau(def.code, def.id)
         if (!Local.actif(context, cle, true)) return emptyList()
         val ms = Local.duree(context, cle, (def.dureeMs / 1000).toInt()) * 1000L
@@ -533,7 +508,13 @@ class VeilleView(ctx: Context) : View(ctx) {
             } else emptyList()
             "entites" -> if (def.cases.isNotEmpty()) listOf(Tableau(Genre.ENTITES, def = def, dureeMs = ms)) else emptyList()
             // Un tableau de bord Home Assistant : autant d'écrans qu'il en faut, enchaînés en fondu.
-            "dash" -> paginer(def).map { Tableau(Genre.DASH, def = def, dureeMs = ms, page = it) }
+            "dash" -> {
+                // Home Assistant rend les cartes disponibles ; l'appareil choisit celles qu'il montre.
+                val masquees = Local.cartesMasquees(context, cle)
+                val vu = if (masquees.isEmpty()) def else Def(def.code, def.dureeMs, def.id, def.titre, def.cases,
+                    def.sections.map { s -> Section(s.titre, s.cases.filter { it.carte !in masquees }) }.filter { it.cases.isNotEmpty() }, def.colonnes)
+                paginer(vu).map { Tableau(Genre.DASH, def = vu, dureeMs = ms, page = it) }
+            }
             else -> emptyList()
         }
     }

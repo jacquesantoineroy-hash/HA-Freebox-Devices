@@ -57,6 +57,13 @@ patch("veille_tableaux.py", [
      "        import logging\n"
      "        logging.getLogger(__name__).exception(\"Tableaux de bord sur l'écran de veille\")\n"
      "    return {\"profil\": qui[\"public\"], \"ecran\": ecran, \"liste\": liste}\n"),
+    ("            sortie.append(_nettoyer({\"code\": code, \"duree\": duree}))\n    return sortie\n",
+     "            sortie.append(_nettoyer({\"code\": code, \"duree\": duree}))\n"
+     "    # Des anciens tableaux il ne reste que l'horloge.\n"
+     "    return [t for t in sortie if t and t[\"code\"] == \"horloge\"]\n"),
+    ("async def resoudre_locaux(hass: HomeAssistant, locaux: Any) -> list[dict[str, Any]]:\n",
+     "async def resoudre_locaux(hass: HomeAssistant, locaux: Any) -> list[dict[str, Any]]:\n"
+     "    return []  # les tableaux composés sur l'appareil n'existent plus\n"),
 ], depuis=".bakpages")
 
 patch("http.py", [
@@ -66,10 +73,27 @@ patch("http.py", [
      "    hass.http.register_view(PcParentalVeilleDashView(hass))\n"),
 ])
 
+# Les réglages de l'appareil listent aussi les tableaux de bord rendus disponibles, avec leurs cartes.
+patch("veille_plus.py", [
+    ("            \"actif\": t[\"actif\"], \"duree\": t[\"duree\"],\n        })\n    return sortie\n",
+     "            \"actif\": t[\"actif\"], \"duree\": t[\"duree\"],\n        })\n"
+     "    try:\n"
+     "        from . import veille_dash\n"
+     "        sortie.extend(veille_dash.legers(coord.hass, coord))\n"
+     "    except Exception:  # noqa: BLE001\n"
+     "        pass\n"
+     "    return sortie\n"),
+])
+
 # Dans Vision > Écran de veille, la carte des tableaux de bord remplace l'ancien compositeur.
 patch("dashboard.py", [
     ("                    {\"type\": \"custom:vision-veille-card\", \"grid_options\": {\"columns\": \"full\"}},\n",
      "                    {\"type\": \"custom:vision-dashboards-card\", \"grid_options\": {\"columns\": \"full\"}},\n"),
     ("`/local/vision-veille-card.js` ", "`/local/vision-dashboards-card.js` "),
+    # Thème, musique, radio, nuit : propres à chaque appareil, plus rien à régler ici.
+    ("                    _titre(\"Ambiance\", \"mdi:palette-outline\"),\n", "                    _titre(\"Sur chaque appareil\", \"mdi:palette-outline\"),\n"),
+    ("                    {\"type\": \"entities\", \"entities\": reglages, \"state_color\": True} if reglages else None,\n", "                    None,\n"),
+    ("\"Le thème, la radio et le mode nuit se changent aussi depuis la télé \"", "\"Le thème, la musique ou la radio et le mode nuit se règlent sur chaque appareil \""),
+    ("\"(Vision → Réglages). Les photos viennent de `/media/vision_photos`.\"", "\"(Vision → Réglages) : chaque télé, chaque téléphone a les siens. Ici, on choisit seulement les tableaux de bord et les cartes rendus disponibles.\""),
 ])
 print("ok dash")
