@@ -679,6 +679,7 @@ class VisionVeillePanel extends HTMLElement {
   // ici et là, la paupière qui cligne vite et se rouvre plus doucement, parfois deux fois de suite.
   _oeil() {
     const toile = this.shadowRoot.querySelector(".marque canvas");
+    if (this._sans.has("toile")) { toile.remove(); return; }
     const g = toile.getContext("2d");
     const pourpre = this._sombre ? "#C2577B" : "#8C2F4B";
     const or = this._couleur("accent", "#F2C14E"), encre = this._sombre ? "#1B1418" : this._couleur("texte", "#2A2026");
