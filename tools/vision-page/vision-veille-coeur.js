@@ -120,10 +120,10 @@ class VisionVeillePanel extends HTMLElement {
         .petite { font-size: 3.2vh; color: var(--v-texte2); }
         .cadre { position: absolute; left: 3.5vw; right: 3.5vw; top: 11vh; bottom: 9.5vh; overflow: hidden; }
         .colonnes { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; transform-origin: top left;
-                    column-width: 400px; column-gap: 24px; column-fill: auto; }
-        .section { break-inside: avoid; margin: 0 0 18px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px; }
+                    column-width: 400px; column-gap: 40px; column-fill: auto; }
+        .section { break-inside: avoid; margin: 0 0 30px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 22px; }
         .section.longue { break-inside: auto; display: block; }
-        .section.longue > * { margin-bottom: 10px; break-inside: avoid; }
+        .section.longue > * { margin-bottom: 24px; break-inside: avoid; }
         .section > * { min-width: 0; }
         .sec { grid-column: 1 / -1; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--v-accent); margin: 2px 2px 0; }
         /* Néo-rétro : filets d'or, angles nets, capitales espacées, chiffres de tableau de bord. */
@@ -140,7 +140,7 @@ class VisionVeillePanel extends HTMLElement {
         /* La marque, en bas à gauche : l'œil de Vision (le même que sur les télés) et son nom. */
         .marque { position: absolute; left: 3.5vw; bottom: 1.6vh; height: 7vh; display: flex; align-items: center; z-index: 5; pointer-events: none; }
         .marque span { margin-left: 1vh; font-size: 2.6vh; font-weight: 700; letter-spacing: .12em; color: var(--v-texte2); opacity: .9; }
-        mushroom-chips-card { margin-bottom: 14px; }
+        mushroom-chips-card { margin-bottom: 24px; }
         .vide { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--v-texte2); font-size: 3vh; }
       </style>
       <div class="marque"><canvas></canvas><span>Vision</span></div>
@@ -295,7 +295,7 @@ class VisionVeillePanel extends HTMLElement {
         this._uneLigne(c);
         const sections = [...c.querySelectorAll(".section")];
         // Peu de sections : leurs cartes se répartissent librement dans les colonnes, pour occuper l'écran.
-        const visibles = Math.max(1, Math.floor((L + 24) / 424));
+        const visibles = Math.max(1, Math.floor((L + 40) / 440));
         for (const s of sections) if (s.offsetHeight > H || sections.length < visibles) s.classList.add("longue");
         await pause(250);
         // Tout tient sur un écran : on cherche le nombre de colonnes qui permet le plus grand agrandissement
@@ -307,7 +307,7 @@ class VisionVeillePanel extends HTMLElement {
           let mieux = null;
           c.style.height = "auto"; c.style.columnWidth = "auto"; c.style.columnFill = "balance";
           for (let k = 1; k <= Math.min(blocs, 6); k++) {
-            const lk = k * 420 + (k - 1) * 24;
+            const lk = k * 420 + (k - 1) * 40;
             c.style.width = `${lk}px`; c.style.columnCount = String(k);
             await pause(70);
             const hk = c.scrollHeight || 1;
@@ -323,7 +323,7 @@ class VisionVeillePanel extends HTMLElement {
             c.style.overflow = "visible";
           }
         }
-        e.pas = c.clientWidth + 24;
+        e.pas = c.clientWidth + 40;
         e.pages = Math.max(1, Math.min(8, Math.ceil((c.scrollWidth - 4) / e.pas)));
         scene.querySelector(".titre").textContent = e.titre + (e.pages > 1 ? `   1/${e.pages}` : "");
       }
