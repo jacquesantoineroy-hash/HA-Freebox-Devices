@@ -789,6 +789,8 @@ try { Add-Type -TypeDefinition $svNatif -ErrorAction Stop; $script:SvPret = $tru
 
 $script:SvFichier = Join-Path $env:APPDATA 'Vision\veille.json'
 $script:SvFenetres = @()
+$script:SvScenes = @()
+$script:SvHeures = @()
 $script:SvListe = @()
 $script:SvIndice = 0
 $script:SvDepuis = [datetime]::MinValue
@@ -943,8 +945,7 @@ function SvTableaux() {
     return $sortie
 }
 
-function SvDessiner($tab) {
-    $scene = $script:SvScene
+function SvDessiner($scene, $tab) {
     $scene.Children.Clear()
     if ($tab.genre -eq 'horloge') {
         $pile = New-Object System.Windows.Controls.StackPanel; $pile.HorizontalAlignment = 'Center'; $pile.VerticalAlignment = 'Center'
@@ -960,14 +961,14 @@ function SvDessiner($tab) {
             $ciel = SvMeteo ([string](Prop $m 'etat' '')); if ($ciel) { $morceaux += $ciel }
             if ($morceaux.Count) { $mt = SvTexte ($morceaux -join '  ·  ') 44 'accent'; $mt.HorizontalAlignment = 'Center'; $mt.Margin = [System.Windows.Thickness]::new(0, 26, 0, 0); $pile.Children.Add($mt) | Out-Null }
         }
-        $script:SvHeure = $h
+        $script:SvHeures += $h
         $scene.Children.Add($pile) | Out-Null
         return
     }
     $dock = New-Object System.Windows.Controls.DockPanel; $dock.Margin = [System.Windows.Thickness]::new(70, 50, 70, 50)
     $tete = New-Object System.Windows.Controls.DockPanel; $tete.Margin = [System.Windows.Thickness]::new(0, 0, 0, 22)
     $petite = SvTexte ((Get-Date).ToString('HH:mm')) 40 'encre2'; [System.Windows.Controls.DockPanel]::SetDock($petite, 'Right'); $tete.Children.Add($petite) | Out-Null
-    $script:SvHeure = $petite
+    $script:SvHeures += $petite
     $titre = [string]$tab.titre; if ($tab.total -gt 1) { $titre = '{0}   {1}/{2}' -f $titre, $tab.numero, $tab.total }
     $tete.Children.Add((SvTexte $titre 44 'encre' $true)) | Out-Null
     [System.Windows.Controls.DockPanel]::SetDock($tete, 'Top'); $dock.Children.Add($tete) | Out-Null
@@ -987,10 +988,24 @@ function SvDessiner($tab) {
     $scene.Children.Add($dock) | Out-Null
 }
 
+# Plusieurs écrans : chacun montre un tableau différent (l'horloge sur l'un, un tableau de bord
+# sur l'autre), et tout avance d'un cran à chaque passage, si bien que l'horloge change d'écran.
+function SvToutDessiner() {
+    $script:SvHeures = @()
+    $nb = $script:SvListe.Count
+    for ($j = 0; $j -lt $script:SvScenes.Count; $j++) {
+        try { SvDessiner $script:SvScenes[$j] $script:SvListe[($script:SvIndice + $j) % $nb] } catch { }
+    }
+}
+
 function SvFondu([double]$de, [double]$vers, $ensuite) {
-    $anim = New-Object System.Windows.Media.Animation.DoubleAnimation($de, $vers, [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(450)))
-    if ($ensuite) { $anim.Add_Completed($ensuite) }
-    $script:SvScene.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $anim)
+    $premiere = $true
+    foreach ($sc in @($script:SvScenes)) {
+        $anim = New-Object System.Windows.Media.Animation.DoubleAnimation($de, $vers, [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(450)))
+        if ($premiere -and $ensuite) { $anim.Add_Completed($ensuite) }
+        $premiere = $false
+        $sc.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $anim)
+    }
 }
 
 function SvSuivant([int]$pas = 1) {
@@ -999,19 +1014,19 @@ function SvSuivant([int]$pas = 1) {
     $nb = $script:SvListe.Count
     $script:SvIndice = (($script:SvIndice + $pas) % $nb + $nb) % $nb
     $script:SvDepuis = Get-Date
-    if ($nb -le 1) { SvDessiner $script:SvListe[0]; return }
-    SvFondu 1 0 { SvDessiner $script:SvListe[$script:SvIndice]; SvFondu 0 1 $null }
+    if ($nb -le 1) { SvToutDessiner; return }
+    SvFondu 1 0 { SvToutDessiner; SvFondu 0 1 $null }
 }
 
 function SvFermer() {
     try { $script:SvTic.Stop() } catch { }
     foreach ($f in @($script:SvFenetres)) { try { $f.Close() } catch { } }
-    $script:SvFenetres = @()
+    $script:SvFenetres = @(); $script:SvScenes = @(); $script:SvHeures = @()
 }
 
 function SvOuvrir() {
     if ($script:SvFenetres.Count -gt 0) { return }
-    $script:SvOrigine = $null; $script:SvOuvertA = Get-Date
+    $script:SvOrigine = $null; $script:SvOuvertA = Get-Date; $script:SvScenes = @(); $script:SvHeures = @()
     $ecrans = [System.Windows.Forms.Screen]::AllScreens
     $echelle = 1.0
     try { $echelle = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width / [System.Windows.SystemParameters]::PrimaryScreenWidth } catch { }
@@ -1022,20 +1037,18 @@ function SvOuvrir() {
         $f.WindowStartupLocation = 'Manual'
         $f.Left = $ecran.Bounds.Left / $echelle; $f.Top = $ecran.Bounds.Top / $echelle
         $f.Width = $ecran.Bounds.Width / $echelle; $f.Height = $ecran.Bounds.Height / $echelle
-        if ($ecran.Primary) {
-            # Une scène de 1920 × 1080 mise à l'échelle : la même mise en page sur tous les écrans.
-            $boite = New-Object System.Windows.Controls.Viewbox; $boite.Stretch = 'Uniform'
-            $scene = New-Object System.Windows.Controls.Grid; $scene.Width = 1920; $scene.Height = 1080
-            $boite.Child = $scene; $f.Content = $boite
-            $script:SvScene = $scene
-        }
+        # Une scène de 1920 × 1080 mise à l'échelle : la même mise en page sur tous les écrans.
+        $boite = New-Object System.Windows.Controls.Viewbox; $boite.Stretch = 'Uniform'
+        $scene = New-Object System.Windows.Controls.Grid; $scene.Width = 1920; $scene.Height = 1080
+        $boite.Child = $scene; $f.Content = $boite
+        $script:SvScenes += $scene
         $f.Add_PreviewKeyDown({ param($s, $e)
             if ($e.Key -eq 'Right') { SvSuivant 1 } elseif ($e.Key -eq 'Left') { SvSuivant -1 } else { SvFermer }
             $e.Handled = $true })
         $f.Add_PreviewMouseDown({ SvFermer })
         $f.Add_MouseMove({ param($s, $e)
             if (((Get-Date) - $script:SvOuvertA).TotalMilliseconds -lt 900) { return }
-            $pos = $e.GetPosition($s)
+            $pos = $s.PointToScreen($e.GetPosition($s))
             if ($null -eq $script:SvOrigine) { $script:SvOrigine = $pos; return }
             if ([Math]::Abs($pos.X - $script:SvOrigine.X) + [Math]::Abs($pos.Y - $script:SvOrigine.Y) -gt 14) { SvFermer } })
         $f.Add_Closed({ param($s, $e) $script:SvFenetres = @($script:SvFenetres | Where-Object { $_ -ne $s }) })
@@ -1045,7 +1058,7 @@ function SvOuvrir() {
         if ($ecran.Primary) { $f.Activate() | Out-Null }
     }
     $script:SvListe = @(SvTableaux); $script:SvIndice = 0; $script:SvDepuis = Get-Date
-    SvDessiner $script:SvListe[0]
+    SvToutDessiner
     SvFondu 0 1 $null
     $script:SvTic.Start()
 }
@@ -1056,7 +1069,7 @@ $script:SvTic.Interval = [TimeSpan]::FromSeconds(1)
 $script:SvTic.Add_Tick({
     try {
         if ($script:SvFenetres.Count -eq 0) { $script:SvTic.Stop(); return }
-        if ($script:SvHeure) { $script:SvHeure.Text = (Get-Date).ToString('HH:mm') }
+        foreach ($hh in @($script:SvHeures)) { if ($hh) { $hh.Text = (Get-Date).ToString('HH:mm') } }
         $courant = $script:SvListe[$script:SvIndice]
         if (((Get-Date) - $script:SvDepuis).TotalSeconds -ge [int]$courant.duree) {
             if ($script:SvListe.Count -gt 1) { SvSuivant 1 } else { $script:SvDepuis = Get-Date; SvSuivant 0 }
