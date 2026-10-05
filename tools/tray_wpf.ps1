@@ -1561,7 +1561,8 @@ function PageReglages() {
     $carteT.Child.Children.Add($styles) | Out-Null
     $carteT.Child.Children.Add((Coche 'Un fond sous les cartes' ([bool]$r.fondCartes) { param($s, $e) $rr = SvReglages; $rr.fondCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
     $carteT.Child.Children.Add((Coche 'Un contour autour des cartes' ([bool]$r.contourCartes) { param($s, $e) $rr = SvReglages; $rr.contourCartes = [bool]$s.IsChecked; SvEcrire $rr })) | Out-Null
-    $carteT.Child.Children.Add((Coche 'Animer les cartes (arrivée, jauges, courbes, nombres) ; le choix carte par carte est dans la liste plus bas' ([bool]$r.animer) { param($s, $e) $rr = SvReglages; $rr.animer = [bool]$s.IsChecked; SvEcrire $rr; Rafraichir })) | Out-Null
+    $carteT.Child.Children.Add((Coche 'Animer les cartes' ([bool]$r.animer) { param($s, $e) $rr = SvReglages; $rr.animer = [bool]$s.IsChecked; SvEcrire $rr; Rafraichir })) | Out-Null
+    $carteT.Child.Children.Add((Txt 'Arrivée des cartes, jauges, courbes, nombres. Le choix carte par carte est dans la liste des tableaux, plus bas.' 11 'Texte2' $false '34,0,0,0')) | Out-Null
     $Contenu.Children.Add($carteT) | Out-Null
 
     $Contenu.Children.Add((Section 'Accès à Vision')) | Out-Null
