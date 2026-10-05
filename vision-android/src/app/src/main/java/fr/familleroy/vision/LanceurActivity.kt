@@ -74,6 +74,7 @@ class LanceurActivity : Activity() {
     private val dateFmt = SimpleDateFormat("EEEE d MMMM", Locale.FRANCE)
     private var versionLocale = -1
     private var dossierOuvert: Dialog? = null
+    private var tiroir: Dialog? = null
     private var toucheEnfoncee = false
     private var reconstructionEnAttente = false
     private var profilConnu = ""
@@ -115,6 +116,8 @@ class LanceurActivity : Activity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         // Deux appuis rapprochés sur Accueil : l'écran de veille vient devant, la musique de l'autre appli continue.
+        // Sur téléphone, Accueil ramène à l'accueil : le tiroir, un dossier ou le panneau ouverts se referment.
+        if (!tele) { try { tiroir?.dismiss() } catch (_: Exception) {}; try { dossierOuvert?.dismiss() } catch (_: Exception) {}; cacherPanneau(); pageur?.aller(0) }
         val now = SystemClock.uptimeMillis()
         if (tele && now - dernierAccueilMs < 1500) { Veille.ouvrir(this); dernierAccueilMs = 0 } else dernierAccueilMs = now
     }
@@ -1025,7 +1028,10 @@ class LanceurActivity : Activity() {
 
     /** Le tiroir : toutes les applications, par ordre alphabétique ; un appui long propose de les ajouter à l'accueil. */
     private fun tiroirApplis() {
+        if (tiroir?.isShowing == true) return
         val dlg = Dialog(this)
+        tiroir = dlg
+        dlg.setOnDismissListener { if (tiroir === dlg) tiroir = null }
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val defile = ScrollView(this).apply { background = fondCarte(30f) }
         val boite = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(18f), px(20f), px(18f), px(16f)) }

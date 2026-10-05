@@ -65,8 +65,15 @@ class VeilleView(ctx: Context) : View(ctx) {
     private class Pluie(val points: List<Pair<Int, Int>>, val dans: Int?, val pluie: Boolean)
     private class Batterie(val id: String, val nom: String, val niveau: Int, val charge: Boolean?, val telephone: Boolean, val pente: Double?)
     private class Case(val entite: String, val nom: String, val rendu: String, val valeur: Double?, val unite: String, val texte: String, val on: Boolean?,
-                       val classe: String, val min: Double, val max: Double, val serie: List<Pair<Long, Float>>, val consigne: Double?)
-    private class Def(val code: String, val dureeMs: Long, val id: String, val titre: String, val cases: List<Case>)
+                       val classe: String, val min: Double, val max: Double, val serie: List<Pair<Long, Float>>, val consigne: Double?,
+                       /** Tableaux de bord Home Assistant : largeur de la carte (sur 12) et hauteur (en rangées). */
+                       val largeur: Int = 6, val hauteur: Int = 1)
+    private class Section(val titre: String, val cases: List<Case>)
+    private class Def(val code: String, val dureeMs: Long, val id: String, val titre: String, val cases: List<Case>,
+                      val sections: List<Section> = emptyList(), val colonnes: Int = 3)
+    /** Un écran d'un tableau de bord : des colonnes de blocs (un titre, des rangées de cases). */
+    private class BlocDash(val titre: String, val rangees: List<List<Case>>, val unites: Float)
+    private class PageDash(val def: Def, val colonnes: List<List<BlocDash>>, val unitesMax: Int, val numero: Int, val total: Int)
     private class Demande(val prenom: String, val libelle: String, val genre: String, val ts: Long)
 
     private class Donnees(j: JSONObject) {
@@ -180,15 +187,19 @@ class VeilleView(ctx: Context) : View(ctx) {
             val tous = ArrayList<JSONObject>()
             for (i in 0 until a.length()) tous.add(a.getJSONObject(i))
             j.optJSONArray("locaux")?.let { l -> for (i in 0 until l.length()) tous.add(l.getJSONObject(i)) }
+            fun casesDe(cs: org.json.JSONArray?): List<Case> = (0 until (cs?.length() ?: 0)).map { q ->
+                val c = cs!!.getJSONObject(q)
+                val sr = c.optJSONArray("serie")
+                Case(c.optString("entite"), c.optString("nom"), c.optString("rendu", "texte"), c.optDoubleOrNull("valeur"), c.optString("unite"), c.optString("texte"),
+                    if (c.isNull("on")) null else c.optBoolean("on"), c.optString("classe"), c.optDouble("min", 0.0), c.optDouble("max", 100.0),
+                    (0 until (sr?.length() ?: 0)).map { k -> val pt = sr!!.getJSONArray(k); pt.getLong(0) to pt.getDouble(1).toFloat() }, c.optDoubleOrNull("consigne"),
+                    c.optInt("largeur", 6).coerceIn(1, 12), c.optInt("hauteur", 1).coerceIn(1, 3))
+            }
             tous.map { o ->
-                val cs = o.optJSONArray("cases")
-                Def(o.optString("code"), o.optInt("duree", 20) * 1000L, o.optString("id"), o.optString("titre"), (0 until (cs?.length() ?: 0)).map { q ->
-                    val c = cs!!.getJSONObject(q)
-                    val sr = c.optJSONArray("serie")
-                    Case(c.optString("entite"), c.optString("nom"), c.optString("rendu", "texte"), c.optDoubleOrNull("valeur"), c.optString("unite"), c.optString("texte"),
-                        if (c.isNull("on")) null else c.optBoolean("on"), c.optString("classe"), c.optDouble("min", 0.0), c.optDouble("max", 100.0),
-                        (0 until (sr?.length() ?: 0)).map { k -> val pt = sr!!.getJSONArray(k); pt.getLong(0) to pt.getDouble(1).toFloat() }, c.optDoubleOrNull("consigne"))
-                })
+                val ss = o.optJSONArray("sections")
+                Def(o.optString("code"), o.optInt("duree", 20) * 1000L, o.optString("id"), o.optString("titre"), casesDe(o.optJSONArray("cases")),
+                    (0 until (ss?.length() ?: 0)).map { q -> val s = ss!!.getJSONObject(q); Section(s.optString("titre"), casesDe(s.optJSONArray("cases"))) }.filter { it.cases.isNotEmpty() },
+                    o.optInt("colonnes", 3))
             }
         }
         val batteries: List<Batterie> = j.optJSONArray("batteries").let { a ->
@@ -222,9 +233,9 @@ class VeilleView(ctx: Context) : View(ctx) {
 
     // ------------------------------------------------------------ tableaux
 
-    private enum class Genre { HORLOGE, METEO, VIGILANCE, MAISON, TUILES, COURBE, CAMERAS, ESPORTS, COURSES, ECOLE, AGENDA, AVENIR, CHAUFFAGE, BATTERIES, PHOTOS, ENTITES }
+    private enum class Genre { HORLOGE, METEO, VIGILANCE, MAISON, TUILES, COURBE, CAMERAS, ESPORTS, COURSES, ECOLE, AGENDA, AVENIR, CHAUFFAGE, BATTERIES, PHOTOS, ENTITES, DASH }
     private class Tableau(val genre: Genre, val tuiles: List<Tuile> = emptyList(), val cameras: List<Camera> = emptyList(), val jeu: Jeu? = null,
-                          val sport: Sport? = null, val ecole: Ecole? = null, val photos: List<String> = emptyList(), val def: Def? = null, val dureeMs: Long = 0L)
+                          val sport: Sport? = null, val ecole: Ecole? = null, val photos: List<String> = emptyList(), val def: Def? = null, val dureeMs: Long = 0L, val page: PageDash? = null)
 
     // eSport : les logos, et les résultats déjà montrés (pour fêter seulement les nouveaux).
     private val logos = Logos(ctx)
@@ -521,6 +532,8 @@ class VeilleView(ctx: Context) : View(ctx) {
                 listOf(Tableau(Genre.PHOTOS, photos = (0 until minOf(3, d.photos.size)).map { d.photos[(depart + it) % d.photos.size] }, dureeMs = ms))
             } else emptyList()
             "entites" -> if (def.cases.isNotEmpty()) listOf(Tableau(Genre.ENTITES, def = def, dureeMs = ms)) else emptyList()
+            // Un tableau de bord Home Assistant : autant d'écrans qu'il en faut, enchaînés en fondu.
+            "dash" -> paginer(def).map { Tableau(Genre.DASH, def = def, dureeMs = ms, page = it) }
             else -> emptyList()
         }
     }
@@ -615,6 +628,7 @@ class VeilleView(ctx: Context) : View(ctx) {
             Genre.CHAUFFAGE -> dessinerChauffage(c, w, h, alpha, ecoule, t)
             Genre.BATTERIES -> dessinerBatteries(c, w, h, alpha, ecoule, t)
             Genre.ENTITES -> tableau.def?.let { dessinerEntites(c, w, h, alpha, ecoule, t, it) }
+            Genre.DASH -> tableau.page?.let { dessinerDash(c, w, h, alpha, ecoule, t, it) }
             Genre.PHOTOS -> dessinerPhotos(c, w, h, alpha, ecoule, t, tableau.photos)
         }
         if (tableau.genre == Genre.HORLOGE || tableau.genre == Genre.METEO) dessinerPluie(c, w, h, alpha, ecoule, t, tableau.genre == Genre.HORLOGE)
@@ -1404,6 +1418,191 @@ class VeilleView(ctx: Context) : View(ctx) {
                     lignes.forEachIndexed { n, ligne -> ecrire(c, ligne, r.left + pad, r.top + pad + petit + h * 0.02f + taille + n * interligne, taille, encre, alpha * pi, fin) }
                 }
             }
+        }
+    }
+
+    // ------------------------------------------------ tableaux de bord Home Assistant
+
+    private var tailleVue = 0L
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+        super.onSizeChanged(w, h, ow, oh)
+        // La mise en page des tableaux de bord dépend de l'écran : on la refait s'il change (rotation).
+        val cle = w.toLong() * 100_000L + h
+        if (cle != tailleVue) { tailleVue = cle; if (actif && donnees != null) main.post { reconstruire() } }
+    }
+
+    /**
+     * Répartit les sections d'un tableau de bord sur l'écran : colonnes selon la largeur (une seule sur un
+     * téléphone debout), cartes à leur largeur d'origine (sur 12) et à leur hauteur, et autant d'écrans
+     * qu'il en faut quand tout ne tient pas.
+     */
+    private fun paginer(def: Def): List<PageDash> {
+        if (def.sections.isEmpty()) return emptyList()
+        val w = (if (width > 0) width else resources.displayMetrics.widthPixels).toFloat()
+        val h = (if (height > 0) height else resources.displayMetrics.heightPixels).toFloat()
+        val debout = w < h * 0.9f
+        val cols = when {
+            debout -> 1
+            w / h < 1.5f -> min(2, max(1, def.sections.size))
+            else -> min(def.colonnes.coerceIn(1, 4), max(1, def.sections.size)).coerceAtMost(3)
+        }
+        val unitesMax = if (debout) 9 else 5
+        // Une carte trop étroite serait illisible de loin : largeur minimale selon le nombre de colonnes.
+        val largeurMin = if (cols >= 3 || debout) 6 else if (cols == 2) 4 else 3
+        val blocs = ArrayList<BlocDash>()
+        for (s in def.sections) {
+            val rangees = ArrayList<List<Case>>()
+            var courante = ArrayList<Case>(); var somme = 0
+            for (k in s.cases) {
+                val l = max(largeurMin, k.largeur).coerceAtMost(12)
+                if (somme + l > 12 && courante.isNotEmpty()) { rangees.add(courante); courante = ArrayList(); somme = 0 }
+                courante.add(k); somme += l
+            }
+            if (courante.isNotEmpty()) rangees.add(courante)
+            // Une section plus haute que l'écran se poursuit dans un bloc suivant, sous le même titre.
+            var lot = ArrayList<List<Case>>(); var u = 0f; var premier = true
+            fun entete() = if (s.titre.isNotEmpty()) 0.55f else 0f
+            for (r in rangees) {
+                val hr = r.maxOf { it.hauteur }.toFloat()
+                if (lot.isNotEmpty() && entete() + u + hr > unitesMax) {
+                    blocs.add(BlocDash(if (premier) s.titre else s.titre + " (suite)".takeIf { s.titre.isNotEmpty() }.orEmpty(), lot, entete() + u)); premier = false
+                    lot = ArrayList(); u = 0f
+                }
+                lot.add(r); u += hr
+            }
+            if (lot.isNotEmpty()) blocs.add(BlocDash(if (premier) s.titre else s.titre + " (suite)".takeIf { s.titre.isNotEmpty() }.orEmpty(), lot, entete() + u))
+        }
+        // Chaque bloc va dans la colonne la moins remplie où il tient ; sinon on ouvre un écran de plus.
+        val pages = ArrayList<List<List<BlocDash>>>()
+        var colonnes = List(cols) { ArrayList<BlocDash>() }; var hauteurs = FloatArray(cols)
+        for (b in blocs) {
+            val ecart = 0.25f
+            val choix = (0 until cols).filter { hauteurs[it] + b.unites + (if (hauteurs[it] > 0f) ecart else 0f) <= unitesMax + 0.01f }.minByOrNull { hauteurs[it] }
+            if (choix == null) {
+                pages.add(colonnes); colonnes = List(cols) { ArrayList<BlocDash>() }; hauteurs = FloatArray(cols)
+                colonnes[0].add(b); hauteurs[0] = b.unites
+            } else {
+                colonnes[choix].add(b); hauteurs[choix] += b.unites + (if (hauteurs[choix] > 0f) ecart else 0f)
+            }
+        }
+        if (colonnes.any { it.isNotEmpty() }) pages.add(colonnes)
+        return pages.take(8).mapIndexed { i, p -> PageDash(def, p.filter { it.isNotEmpty() }, unitesMax, i + 1, min(pages.size, 8)) }
+    }
+
+    private fun dessinerDash(c: Canvas, w: Float, h: Float, alpha: Float, ecoule: Long, t: Float, page: PageDash) {
+        titre(c, if (page.total > 1) "${page.def.titre}  ·  ${page.numero}/${page.total}" else page.def.titre, w, h, alpha, ecoule)
+        val gauche = w * 0.06f; val droite = w * 0.94f
+        val haut = h * 0.235f; val bas = h * 0.9f
+        val hu = (bas - haut) / page.unitesMax
+        val ecart = hu * 0.1f
+        val n = max(1, page.colonnes.size)
+        val ecartCol = min(w, h) * 0.03f
+        val lc = (droite - gauche - ecartCol * (n - 1)) / n
+        var rang = 0
+        page.colonnes.forEachIndexed { i, blocs ->
+            val x0 = gauche + i * (lc + ecartCol)
+            var y = haut
+            blocs.forEachIndexed { b, bloc ->
+                if (b > 0) y += hu * 0.25f
+                if (bloc.titre.isNotEmpty()) {
+                    val pt = etape(ecoule, 80 + 60L * rang, 600)
+                    val taille = hu * 0.22f
+                    ecrire(c, decouper(bloc.titre.uppercase(Locale.FRANCE), taille, gras, lc, 1).firstOrNull() ?: "", x0, y + hu * 0.36f, taille, encre2, alpha * pt, gras, espacement = 0.08f)
+                    y += hu * 0.55f
+                }
+                for (rangee in bloc.rangees) {
+                    val hr = rangee.maxOf { it.hauteur } * hu
+                    // Les cartes gardent leurs proportions (sur 12) et la rangée occupe toute la largeur.
+                    val somme = rangee.sumOf { max(1, it.largeur) }.toFloat()
+                    var x = x0
+                    for (k in rangee) {
+                        val lk = (lc + ecart) * (max(1, k.largeur) / somme) - ecart
+                        val pi = etape(ecoule, 120 + 55L * rang, 650); rang++
+                        val r = RectF(x, y + (1f - pi) * hu * 0.18f, x + lk, y + hr - ecart + (1f - pi) * hu * 0.18f)
+                        dessinerCarteDash(c, r, h, hu, k, alpha * pi, etape(ecoule, 300 + 55L * rang, 1000), t)
+                        x += lk + ecart
+                    }
+                    y += hr
+                }
+            }
+        }
+    }
+
+    /** Une carte d'un tableau de bord, redessinée dans le thème : tuile basse sur une rangée, grande case au-delà. */
+    private fun dessinerCarteDash(c: Canvas, r: RectF, h: Float, hu: Float, k: Case, a: Float, pf: Float, t: Float) {
+        if (r.height() > hu * 1.5f) {
+            // Assez haute : le dessin des cases composées (jauge en arc, courbe, valeur en grand), à l'échelle de la carte.
+            val echelle = min(h, r.height() / 0.31f)
+            cartePosee(c, r, echelle, a)
+            val pad = echelle * 0.03f
+            val petit = min(echelle * 0.026f, r.width() * 0.07f)
+            ecrire(c, decouper(k.nom.uppercase(Locale.FRANCE), petit, gras, r.width() - pad * 2, 1).firstOrNull() ?: "", r.left + pad, r.top + pad + petit, petit, encre3, a, gras, espacement = 0.1f)
+            when (k.rendu) {
+                "jauge" -> dessinerCaseJauge(c, r, echelle, pad, petit, k, a, pf)
+                "courbe" -> dessinerCaseCourbe(c, r, echelle, pad, petit, k, a, pf)
+                "etat" -> dessinerCaseEtat(c, r, echelle, pad, petit, k, a, pf, t)
+                "valeur" -> dessinerCaseValeur(c, r, echelle, pad, petit, k, a, pf)
+                else -> {
+                    val taille = min(r.height() * 0.16f, r.width() * 0.07f)
+                    val interligne = taille * 1.25f
+                    val place = ((r.bottom - pad) - (r.top + pad + petit + echelle * 0.02f)) / interligne
+                    decouper(k.texte, taille, fin, r.width() - pad * 2, max(1, place.toInt())).forEachIndexed { n, ligne ->
+                        ecrire(c, ligne, r.left + pad, r.top + pad + petit + echelle * 0.02f + taille + n * interligne, taille, encre, a, fin)
+                    }
+                }
+            }
+            return
+        }
+        // Tuile : le nom au-dessus, la valeur ou l'état en dessous ; à gauche la pastille d'état, à droite la jauge ou la courbe.
+        cartePosee(c, r, r.height() / 0.42f, a)
+        val pad = r.height() * 0.2f
+        val tNom = r.height() * 0.2f; val tVal = r.height() * 0.32f
+        var x = r.left + pad
+        var droite = r.right - pad
+        if (k.rendu == "etat") {
+            val on = k.on
+            val couleur = when (on) { true -> if (k.classe in setOf("door", "window", "garage_door", "opening", "smoke", "problem", "moisture", "lock")) pourpre else vert; false -> encre3; null -> or }
+            val rayon = r.height() * 0.13f
+            pForme.style = Paint.Style.FILL
+            if (on == true) { pForme.color = couleur; pForme.alpha = (a * (40 + 30 * sin(t * 2f))).toInt().coerceIn(0, 255); c.drawCircle(x + rayon, r.centerY(), rayon * (1.5f + 0.15f * sin(t * 2f)) * pf, pForme) }
+            pForme.color = couleur; pForme.alpha = (a * 230).toInt()
+            c.drawCircle(x + rayon, r.centerY(), rayon * pf, pForme)
+            x += rayon * 2 + pad * 0.7f
+        }
+        if (k.rendu == "courbe" && k.serie.size >= 2 && r.width() > r.height() * 2.6f) {
+            // Une petite courbe 24 h sur la moitié droite.
+            val zone = RectF(r.left + r.width() * 0.52f, r.top + pad * 0.9f, r.right - pad, r.bottom - pad * 0.9f)
+            val vmin = k.serie.minOf { it.second }; val vmax = k.serie.maxOf { it.second }
+            val etendue = max(0.001f, vmax - vmin)
+            val visibles = (k.serie.size * pf).toInt().coerceIn(2, k.serie.size)
+            chemin.reset()
+            for (i in 0 until visibles) {
+                val px = zone.left + zone.width() * i / (k.serie.size - 1f)
+                val py = zone.bottom - zone.height() * ((k.serie[i].second - vmin) / etendue)
+                if (i == 0) chemin.moveTo(px, py) else chemin.lineTo(px, py)
+            }
+            pForme.style = Paint.Style.STROKE; pForme.strokeWidth = r.height() * 0.035f; pForme.strokeCap = Paint.Cap.ROUND; pForme.strokeJoin = Paint.Join.ROUND
+            pForme.color = or; pForme.alpha = (a * 230).toInt()
+            c.drawPath(chemin, pForme)
+            pForme.style = Paint.Style.FILL
+            droite = zone.left - pad * 0.5f
+        }
+        val largeurTexte = max(1f, droite - x)
+        ecrire(c, decouper(k.nom, tNom, normal, largeurTexte, 1).firstOrNull() ?: "", x, r.top + pad + tNom * 0.85f, tNom, encre2, a, normal)
+        val valeur = when (k.rendu) {
+            "etat", "texte" -> k.texte.replaceFirstChar { it.uppercase() }
+            else -> if (k.valeur != null) compter(formatValeur(k.valeur, k.unite), pf) + (k.consigne?.let { "  \u2192 ${formatValeur(it, k.unite)}" } ?: "") else k.texte
+        }
+        ecrire(c, decouper(valeur, tVal, fin, largeurTexte, 1).firstOrNull() ?: "", x, r.bottom - pad * 0.95f, tVal, encre, a, fin)
+        if (k.rendu == "jauge" && k.valeur != null) {
+            // La jauge devient un trait de progression au bas de la tuile.
+            val part = (((k.valeur - k.min) / (k.max - k.min)).toFloat().coerceIn(0f, 1f)) * pf
+            val y = r.bottom - r.height() * 0.09f; val e = r.height() * 0.035f
+            pForme.style = Paint.Style.FILL
+            pForme.color = encre3; pForme.alpha = (a * 50).toInt()
+            c.drawRoundRect(RectF(r.left + pad, y - e, r.right - pad, y + e), e, e, pForme)
+            pForme.color = if (k.classe == "battery" && part < 0.2f) pourpre else or; pForme.alpha = (a * 230).toInt()
+            if (part > 0.005f) c.drawRoundRect(RectF(r.left + pad, y - e, r.left + pad + (r.width() - pad * 2) * part, y + e), e, e, pForme)
         }
     }
 
