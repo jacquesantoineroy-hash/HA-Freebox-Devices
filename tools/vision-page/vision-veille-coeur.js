@@ -85,19 +85,19 @@ class VisionVeillePanel extends HTMLElement {
         r.hass = { panels: [{ url_path: "tmp", component_name: "lovelace" }] };
         r._updateRoutes();
         await r.routerOptions.routes.tmp.load();
-        await Promise.race([customElements.whenDefined("ha-panel-lovelace"), pause(8000)]);
       }
     } catch (e) { /* on tente quand même */ }
     try {
       const res = await this._hass.callWS({ type: "lovelace/resources" });
-      await Promise.all((res || []).map((x) => {
+      // Les cartes de la communauté se chargent en même temps ; on ne les attend pas plus de cinq secondes.
+      await Promise.race([pause(5000), Promise.all((res || []).map((x) => {
         if (x.type === "module") return import(x.url).catch(() => null);
         if (x.type === "js") return new Promise((ok) => { const s = document.createElement("script"); s.src = x.url; s.onload = s.onerror = ok; document.head.appendChild(s); });
         if (x.type === "css") { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = x.url; document.head.appendChild(l); }
         return null;
-      }));
+      }))]);
     } catch (e) { /* sans ressources, les cartes d'origine suffisent */ }
-    for (let i = 0; i < 40 && !window.loadCardHelpers; i++) await pause(250);
+    for (let i = 0; i < 24 && !window.loadCardHelpers; i++) await pause(250);
     return window.loadCardHelpers ? window.loadCardHelpers() : null;
   }
 
@@ -144,7 +144,10 @@ class VisionVeillePanel extends HTMLElement {
         .vide { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--v-texte2); font-size: 3vh; }
       </style>
       <div class="marque"><canvas></canvas><span>Vision</span></div>
-      <div class="scene vue" id="s0"></div>`;
+      <div class="scene vue" id="s0"><div class="horloge"><div class="heure"></div><div class="date"></div></div></div>`;
+    // L'heure s'affiche tout de suite ; les tableaux arrivent dès que Home Assistant a répondu.
+    { const j = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); this.shadowRoot.querySelector(".date").textContent = j.charAt(0).toUpperCase() + j.slice(1); }
+    this._tic();
     let page = null, aides = null;
     try {
       [page, aides] = await Promise.all([
@@ -284,7 +287,7 @@ class VisionVeillePanel extends HTMLElement {
       const c = e._colonnes;
       if (e.page === 0) {
         // Le temps que les cartes se dessinent, puis on compte les écrans nécessaires.
-        await pause(1800);
+        await pause(1200);
         const cadre = c.parentElement, L = cadre.clientWidth, H = cadre.clientHeight;
         this._uneLigne(c);
         const sections = [...c.querySelectorAll(".section")];
@@ -335,7 +338,7 @@ class VisionVeillePanel extends HTMLElement {
       try {
         const rangee = el.shadowRoot && el.shadowRoot.querySelector(".chip-container");
         if (!rangee) continue;
-        rangee.style.flexWrap = "nowrap"; rangee.style.justifyContent = "flex-start";
+        rangee.style.flexWrap = "nowrap"; rangee.style.justifyContent = "flex-start"; rangee.style.whiteSpace = "nowrap";
         const dispo = el.clientWidth, besoin = rangee.scrollWidth;
         if (besoin > dispo + 2) {
           rangee.style.width = `${besoin}px`;
