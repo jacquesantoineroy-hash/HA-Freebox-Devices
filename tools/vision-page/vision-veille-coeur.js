@@ -553,6 +553,7 @@ class VisionVeillePanel extends HTMLElement {
       const nav = (performance.getEntriesByType("navigation")[0] || {}).type || "?";
       setTimeout(() => this._note(`chargement n° ${n} (${nav}) à ${new Date().toLocaleTimeString("fr-FR")}, page ouverte depuis ${(performance.now() / 1000).toFixed(1)} s`), 0);
     } catch (e) { /* sans importance */ }
+    this._sans = new Set((this._q.get("sans") || "").split(",").filter(Boolean));
     this._theme();
     this.shadowRoot.innerHTML = `
       <style>
@@ -704,7 +705,7 @@ class VisionVeillePanel extends HTMLElement {
       g.globalAlpha = 1; g.lineWidth = H * 0.004; g.beginPath(); g.moveTo(cx - demiL, cy); g.quadraticCurveTo(cx, cy - ouverture * 2, cx + demiL, cy); g.stroke();
       g.globalAlpha = 0.59; g.lineWidth = H * 0.002; g.beginPath(); g.moveTo(cx - demiL, cy); g.quadraticCurveTo(cx, cy + bas, cx + demiL, cy); g.stroke();
       g.globalAlpha = 1;
-      requestAnimationFrame(pas);
+      if (!this._sans.has("oeil")) requestAnimationFrame(pas);
     };
     pas();
   }
@@ -877,7 +878,7 @@ class VisionVeillePanel extends HTMLElement {
           bloc.className = "section";
           bloc._span = Math.max(1, Math.min(4, s.span || 1));
           if (s.titre) { const t = document.createElement("div"); t.className = "sec"; t.textContent = s.titre; bloc.appendChild(t); }
-          for (const c of s.cartes) { const el = this._carte(c.config); if (el) bloc.appendChild(el); }
+          for (const c of s.cartes) { const el = this._carte(c.config); if (el && !this._sans.has(el.localName)) bloc.appendChild(el); }
           if (bloc.children.length) blocs.push(bloc);
         }
         // Écran en hauteur (téléphone, tablette debout) : les sections passent les unes sous les autres, comme
@@ -955,7 +956,7 @@ class VisionVeillePanel extends HTMLElement {
       const pg = e._pages[e.page] || e._pages[0];
       if (pg) {
         const hp = Math.max(1, pg.bas - pg.haut);
-        const z = Math.min(e._L / e._larg, e._H / hp, 2.2) * 0.985;
+        const z = this._sans.has("echelle") ? 1 : Math.min(e._L / e._larg, e._H / hp, 2.2) * 0.985;
         for (const s of c.querySelectorAll(".section")) s.style.visibility = pg.sections.includes(s) ? "visible" : "hidden";
         const dx = Math.max(0, (e._L - e._larg * z) / 2), dy = Math.max(0, Math.min((e._H - hp * z) / 2, e._H * 0.1));
         c.style.transform = `translate(${dx}px, ${dy - pg.haut * z}px) scale(${z})`;
