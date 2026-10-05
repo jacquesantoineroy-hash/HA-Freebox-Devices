@@ -613,13 +613,14 @@ function PageMaison() {
             } @{ action = $def[1]; pc = (Prop $a 'id'); minutes = $def[2] })) | Out-Null
         }
         $sp.Children.Add($r) | Out-Null
-        $r2 = Rangee; $r2.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
+        $r2 = New-Object System.Windows.Controls.WrapPanel; $r2.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
         foreach ($def in @(@('Catégories', 'categories'), @('Autorisations', 'exceptions'), @('Ce qui est fermé', 'fermes'), @('Temps', 'temps'), @('Planning', 'planning'), @('Un mot…', 'mot'))) {
             $r2.Children.Add((Bouton $def[0] 'Secondaire' {
                 param($s, $e); $t = $s.Tag
                 if ($t.type -eq 'mot') { EnvoyerMot $t.appareil; return }
                 $script:Vue = @{ type = $t.type; appareil = $t.appareil }; Rafraichir
             } @{ type = $def[1]; appareil = $a })) | Out-Null
+            $r2.Children[$r2.Children.Count - 1].Margin = [System.Windows.Thickness]::new(0, 0, 8, 8)
         }
         $sp.Children.Add($r2) | Out-Null
         $Contenu.Children.Add($c) | Out-Null
