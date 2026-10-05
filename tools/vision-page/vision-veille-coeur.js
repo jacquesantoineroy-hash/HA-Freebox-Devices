@@ -212,7 +212,9 @@ class VisionVeillePanel extends HTMLElement {
     const premier = liste[this._indice];
     if (premier.genre === "horloge" && liste.length > 1) {
       this._indice = (this._indice + 1) % liste.length;
-      setTimeout(() => this._montrer(), Math.max(0, 4000 - (Date.now() - this._debut)));
+      // Après un rechargement de la page (Home Assistant en fait un à la première ouverture), on n'attend pas.
+      const recharge = ((performance.getEntriesByType("navigation")[0] || {}).type === "reload");
+      setTimeout(() => this._montrer(), recharge ? 0 : Math.max(0, 4000 - (Date.now() - this._debut)));
     } else this._montrer();
   }
 
